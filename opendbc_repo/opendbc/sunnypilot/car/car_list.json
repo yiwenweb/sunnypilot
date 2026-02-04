@@ -128,6 +128,40 @@
     ],
     "package": "Adaptive Cruise Control (ACC) & Lane Assist"
   },
+  "BYD Han EV 2020-22": {
+    "platform": "BYD_HAN_EV_2020",
+    "make": "BYD",
+    "brand": "byd",
+    "model": "Han EV",
+    "year": [
+      "2020",
+      "2021",
+      "2022"
+    ],
+    "package": "ACC + LKAS"
+  },
+  "BYD Song Plus DM-i 2021-23": {
+    "platform": "BYD_SONG_PLUS_DMI_2021",
+    "make": "BYD",
+    "brand": "byd",
+    "model": "Song Plus DM-i",
+    "year": [
+      "2021",
+      "2022",
+      "2023"
+    ],
+    "package": "ACC + LKAS"
+  },
+  "BYD Tang DM 2018": {
+    "platform": "BYD_TANG_DM_2018",
+    "make": "BYD",
+    "brand": "byd",
+    "model": "Tang DM",
+    "year": [
+      "2018"
+    ],
+    "package": "ACC + LKAS"
+  },
   "Buick LaCrosse 2017-19": {
     "platform": "BUICK_LACROSSE",
     "make": "Buick",
