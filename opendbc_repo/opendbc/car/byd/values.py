@@ -1,6 +1,10 @@
-# BYD车型常量定义 - sunnypilot 0.10.1
-# 专为比亚迪18款唐DM及其他BYD车型优化
-# 版本: 2026.02 稳定版
+"""
+BYD vehicle constants and configuration definitions.
+
+This module defines constants, enums, and configuration parameters for
+BYD vehicle adapters, including car models, control parameters, and
+platform configurations.
+"""
 
 from dataclasses import dataclass, field
 from enum import Enum, IntFlag
@@ -15,7 +19,24 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
-    """BYD车辆控制参数 - 针对18款唐DM优化"""
+    """BYD vehicle control parameters.
+    
+    Defines steering control limits and rates for BYD vehicles.
+    Parameters are tuned for Tang DM 2018 EPS characteristics.
+    
+    Attributes:
+        STEER_STEP: Steering control period
+        STEER_MAX: Maximum steering torque
+        STEER_ERROR_MAX: Maximum steering error
+        STEER_DELTA_UP: Torque increase rate limit
+        STEER_DELTA_DOWN: Torque decrease rate limit
+        STEER_DRIVER_ALLOWANCE: Driver torque tolerance
+        STEER_DRIVER_MULTIPLIER: Driver torque multiplier
+        STEER_DRIVER_FACTOR: Driver torque factor
+        STEER_ANGLE_MAX: Maximum steering angle (degrees)
+        ACCEL_MAX: Maximum acceleration (m/s²)
+        ACCEL_MIN: Minimum acceleration (m/s²)
+    """
 
     # 转向控制参数
     STEER_STEP = 1  # 转向控制周期
@@ -50,37 +71,43 @@ class CarControllerParams:
 
 
 class BydFlags(IntFlag):
-    """BYD车型特性标志"""
-    # 检测到的标志
-    HYBRID = 1  # 混动车型
-    PHEV = 2  # 插电混动
-    EV = 4  # 纯电动
+    """BYD vehicle feature flags."""
+    HYBRID = 1      # Hybrid vehicle
+    PHEV = 2        # Plug-in hybrid
+    EV = 4          # Pure electric
 
-    # 静态标志
-    HAS_RADAR = 8  # 有毫米波雷达
-    HAS_BSM = 16  # 有盲点监测
-    RAISED_ACCEL_LIMIT = 32  # 支持更高加速度
-    ANGLE_CONTROL = 64  # 角度控制模式
-    STOCK_ACC = 128  # 原厂ACC
+    HAS_RADAR = 8   # Has millimeter wave radar
+    HAS_BSM = 16    # Has blind spot monitoring
+    RAISED_ACCEL_LIMIT = 32  # Supports higher acceleration
+    ANGLE_CONTROL = 64       # Angle control mode
+    STOCK_ACC = 128          # Stock ACC
 
 
 class BydSafetyFlags(IntFlag):
-    """BYD安全标志"""
+    """BYD safety flags."""
     ALT_BRAKE = (1 << 8)
     STOCK_LONGITUDINAL = (2 << 8)
 
 
 class CanBus:
-    """BYD CAN总线定义"""
-    MAIN = 0  # 主CAN (动力总成)
-    AUX = 1  # 辅助CAN (车身)
-    ESC = 0  # ESC/ESP总线
-    MPC = 1  # MPC/摄像头总线
-    RADAR = 2  # 雷达总线
+    """BYD CAN bus definitions."""
+    MAIN = 0    # Main CAN (powertrain)
+    AUX = 1     # Auxiliary CAN (body)
+    ESC = 0     # ESC/ESP bus
+    MPC = 1     # MPC/camera bus
+    RADAR = 2   # Radar bus
 
 
 def dbc_dict(pt, radar=None):
-    """生成DBC字典"""
+    """Generate DBC dictionary.
+    
+    Args:
+        pt: Powertrain DBC file name
+        radar: Optional radar DBC file name
+        
+    Returns:
+        Dictionary mapping bus types to DBC file names
+    """
     d = {Bus.pt: pt}
     if radar is not None:
         d[Bus.radar] = radar
@@ -89,7 +116,7 @@ def dbc_dict(pt, radar=None):
 
 @dataclass
 class BydCarDocs(CarDocs):
-    """BYD车型文档"""
+    """BYD vehicle documentation."""
     package: str = "All"
     car_parts: CarParts = field(default_factory=CarParts.common([CarHarness.custom]))
     support_type: SupportType = SupportType.COMMUNITY
@@ -97,7 +124,7 @@ class BydCarDocs(CarDocs):
 
 @dataclass
 class BydPlatformConfig(PlatformConfig):
-    """BYD平台配置基类"""
+    """BYD platform configuration base class."""
     dbc_dict: dict = field(default_factory=lambda: dbc_dict('byd_tang_dm_2018'))
 
     def init(self):
@@ -105,15 +132,15 @@ class BydPlatformConfig(PlatformConfig):
 
 
 class CAR(Platforms):
-    """BYD支持的车型枚举"""
+    """BYD supported vehicle models."""
 
-    # 比亚迪唐DM 2018款 - 主要适配车型
+    # BYD Tang DM 2018 - Primary adaptation target
     BYD_TANG_DM_2018 = BydPlatformConfig(
         [BydCarDocs("BYD Tang DM 2018", "ACC + LKAS")],
         CarSpecs(
-            mass=2390.0,  # 整备质量 kg
-            wheelbase=2.82,  # 轴距 m
-            steerRatio=15.3,  # 转向比
+            mass=2390.0,      # Curb weight (kg)
+            wheelbase=2.82,   # Wheelbase (m)
+            steerRatio=15.3,  # Steering ratio
             centerToFrontRatio=0.44,
             tireStiffnessFactor=0.7,
         ),
@@ -121,7 +148,7 @@ class CAR(Platforms):
         flags=BydFlags.PHEV | BydFlags.HAS_RADAR,
     )
 
-    # 比亚迪汉EV 2020款
+    # BYD Han EV 2020
     BYD_HAN_EV_2020 = BydPlatformConfig(
         [BydCarDocs("BYD Han EV 2020-22", "ACC + LKAS")],
         CarSpecs(
@@ -135,7 +162,7 @@ class CAR(Platforms):
         flags=BydFlags.EV | BydFlags.HAS_RADAR | BydFlags.HAS_BSM,
     )
 
-    # 比亚迪宋PLUS DM-i 2021款
+    # BYD Song Plus DM-i 2021
     BYD_SONG_PLUS_DMI_2021 = BydPlatformConfig(
         [BydCarDocs("BYD Song Plus DM-i 2021-23", "ACC + LKAS")],
         CarSpecs(
@@ -150,15 +177,15 @@ class CAR(Platforms):
     )
 
 
-# DBC文件映射
+# DBC file mapping
 DBC = CAR.create_dbc_map()
 
-# 车型分类集合
+# Vehicle category sets
 PHEV_CAR = {CAR.BYD_TANG_DM_2018, CAR.BYD_SONG_PLUS_DMI_2021}
 EV_CAR = {CAR.BYD_HAN_EV_2020}
 RADAR_CAR = {CAR.BYD_TANG_DM_2018, CAR.BYD_HAN_EV_2020, CAR.BYD_SONG_PLUS_DMI_2021}
 
-# 固件查询配置
+# Firmware query configuration
 FW_QUERY_CONFIG = FwQueryConfig(
     requests=[
         Request(
@@ -177,11 +204,11 @@ FW_QUERY_CONFIG = FwQueryConfig(
         ),
     ],
     extra_ecus=[
-        (Ecu.hybrid, 0x7e2, None),  # 混动控制单元
-        (Ecu.eps, 0x7a0, None),  # EPS
-        (Ecu.fwdCamera, 0x7c4, None),  # 前视摄像头
+        (Ecu.hybrid, 0x7e2, None),     # Hybrid control unit
+        (Ecu.eps, 0x7a0, None),        # EPS
+        (Ecu.fwdCamera, 0x7c4, None),  # Forward camera
     ],
 )
 
-# 转向阈值
+# Steering threshold
 STEER_THRESHOLD = 100

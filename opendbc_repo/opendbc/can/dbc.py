@@ -17,6 +17,27 @@ from opendbc.car.body.bodycan import body_checksum
 from opendbc.car.psa.psacan import psa_checksum
 
 
+# BYD checksum function - simple byte sum algorithm
+# Algorithm: sum(bytes[0:7]) & 0xFF
+# NOTE: This is UNVERIFIED and may need adjustment based on real vehicle data
+def byd_checksum(address: int, sig: 'Signal', dat: bytearray) -> int:
+  """
+  Calculate BYD CAN message checksum.
+  
+  The checksum is the sum of bytes 0-6 (first 7 bytes) masked to 8 bits.
+  This algorithm is documented in the DBC file but marked as UNVERIFIED.
+  
+  Args:
+      address: CAN message address (not used in this algorithm)
+      sig: Signal object containing checksum position info
+      dat: Message data bytes
+      
+  Returns:
+      Calculated checksum value (0-255)
+  """
+  return sum(dat[:7]) & 0xFF
+
+
 class SignalType:
   DEFAULT = 0
   COUNTER = 1
@@ -31,6 +52,7 @@ class SignalType:
   FCA_GIORGIO_CHECKSUM = 10
   TESLA_CHECKSUM = 11
   PSA_CHECKSUM = 12
+  BYD_CHECKSUM = 13
 
 
 @dataclass
@@ -200,6 +222,13 @@ def get_checksum_state(dbc_name: str) -> ChecksumState | None:
     return ChecksumState(8, -1, 0, -1, True, SignalType.TESLA_CHECKSUM, tesla_checksum, tesla_setup_signal)
   elif dbc_name.startswith("psa_"):
     return ChecksumState(4, 4, 7, 3, False, SignalType.PSA_CHECKSUM, psa_checksum)
+  elif dbc_name.startswith("byd_"):
+    # BYD checksum: 8-bit checksum at bit 56 (byte 7), 4-bit counter at various positions
+    # Counter size varies by message (4-bit for most, 8-bit for EPS)
+    # Checksum algorithm: sum(bytes[0:7]) & 0xFF (UNVERIFIED - needs real vehicle validation)
+    # NOTE: Checksum validation is disabled by default until algorithm is verified
+    # To enable checksum validation, change calc_checksum from None to byd_checksum
+    return ChecksumState(8, 4, 56, -1, True, SignalType.BYD_CHECKSUM, None)
   return None
 
 

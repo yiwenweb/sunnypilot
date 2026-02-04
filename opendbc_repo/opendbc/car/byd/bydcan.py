@@ -1,13 +1,13 @@
-# BYD CAN报文生成 - sunnypilot 0.10.1
-# 专为比亚迪18款唐DM及其他BYD车型优化
-# 版本: 2026.02 稳定版
+"""
+BYD CAN message generation module.
+
+This module provides functions to create CAN messages for BYD vehicles,
+including steering control, ACC commands, and HUD display messages.
+"""
 
 import numpy as np
-from opendbc.car import structs
-from opendbc.car.byd.values import CanBus, CarControllerParams
 
-GearShifter = structs.CarState.GearShifter
-VisualAlert = structs.CarControl.HUDControl.VisualAlert
+from opendbc.car.byd.values import CanBus
 
 
 def byd_checksum(byte_key: int, dat: bytes) -> int:

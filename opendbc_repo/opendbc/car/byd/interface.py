@@ -1,13 +1,16 @@
-# BYD车辆接口 - sunnypilot 0.10.1
-# 专为比亚迪18款唐DM及其他BYD车型优化
-# 版本: 2026.02 稳定版
+"""
+BYD CarInterface - Vehicle interface implementation.
+
+This module implements the CarInterface class for BYD vehicles, providing
+vehicle parameter configuration and initialization routines.
+"""
 
 from opendbc.car import Bus, structs, get_safety_config
 from opendbc.car.byd.carstate import CarState
 from opendbc.car.byd.carcontroller import CarController
 from opendbc.car.byd.radar_interface import RadarInterface
 from opendbc.car.byd.values import (
-    CAR, DBC, BydFlags, BydSafetyFlags, CarControllerParams,
+    CAR, BydFlags, BydSafetyFlags, CarControllerParams,
     PHEV_CAR, EV_CAR, RADAR_CAR,
 )
 from opendbc.car.interfaces import CarInterfaceBase
@@ -16,7 +19,11 @@ SteerControlType = structs.CarParams.SteerControlType
 
 
 class CarInterface(CarInterfaceBase):
-    """BYD车辆接口类"""
+    """BYD vehicle interface class.
+    
+    Provides vehicle parameter configuration and initialization for BYD vehicles.
+    Inherits from CarInterfaceBase and implements required static methods.
+    """
 
     CarState = CarState
     CarController = CarController
@@ -24,14 +31,27 @@ class CarInterface(CarInterfaceBase):
 
     @staticmethod
     def get_pid_accel_limits(CP, current_speed, cruise_speed):
-        """获取加速度限制"""
+        """Get acceleration limits for PID control."""
         params = CarControllerParams(CP)
         return params.ACCEL_MIN, params.ACCEL_MAX
 
     @staticmethod
     def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw,
                     alpha_long, is_release, docs) -> structs.CarParams:
-        """获取车辆参数"""
+        """Configure vehicle parameters.
+        
+        Args:
+            ret: CarParams structure to populate
+            candidate: Vehicle candidate (CAR enum value)
+            fingerprint: CAN fingerprint dictionary
+            car_fw: List of detected ECU firmware versions
+            alpha_long: Whether alpha longitudinal control is enabled
+            is_release: Whether this is a release build
+            docs: Whether generating documentation
+            
+        Returns:
+            Configured CarParams structure
+        """
         ret.brand = "byd"
 
         # 安全配置
@@ -122,17 +142,23 @@ class CarInterface(CarInterfaceBase):
     @staticmethod
     def _get_params_sp(stock_cp: structs.CarParams, ret, candidate, fingerprint,
                        car_fw, alpha_long, docs):
-        """获取sunnypilot专属参数"""
-        # 可在此添加sunnypilot特有的参数配置
+        """Get sunnypilot-specific parameters."""
+        # Additional sunnypilot-specific parameter configuration can be added here
         return ret
 
     @staticmethod
     def init(CP, CP_SP, can_recv, can_send):
-        """初始化 - 用于禁用ECU等操作"""
-        # BYD车型暂不需要禁用ECU
+        """Initialize vehicle interface.
+        
+        Called when the vehicle interface is first initialized.
+        BYD vehicles do not require ECU disabling.
+        """
         pass
 
     @staticmethod
     def deinit(CP, can_recv, can_send):
-        """反初始化 - 用于重新启用ECU"""
+        """Deinitialize vehicle interface.
+        
+        Called when the vehicle interface is being shut down.
+        """
         pass
