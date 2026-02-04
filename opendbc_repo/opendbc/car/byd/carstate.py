@@ -112,13 +112,6 @@ class CarState(CarStateBase):
         # ========== 横摆角速度和加速度 ==========
         ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
 
-        # ========== 前车信息 (雷达) ==========
-        if "RADAR_MRR" in cp.vl:
-            lead = structs.RadarData.RadarPoint()
-            lead.dRel = cp.vl["RADAR_MRR"]["LongDist"]
-            lead.yRel = cp.vl["RADAR_MRR"]["LatDist"]
-            lead.status = cp.vl["RADAR_MRR"]["IsValid"] == 1
-
         # ========== 盲点监测 ==========
         if "BSD_RADAR" in cp.vl:
             ret.leftBlindspot = cp.vl["BSD_RADAR"]["LEFT_APPROACH"] > 0
