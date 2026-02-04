@@ -62,7 +62,7 @@ class CarInterface(CarInterfaceBase):
             ret.steerLimitTimer = 0.5
 
             # 标记为PHEV
-            ret.flags |= BydFlags.PHEV
+            ret.flags |= BydFlags.PHEV.value
 
         elif candidate == CAR.BYD_HAN_EV_2020:
             # 比亚迪汉EV 2020款
@@ -74,7 +74,7 @@ class CarInterface(CarInterfaceBase):
             ret.lateralTuning.pid.kf = 0.00007
 
             ret.steerActuatorDelay = 0.10
-            ret.flags |= BydFlags.EV
+            ret.flags |= BydFlags.EV.value
 
         elif candidate == CAR.BYD_SONG_PLUS_DMI_2021:
             # 比亚迪宋PLUS DM-i 2021款
@@ -85,7 +85,7 @@ class CarInterface(CarInterfaceBase):
             ret.lateralTuning.pid.kiV = [0.09]
             ret.lateralTuning.pid.kf = 0.00006
 
-            ret.flags |= BydFlags.PHEV
+            ret.flags |= BydFlags.PHEV.value
 
         # ========== 通用参数 ==========
         # 重心位置
@@ -100,7 +100,7 @@ class CarInterface(CarInterfaceBase):
         ret.openpilotLongitudinalControl = False
 
         if not ret.openpilotLongitudinalControl:
-            ret.safetyConfigs[0].safetyParam |= BydSafetyFlags.STOCK_LONGITUDINAL
+            ret.safetyConfigs[0].safetyParam |= BydSafetyFlags.STOCK_LONGITUDINAL.value
 
         # 最小启用速度 (BYD原厂ACC支持全速域)
         ret.minEnableSpeed = -1.0
@@ -111,7 +111,7 @@ class CarInterface(CarInterfaceBase):
         ret.stoppingDecelRate = 0.3
 
         # 混动车型响应更快
-        if ret.flags & BydFlags.PHEV or ret.flags & BydFlags.EV:
+        if ret.flags & BydFlags.PHEV.value or ret.flags & BydFlags.EV.value:
             ret.longitudinalActuatorDelay = 0.05
 
         # 盲点监测
