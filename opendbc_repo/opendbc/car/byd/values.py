@@ -26,6 +26,11 @@ class CarControllerParams:
     STEER_DELTA_UP = 10  # 转向扭矩上升速率
     STEER_DELTA_DOWN = 25  # 转向扭矩下降速率
 
+    # 驾驶员扭矩限制参数
+    STEER_DRIVER_ALLOWANCE = 80  # 驾驶员转向容差
+    STEER_DRIVER_MULTIPLIER = 3  # 驾驶员转向倍数
+    STEER_DRIVER_FACTOR = 1  # 驾驶员转向因子
+
     # 转向角度限制
     STEER_ANGLE_MAX = 94.9  # 最大转向角度 (度)
 

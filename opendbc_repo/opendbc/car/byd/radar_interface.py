@@ -5,7 +5,7 @@
 from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.interfaces import RadarInterfaceBase
-from opendbc.car.byd.values import DBC, CanBus
+from opendbc.car.byd.values import DBC
 
 
 class RadarInterface(RadarInterfaceBase):
@@ -22,7 +22,7 @@ class RadarInterface(RadarInterfaceBase):
             self.rcp = CANParser(
                 DBC[CP.carFingerprint][Bus.radar],
                 [("RADAR_MRR", 20)],
-                CanBus.RADAR,
+                2,  # 雷达总线
             )
         else:
             self.rcp = None

@@ -8,7 +8,7 @@ from opendbc.can import CANPacker
 from opendbc.car import Bus, structs
 from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.interfaces import CarControllerBase
-from opendbc.car.byd.values import DBC, CAR, CanBus, CarControllerParams
+from opendbc.car.byd.values import DBC, CAR, CarControllerParams
 from opendbc.car.byd import bydcan
 
 
@@ -36,7 +36,7 @@ class CarController(CarControllerBase):
 
         # ========== 转向控制 ==========
         # 计算转向扭矩
-        new_steer = int(round(actuators.steer * self.params.STEER_MAX))
+        new_steer = int(round(actuators.torque * self.params.STEER_MAX))
 
         # 应用扭矩限制 (防止突变)
         apply_steer = apply_driver_steer_torque_limits(
@@ -119,8 +119,8 @@ class CarController(CarControllerBase):
         # 这部分由原厂系统处理，openpilot不需要发送
 
         new_actuators = actuators.as_builder()
-        new_actuators.steer = apply_steer / self.params.STEER_MAX
-        new_actuators.steerOutputCan = apply_steer
+        new_actuators.torque = apply_steer / self.params.STEER_MAX
+        new_actuators.torqueOutputCan = apply_steer
 
         self.frame += 1
         return new_actuators, can_sends

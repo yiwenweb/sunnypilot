@@ -8,7 +8,7 @@ from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.byd.values import DBC, CAR, CanBus
+from opendbc.car.byd.values import DBC, CAR
 
 ButtonType = structs.CarState.ButtonEvent.Type
 GearShifter = structs.CarState.GearShifter
@@ -230,5 +230,5 @@ class CarState(CarStateBase):
         ]
 
         return {
-            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages, CanBus.MAIN),
+            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages, 0),
         }
