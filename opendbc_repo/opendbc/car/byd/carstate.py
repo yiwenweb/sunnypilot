@@ -113,9 +113,8 @@ class CarState(CarStateBase):
         ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
 
         # ========== 盲点监测 ==========
-        if "BSD_RADAR" in cp.vl:
-            ret.leftBlindspot = cp.vl["BSD_RADAR"]["LEFT_APPROACH"] > 0
-            ret.rightBlindspot = cp.vl["BSD_RADAR"]["RIGHT_APPROACH"] > 0
+        # 盲点监测由 radar_interface.py 处理
+        # ret.leftBlindspot 和 ret.rightBlindspot 默认为 False
 
         # ========== 驻车制动 ==========
         ret.parkingBrake = cp.vl["EPB"]["EPB_ActiveFlag"] == 1
@@ -214,10 +213,6 @@ class CarState(CarStateBase):
             ("ACC_HUD_ADAS", 20),
             ("ACC_CMD", 20),
             ("PCM_BUTTONS", 20),
-
-            # 雷达报文 - 20Hz
-            ("RADAR_MRR", 20),
-            ("BSD_RADAR", 10),
         ]
 
         return {
