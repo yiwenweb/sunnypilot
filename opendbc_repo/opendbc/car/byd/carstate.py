@@ -70,9 +70,7 @@ class CarState(CarStateBase):
         ret.gearShifter = self._parse_gear(gear)
 
         # ========== 踏板状态 ==========
-        ret.gas = cp.vl["PEDAL"]["AcceleratorPedal"]
-        ret.gasPressed = ret.gas > 0.01
-        ret.brake = cp.vl["PEDAL"]["BrakePedal"]
+        ret.gasPressed = cp.vl["PEDAL"]["AcceleratorPedal"] > 0.01
         ret.brakePressed = cp.vl["DRIVE_STATE"]["BrakePressed"] == 1
 
         # ========== 转向灯状态 ==========
