@@ -159,7 +159,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
         Request(
             [StdQueries.SHORT_TESTER_PRESENT_REQUEST, StdQueries.OBD_VERSION_REQUEST],
             [StdQueries.SHORT_TESTER_PRESENT_RESPONSE, StdQueries.OBD_VERSION_RESPONSE],
-            whitelist_ecus=[Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdCamera, Ecu.fwdRadar],
+            whitelist_ecus=[Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdCamera, Ecu.fwdRadar, Ecu.hybrid],
             bus=0,
         ),
         Request(
@@ -167,7 +167,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
              StdQueries.EXTENDED_DIAGNOSTIC_REQUEST, StdQueries.UDS_VERSION_REQUEST],
             [StdQueries.TESTER_PRESENT_RESPONSE, StdQueries.DEFAULT_DIAGNOSTIC_RESPONSE,
              StdQueries.EXTENDED_DIAGNOSTIC_RESPONSE, StdQueries.UDS_VERSION_RESPONSE],
-            whitelist_ecus=[Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdCamera, Ecu.fwdRadar],
+            whitelist_ecus=[Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdCamera, Ecu.fwdRadar, Ecu.hybrid],
             bus=0,
         ),
     ],
