@@ -42,12 +42,12 @@ class CarController(CarControllerBase):
         apply_steer = apply_driver_steer_torque_limits(
             new_steer,
             self.last_steer_torque,
-            CS.steer_torque_driver,
+            CS.out.steeringTorque,
             self.params,
         )
 
         # 判断是否激活转向
-        lkas_active = CC.latActive and not CS.steeringPressed
+        lkas_active = CC.latActive and not CS.out.steeringPressed
 
         # 准备阶段 (平滑过渡)
         if lkas_active and not self.lkas_active_prev:
