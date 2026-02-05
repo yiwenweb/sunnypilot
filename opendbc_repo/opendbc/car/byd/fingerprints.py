@@ -49,9 +49,7 @@ FINGERPRINTS = {
         814: 8,   # ACC_CMD - ACC control command
         815: 8,   # ACC_AEB - AEB control
         834: 8,   # PEDAL - Pedal status
-        884: 8,   # RADAR_MRR - Millimeter wave radar
         944: 8,   # PCM_BUTTONS - Cruise buttons
-        1048: 8,  # BSD_RADAR - Blind spot detection
     }],
 
     # BYD Han EV 2020
@@ -74,9 +72,7 @@ FINGERPRINTS = {
         814: 8,   # ACC_CMD
         815: 8,   # ACC_AEB
         834: 8,   # PEDAL
-        884: 8,   # RADAR_MRR
         944: 8,   # PCM_BUTTONS
-        1048: 8,  # BSD_RADAR
         # Han EV specific messages (for model differentiation)
         1200: 8,  # BATTERY_STATUS - Battery status (EV only)
         1201: 8,  # MOTOR_STATUS - Motor status (EV only)
@@ -102,9 +98,7 @@ FINGERPRINTS = {
         814: 8,   # ACC_CMD
         815: 8,   # ACC_AEB
         834: 8,   # PEDAL
-        884: 8,   # RADAR_MRR
         944: 8,   # PCM_BUTTONS
-        1048: 8,  # BSD_RADAR
     }],
 }
 
