@@ -121,16 +121,17 @@ class CarState(CarStateBase):
 
         # Steering torque parsing (Requirements 5.7, 5.8)
         # Parse driver steering torque from ACC_EPS_STATE message (Requirement 5.7)
+        # Note: ACC_EPS_STATE (792) is on Bus 0, not Bus 2!
         # DBC signal: SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU
         # 12-bit signed value representing driver applied torque to steering wheel
         # Positive values = clockwise torque, Negative values = counter-clockwise torque
-        self.steer_torque_driver = cp_cam.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
+        self.steer_torque_driver = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
         
         # Parse motor (EPS) steering torque from ACC_EPS_STATE message (Requirement 5.8)
         # DBC signal: MainTorque : 8|12@1- (1,0) [-2048|2047] "" MPC
         # 12-bit signed value representing EPS motor output torque
         # This is the torque being applied by the electric power steering motor
-        self.steer_torque_motor = cp_cam.vl["ACC_EPS_STATE"]["MainTorque"]
+        self.steer_torque_motor = cp.vl["ACC_EPS_STATE"]["MainTorque"]
         
         # Store torque values in CarState for use by CarController and other components
         ret.steeringTorque = self.steer_torque_driver
@@ -228,11 +229,12 @@ class CarState(CarStateBase):
         self.lkas_active = False
         
         # Parse LKAS prepared status from ACC_EPS_STATE message (Requirement 5.6)
+        # Note: ACC_EPS_STATE (792) is on Bus 0, not Bus 2!
         # DBC signal: LKAS_Prepared : 0|1@1+ (1,0) [0|1] "" MPC
         # 1-bit boolean: 1 = EPS is ready for LKAS control, 0 = EPS not ready
         # This indicates whether the Electric Power Steering system is prepared
         # to accept LKAS steering commands from the MPC (Multi-Purpose Camera)
-        self.lkas_prepared = cp_cam.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
+        self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
 
         # Yaw rate parsing (Requirement 6.1)
         # Parse yaw rate from YAW_RATE message
@@ -359,7 +361,7 @@ class CarState(CarStateBase):
         Returns:
             Dictionary mapping bus types to CANParser instances
         """
-        # Bus 0 messages - Powertrain
+        # Bus 0 messages - Powertrain + ACC_EPS_STATE
         messages_bus0 = [
             # Basic messages - 20Hz
             ("EPS", 20),
@@ -376,12 +378,15 @@ class CarState(CarStateBase):
 
             # PCM buttons on Bus 0
             ("PCM_BUTTONS", 20),
+            
+            # ACC_EPS_STATE is on Bus 0, not Bus 2!
+            ("ACC_EPS_STATE", 20),
         ]
 
-        # Bus 2 messages - ACC/LKAS (RX only)
+        # Bus 2 messages - ACC HUD only
         # Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages, not RX
+        # ACC_EPS_STATE (792) is actually on Bus 0
         messages_bus2 = [
-            ("ACC_EPS_STATE", 20),
             ("ACC_HUD_ADAS", 20),
         ]
 
