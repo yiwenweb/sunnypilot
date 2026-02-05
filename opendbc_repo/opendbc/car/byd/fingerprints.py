@@ -32,6 +32,8 @@ FINGERPRINTS = {
     #   546 (YAW_RATE), 578 (DRIVE_STATE), 790 (ACC_MPC_STATE),
     #   792 (ACC_EPS_STATE), 813 (ACC_HUD_ADAS), 814 (ACC_CMD),
     #   834 (PEDAL), 944 (PCM_BUTTONS)
+    # BYD Tang DM 2018
+    # Bus 0 messages only (ACC/LKAS messages are on Bus 2)
     CAR.BYD_TANG_DM_2018: [{
         85: 8,    # EPB - Electronic parking brake
         287: 5,   # EPS - Steering angle/rate (5-byte message)
@@ -43,11 +45,6 @@ FINGERPRINTS = {
         578: 8,   # DRIVE_STATE - Gear/brake
         660: 8,   # BELT - Seatbelt status
         694: 8,   # DATETIME - Date/time
-        790: 8,   # ACC_MPC_STATE - LKAS control/status
-        792: 8,   # ACC_EPS_STATE - EPS feedback
-        813: 8,   # ACC_HUD_ADAS - ACC HUD display
-        814: 8,   # ACC_CMD - ACC control command
-        815: 8,   # ACC_AEB - AEB control
         834: 8,   # PEDAL - Pedal status
         944: 8,   # PCM_BUTTONS - Cruise buttons
     }],
@@ -55,6 +52,8 @@ FINGERPRINTS = {
     # BYD Han EV 2020
     # Pure electric vehicle with additional battery and motor status messages
     # Distinguished from other BYD models by messages 1200 and 1201
+    # BYD Han EV 2020
+    # Bus 0 messages only
     CAR.BYD_HAN_EV_2020: [{
         85: 8,    # EPB
         287: 5,   # EPS
@@ -66,11 +65,6 @@ FINGERPRINTS = {
         578: 8,   # DRIVE_STATE
         660: 8,   # BELT
         694: 8,   # DATETIME
-        790: 8,   # ACC_MPC_STATE
-        792: 8,   # ACC_EPS_STATE
-        813: 8,   # ACC_HUD_ADAS
-        814: 8,   # ACC_CMD
-        815: 8,   # ACC_AEB
         834: 8,   # PEDAL
         944: 8,   # PCM_BUTTONS
         # Han EV specific messages (for model differentiation)
@@ -81,6 +75,8 @@ FINGERPRINTS = {
     # BYD Song Plus DM-i 2021
     # Plug-in hybrid with same CAN message IDs as Tang DM 2018
     # Note: Requires FW_VERSIONS for precise model identification
+    # BYD Song Plus DM-i 2021
+    # Bus 0 messages only
     CAR.BYD_SONG_PLUS_DMI_2021: [{
         85: 8,    # EPB
         287: 5,   # EPS
@@ -92,11 +88,6 @@ FINGERPRINTS = {
         578: 8,   # DRIVE_STATE
         660: 8,   # BELT
         694: 8,   # DATETIME
-        790: 8,   # ACC_MPC_STATE
-        792: 8,   # ACC_EPS_STATE
-        813: 8,   # ACC_HUD_ADAS
-        814: 8,   # ACC_CMD
-        815: 8,   # ACC_AEB
         834: 8,   # PEDAL
         944: 8,   # PCM_BUTTONS
     }],

@@ -82,7 +82,8 @@ class CarState(CarStateBase):
         Returns:
             tuple: (CarState, CarStateSP) containing parsed vehicle state
         """
-        cp = can_parsers[Bus.pt]
+        cp = can_parsers[Bus.pt]      # Bus 0 - Powertrain
+        cp_cam = can_parsers[Bus.cam]  # Bus 2 - ACC/LKAS
 
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
@@ -123,13 +124,13 @@ class CarState(CarStateBase):
         # DBC signal: SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU
         # 12-bit signed value representing driver applied torque to steering wheel
         # Positive values = clockwise torque, Negative values = counter-clockwise torque
-        self.steer_torque_driver = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
+        self.steer_torque_driver = cp_cam.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
         
         # Parse motor (EPS) steering torque from ACC_EPS_STATE message (Requirement 5.8)
         # DBC signal: MainTorque : 8|12@1- (1,0) [-2048|2047] "" MPC
         # 12-bit signed value representing EPS motor output torque
         # This is the torque being applied by the electric power steering motor
-        self.steer_torque_motor = cp.vl["ACC_EPS_STATE"]["MainTorque"]
+        self.steer_torque_motor = cp_cam.vl["ACC_EPS_STATE"]["MainTorque"]
         
         # Store torque values in CarState for use by CarController and other components
         ret.steeringTorque = self.steer_torque_driver
@@ -194,7 +195,7 @@ class CarState(CarStateBase):
         # DBC signal: AccState : 19|3@1+ (1,0) [0|7] "" - 3-bit unsigned value
         # VAL_ 813 AccState 0 "OFF" 2 "ACC_ON" 3 "ACC_ACTIVE" 5 "FORCE_ACCEL" 7 "ERROR"
         # AccState values: 0=OFF, 2=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
-        acc_state = cp.vl["ACC_HUD_ADAS"]["AccState"]
+        acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
         
         # cruiseState.available = ACC is on (state 2=ACC_ON, 3=ACC_ACTIVE, or 5=FORCE_ACCEL)
         # This indicates the ACC system is ready and can be engaged
@@ -206,13 +207,13 @@ class CarState(CarStateBase):
         # Parse standstill state from ACC_CMD message (Requirement 5.3)
         # DBC signal: StandstillState : 40|1@0+ (1,0) [0|1] "" - 1-bit boolean
         # Signal value: 1 = vehicle is in standstill mode, 0 = not in standstill
-        ret.cruiseState.standstill = cp.vl["ACC_CMD"]["StandstillState"] == 1
+        ret.cruiseState.standstill = cp_cam.vl["ACC_CMD"]["StandstillState"] == 1
 
         # Parse set speed from ACC_HUD_ADAS message (Requirement 5.2)
         # DBC signal: SetSpeed : 0|9@1+ (0.5,0) [0|255.5] "km/h" - 9-bit unsigned, scale 0.5
         # CANParser applies the 0.5 scale from DBC, so value is already in km/h
         # Convert to m/s using CV.KPH_TO_MS for sunnypilot internal use
-        ret.cruiseState.speed = cp.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
+        ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
         # Main switch status (used for button events)
         main_on = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
@@ -226,14 +227,14 @@ class CarState(CarStateBase):
         # 1-bit boolean: 1 = LKAS is actively steering, 0 = LKAS not active
         # This indicates whether the Lane Keeping Assist System is currently
         # providing steering assistance to keep the vehicle in lane
-        self.lkas_active = cp.vl["ACC_MPC_STATE"]["LKAS_Active"] == 1
+        self.lkas_active = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Active"] == 1
         
         # Parse LKAS prepared status from ACC_EPS_STATE message (Requirement 5.6)
         # DBC signal: LKAS_Prepared : 0|1@1+ (1,0) [0|1] "" MPC
         # 1-bit boolean: 1 = EPS is ready for LKAS control, 0 = EPS not ready
         # This indicates whether the Electric Power Steering system is prepared
         # to accept LKAS steering commands from the MPC (Multi-Purpose Camera)
-        self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
+        self.lkas_prepared = cp_cam.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
 
         # Yaw rate parsing (Requirement 6.1)
         # Parse yaw rate from YAW_RATE message
@@ -346,14 +347,9 @@ class CarState(CarStateBase):
         
         Configures CANParser with required messages and frequencies.
         
-        Counter Validation (Requirement 10.1):
-        - Counter signals named "COUNTER" in DBC are automatically validated
-        - Messages with counters: EPS, YAW_RATE, AXAY, DRIVE_STATE, 
-          ACC_MPC_STATE, ACC_EPS_STATE, ACC_HUD_ADAS, ACC_CMD, PCM_BUTTONS
-        
-        Checksum Validation (Requirement 10.2):
-        - Checksum signals named "CHECKSUM" in DBC
-        - BYD checksum algorithm needs verification before enabling
+        BYD CAN Bus Layout:
+        - Bus 0: Powertrain messages (EPS, speed, pedals, etc.)
+        - Bus 2: ACC/LKAS messages (ACC_MPC_STATE, ACC_HUD_ADAS, etc.)
         
         Args:
             CP: CarParams structure
@@ -362,7 +358,8 @@ class CarState(CarStateBase):
         Returns:
             Dictionary mapping bus types to CANParser instances
         """
-        messages = [
+        # Bus 0 messages - Powertrain
+        messages_bus0 = [
             # Basic messages - 20Hz
             ("EPS", 20),
             ("CARSPEED", 20),
@@ -376,14 +373,19 @@ class CarState(CarStateBase):
             ("STALKS", 10),
             ("EPB", 10),
 
-            # ACC/LKAS messages - 20Hz
+            # PCM buttons on Bus 0
+            ("PCM_BUTTONS", 20),
+        ]
+
+        # Bus 2 messages - ACC/LKAS
+        messages_bus2 = [
             ("ACC_MPC_STATE", 20),
             ("ACC_EPS_STATE", 20),
             ("ACC_HUD_ADAS", 20),
             ("ACC_CMD", 20),
-            ("PCM_BUTTONS", 20),
         ]
 
         return {
-            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages, 0),
+            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus0, 0),
+            Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus2, 2),
         }
