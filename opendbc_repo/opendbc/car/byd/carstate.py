@@ -204,10 +204,10 @@ class CarState(CarStateBase):
         # cruiseState.enabled = ACC is actively controlling the vehicle (state 3=ACC_ACTIVE)
         ret.cruiseState.enabled = acc_state == 3
         
-        # Parse standstill state from ACC_CMD message (Requirement 5.3)
-        # DBC signal: StandstillState : 40|1@0+ (1,0) [0|1] "" - 1-bit boolean
-        # Signal value: 1 = vehicle is in standstill mode, 0 = not in standstill
-        ret.cruiseState.standstill = cp_cam.vl["ACC_CMD"]["StandstillState"] == 1
+        # Standstill state - derived from vehicle speed (Requirement 5.3)
+        # Note: ACC_CMD (814) is a TX message, so we can't read StandstillState from it
+        # Instead, use the speed-based standstill already calculated above
+        ret.cruiseState.standstill = ret.standstill
 
         # Parse set speed from ACC_HUD_ADAS message (Requirement 5.2)
         # DBC signal: SetSpeed : 0|9@1+ (0.5,0) [0|255.5] "km/h" - 9-bit unsigned, scale 0.5
@@ -222,12 +222,10 @@ class CarState(CarStateBase):
         ret.buttonEvents = self._parse_button_events(cp, main_on)
 
         # LKAS status (Requirements 5.5, 5.6)
-        # Parse LKAS active status from ACC_MPC_STATE message (Requirement 5.5)
-        # DBC signal: LKAS_Active : 28|1@1+ (1,0) [0|1] "" EPS,VCU
-        # 1-bit boolean: 1 = LKAS is actively steering, 0 = LKAS not active
-        # This indicates whether the Lane Keeping Assist System is currently
-        # providing steering assistance to keep the vehicle in lane
-        self.lkas_active = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Active"] == 1
+        # Note: ACC_MPC_STATE (790) is a TX message, so we can't read LKAS_Active from it
+        # LKAS active status will be tracked internally by CarController when sending commands
+        # For now, set to False as we're not actively controlling LKAS yet
+        self.lkas_active = False
         
         # Parse LKAS prepared status from ACC_EPS_STATE message (Requirement 5.6)
         # DBC signal: LKAS_Prepared : 0|1@1+ (1,0) [0|1] "" MPC
@@ -348,8 +346,11 @@ class CarState(CarStateBase):
         Configures CANParser with required messages and frequencies.
         
         BYD CAN Bus Layout:
-        - Bus 0: Powertrain messages (EPS, speed, pedals, etc.)
-        - Bus 2: ACC/LKAS messages (ACC_MPC_STATE, ACC_HUD_ADAS, etc.)
+        - Bus 0: Powertrain messages (EPS, speed, pedals, buttons, etc.)
+        - Bus 2: ACC/LKAS RX messages (ACC_EPS_STATE, ACC_HUD_ADAS)
+        
+        Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages sent by
+        openpilot, not RX messages, so they are not included in the parser.
         
         Args:
             CP: CarParams structure
@@ -377,12 +378,11 @@ class CarState(CarStateBase):
             ("PCM_BUTTONS", 20),
         ]
 
-        # Bus 2 messages - ACC/LKAS
+        # Bus 2 messages - ACC/LKAS (RX only)
+        # Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages, not RX
         messages_bus2 = [
-            ("ACC_MPC_STATE", 20),
             ("ACC_EPS_STATE", 20),
             ("ACC_HUD_ADAS", 20),
-            ("ACC_CMD", 20),
         ]
 
         return {

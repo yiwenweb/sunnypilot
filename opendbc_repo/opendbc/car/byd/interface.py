@@ -56,7 +56,9 @@ class CarInterface(CarInterfaceBase):
 
         # 安全配置 - 暂时使用 allOutput 模式（等待包含 BYD safety 的固件）
         # TODO: 当 panda 固件包含 byd.h 后，改为 SafetyModel.byd
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput)]
+        # safety_param=1 启用 passthrough 模式，允许 Bus 0 和 Bus 2 之间的消息转发
+        # 这对于 BYD 车型至关重要，因为 ACC/LKAS 消息在 Bus 2 上
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput, safety_param=1)]
 
         # 转向控制类型: 扭矩控制
         ret.steerControlType = SteerControlType.torque
