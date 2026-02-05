@@ -121,7 +121,6 @@ class CarState(CarStateBase):
 
         # Steering torque parsing (Requirements 5.7, 5.8)
         # Parse driver steering torque from ACC_EPS_STATE message (Requirement 5.7)
-        # Note: ACC_EPS_STATE (792) is on Bus 0, not Bus 2!
         # DBC signal: SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU
         # 12-bit signed value representing driver applied torque to steering wheel
         # Positive values = clockwise torque, Negative values = counter-clockwise torque
@@ -158,7 +157,6 @@ class CarState(CarStateBase):
         # gasPressed = true when pedal position > 1% (0.01 in scaled units)
         # Note: The CANParser applies the 0.01 scale from DBC, so we compare against 0.01 (1%)
         accelerator_pedal = cp.vl["PEDAL"]["AcceleratorPedal"]
-        ret.gas = accelerator_pedal  # Store raw pedal position (0-2.55 range after DBC scaling)
         ret.gasPressed = accelerator_pedal > 0.01  # Pressed when > 1%
         
         # Parse brake pressed status from DRIVE_STATE message (Requirement 3.5)
@@ -229,7 +227,6 @@ class CarState(CarStateBase):
         self.lkas_active = False
         
         # Parse LKAS prepared status from ACC_EPS_STATE message (Requirement 5.6)
-        # Note: ACC_EPS_STATE (792) is on Bus 0, not Bus 2!
         # DBC signal: LKAS_Prepared : 0|1@1+ (1,0) [0|1] "" MPC
         # 1-bit boolean: 1 = EPS is ready for LKAS control, 0 = EPS not ready
         # This indicates whether the Electric Power Steering system is prepared
@@ -361,10 +358,10 @@ class CarState(CarStateBase):
         Returns:
             Dictionary mapping bus types to CANParser instances
         """
-        # Bus 0 messages - Powertrain + ACC_EPS_STATE
+        # Bus 0 messages - Powertrain
         messages_bus0 = [
             # Basic messages - 20Hz
-            ("EPS", 20),
+            ("EPS", 0),
             ("CARSPEED", 20),
             ("DRIVE_STATE", 20),
             ("PEDAL", 20),
@@ -372,20 +369,17 @@ class CarState(CarStateBase):
             ("AXAY", 20),
 
             # Body messages - 10Hz
-            ("BCM", 10),
-            ("STALKS", 10),
+            ("BCM", 1),
+            ("STALKS", 1),
             ("EPB", 10),
 
             # PCM buttons on Bus 0
             ("PCM_BUTTONS", 20),
-            
-            # ACC_EPS_STATE is on Bus 0, not Bus 2!
             ("ACC_EPS_STATE", 20),
         ]
 
-        # Bus 2 messages - ACC HUD only
+        # Bus 2 messages - ACC/LKAS (RX only)
         # Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages, not RX
-        # ACC_EPS_STATE (792) is actually on Bus 0
         messages_bus2 = [
             ("ACC_HUD_ADAS", 20),
         ]
