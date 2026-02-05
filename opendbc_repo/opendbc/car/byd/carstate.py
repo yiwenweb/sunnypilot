@@ -124,13 +124,13 @@ class CarState(CarStateBase):
         # DBC signal: SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU
         # 12-bit signed value representing driver applied torque to steering wheel
         # Positive values = clockwise torque, Negative values = counter-clockwise torque
-        self.steer_torque_driver = cp_cam.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
+        self.steer_torque_driver = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
         
         # Parse motor (EPS) steering torque from ACC_EPS_STATE message (Requirement 5.8)
         # DBC signal: MainTorque : 8|12@1- (1,0) [-2048|2047] "" MPC
         # 12-bit signed value representing EPS motor output torque
         # This is the torque being applied by the electric power steering motor
-        self.steer_torque_motor = cp_cam.vl["ACC_EPS_STATE"]["MainTorque"]
+        self.steer_torque_motor = cp.vl["ACC_EPS_STATE"]["MainTorque"]
         
         # Store torque values in CarState for use by CarController and other components
         ret.steeringTorque = self.steer_torque_driver
@@ -157,7 +157,6 @@ class CarState(CarStateBase):
         # gasPressed = true when pedal position > 1% (0.01 in scaled units)
         # Note: The CANParser applies the 0.01 scale from DBC, so we compare against 0.01 (1%)
         accelerator_pedal = cp.vl["PEDAL"]["AcceleratorPedal"]
-        ret.gas = accelerator_pedal  # Store raw pedal position (0-2.55 range after DBC scaling)
         ret.gasPressed = accelerator_pedal > 0.01  # Pressed when > 1%
         
         # Parse brake pressed status from DRIVE_STATE message (Requirement 3.5)
@@ -232,7 +231,7 @@ class CarState(CarStateBase):
         # 1-bit boolean: 1 = EPS is ready for LKAS control, 0 = EPS not ready
         # This indicates whether the Electric Power Steering system is prepared
         # to accept LKAS steering commands from the MPC (Multi-Purpose Camera)
-        self.lkas_prepared = cp_cam.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
+        self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
 
         # Yaw rate parsing (Requirement 6.1)
         # Parse yaw rate from YAW_RATE message
@@ -362,7 +361,7 @@ class CarState(CarStateBase):
         # Bus 0 messages - Powertrain
         messages_bus0 = [
             # Basic messages - 20Hz
-            ("EPS", 20),
+            ("EPS", 0),
             ("CARSPEED", 20),
             ("DRIVE_STATE", 20),
             ("PEDAL", 20),
@@ -370,18 +369,18 @@ class CarState(CarStateBase):
             ("AXAY", 20),
 
             # Body messages - 10Hz
-            ("BCM", 10),
-            ("STALKS", 10),
+            ("BCM", 1),
+            ("STALKS", 1),
             ("EPB", 10),
 
             # PCM buttons on Bus 0
             ("PCM_BUTTONS", 20),
+            ("ACC_EPS_STATE", 20),
         ]
 
         # Bus 2 messages - ACC/LKAS (RX only)
         # Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages, not RX
         messages_bus2 = [
-            ("ACC_EPS_STATE", 20),
             ("ACC_HUD_ADAS", 20),
         ]
 
