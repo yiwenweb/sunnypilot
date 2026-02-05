@@ -54,8 +54,9 @@ class CarInterface(CarInterfaceBase):
         """
         ret.brand = "byd"
 
-        # 安全配置 - 使用 BYD 专用 safety mode
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
+        # 安全配置 - 暂时使用 allOutput 模式（等待包含 BYD safety 的固件）
+        # TODO: 当 panda 固件包含 byd.h 后，改为 SafetyModel.byd
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput)]
 
         # 转向控制类型: 扭矩控制
         ret.steerControlType = SteerControlType.torque
