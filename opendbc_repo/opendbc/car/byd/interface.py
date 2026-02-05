@@ -54,8 +54,8 @@ class CarInterface(CarInterfaceBase):
         """
         ret.brand = "byd"
 
-        # 安全配置
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput)]
+        # 安全配置 - 使用 BYD 专用 safety mode
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
 
         # 转向控制类型: 扭矩控制
         ret.steerControlType = SteerControlType.torque
