@@ -90,12 +90,23 @@ class BydSafetyFlags(IntFlag):
 
 
 class CanBus:
-    """BYD CAN bus definitions."""
-    MAIN = 0    # Main CAN (powertrain)
-    AUX = 1     # Auxiliary CAN (body)
-    ESC = 0     # ESC/ESP bus
-    MPC = 1     # MPC/camera bus
-    RADAR = 2   # Radar bus
+    """BYD CAN bus definitions.
+    
+    Bus layout:
+    - Bus 0: Powertrain CAN (EPS, ESP, VCU, BCM)
+    - Bus 1: Auxiliary CAN (radar, body)
+    - Bus 2: ACC/LKAS CAN (MPC camera, forwarded from Bus 0 by panda)
+    
+    For sending:
+    - ACC_MPC_STATE (790): Send on Bus 0 (to EPS)
+    - ACC_EPS_STATE (792) spoof: Send on Bus 2 (to MPC)
+    - ACC_CMD (814): Send on Bus 0 (to ESP)
+    - ACC_HUD_ADAS (813): Send on Bus 0 (to VCU)
+    """
+    MAIN = 0      # Main CAN (powertrain) - EPS, ESP, VCU
+    AUX = 1       # Auxiliary CAN (body/radar)
+    CAM = 2       # Camera/ACC CAN (MPC)
+    PT = 0        # Alias for powertrain bus
 
 
 def dbc_dict(pt, radar=None):

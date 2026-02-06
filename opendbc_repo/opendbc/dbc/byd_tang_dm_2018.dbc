@@ -82,7 +82,7 @@ BO_ 287 EPS: 5 EPS
  SG_ SteeringAngleRate : 16|8@1+ (4,0) [0|1020] "deg/s" VCU,MPC
 
 BO_ 289 CARSPEED: 8 VCU
- SG_ CarDisplaySpeed : 0|12@1+ (1,0) [0|255] "km/h" EPS,MPC
+ SG_ CarDisplaySpeed : 0|12@1+ (0.0735,0) [0|255] "km/h" EPS,MPC
 
 BO_ 301 BCM: 8 BCM
  SG_ FrontLeftDoor : 0|1@0+ (1,0) [0|1] "" VCU
@@ -171,8 +171,6 @@ BO_ 792 ACC_EPS_STATE: 8 EPS
  SG_ SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU
  SG_ SETME5_0xFF : 36|4@1+ (1,0) [0|15] "" MPC
  SG_ SETME6_0xFFF : 40|12@1+ (1,0) [0|4095] "" MPC
- SG_ COUNTER : 52|4@1+ (1,0) [0|15] "" MPC
- SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" MPC
 
 BO_ 813 ACC_HUD_ADAS: 8 MPC
  SG_ SetSpeed : 0|9@1+ (0.5,0) [0|255.5] "km/h" VCU
@@ -243,8 +241,6 @@ BO_ 944 PCM_BUTTONS: 8 BCM
  SG_ SETME2_1 : 12|1@0+ (1,0) [0|1] "" VCU
  SG_ BTN_AccDistanceDecrease : 15|1@0+ (1,0) [0|1] "" VCU,MPC
  SG_ BTN_AccDistanceIncrease : 16|1@0+ (1,0) [0|1] "" VCU,MPC
- SG_ COUNTER : 52|4@1+ (1,0) [0|15] "" VCU
- SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" VCU
 
 BO_ 1048 BSD_RADAR: 8 RADAR
  SG_ LEFT_APPROACH : 9|2@0+ (1,0) [0|3] "" VCU

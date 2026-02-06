@@ -62,7 +62,7 @@ def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
         "TrafficSignRecognition_Result": 0,
         "LKAS_AlarmType": 0,  # VIBRATION
         "SETME7_0x3": 3,
-        "Counter": counter,
+        "COUNTER": counter,
     }
 
     # 更新LKAS控制值
@@ -89,14 +89,14 @@ def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
         })
 
     # 计算校验和
-    data = packer.make_can_msg("ACC_MPC_STATE", CanBus.ESC, values)[1]
-    values["CheckSum"] = byd_checksum(0xAF, data)
+    data = packer.make_can_msg("ACC_MPC_STATE", CanBus.PT, values)[1]
+    values["CHECKSUM"] = byd_checksum(0xAF, data)
 
-    return packer.make_can_msg("ACC_MPC_STATE", CanBus.ESC, values)
+    return packer.make_can_msg("ACC_MPC_STATE", CanBus.PT, values)
 
 
 def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare: bool,
-                             lkas_active: bool, enabled: bool, counter: int):
+                             lkas_active: bool, enabled: bool):
     """
     生成EPS反馈欺骗报文 (ACC_EPS_STATE - 0x318)
     用于欺骗MPC，防止DTC故障码，保持AEB等安全功能正常工作
@@ -109,7 +109,6 @@ def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare:
         lkas_req_prepare: LKAS准备请求状态
         lkas_active: LKAS激活状态
         enabled: openpilot是否启用
-        counter: 报文计数器 (0-15)
     """
     values = {
         "LKAS_Prepared": 0,
@@ -125,7 +124,6 @@ def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare:
         "SteerDriverTorque": 0,  # 将由实际值覆盖
         "SETME5_0xFF": 0xF,
         "SETME6_0xFFF": 0xFFF,
-        "Counter": counter,
     }
 
     # 保持驾驶员扭矩透传
@@ -155,10 +153,16 @@ def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare:
             })
 
     # 计算校验和
-    data = packer.make_can_msg("ACC_EPS_STATE", CanBus.MPC, values)[1]
-    values["CheckSum"] = byd_checksum(0xAF, data)
-
-    return packer.make_can_msg("ACC_EPS_STATE", CanBus.MPC, values)
+    # ACC_EPS_STATE 的 COUNTER/CHECKSUM 已从 DBC 中移除（因为 RX 端不递增）
+    # 但 TX 端仍需手动设置 checksum 到 byte 7
+    data = packer.make_can_msg("ACC_EPS_STATE", CanBus.CAM, values)[1]
+    # Manually compute and set checksum in byte 7
+    cs = byd_checksum(0xAF, data[:7] + b'\x00')
+    msg = packer.make_can_msg("ACC_EPS_STATE", CanBus.CAM, values)
+    # msg is (addr, data, bus) - need to modify data byte 7
+    dat = bytearray(msg[1])
+    dat[7] = cs
+    return (msg[0], bytes(dat), msg[2])
 
 
 def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
@@ -213,7 +217,7 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
         "AccControlActive": 0,
         "AccOverrideOrStandstill": 0,
         "EspBehaviour": 0,
-        "Counter": 0,
+        "COUNTER": 0,
         "SETME2_0xF": 0xF,
     }
 
@@ -232,10 +236,10 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
         })
 
     # 计算校验和
-    data = packer.make_can_msg("ACC_CMD", CanBus.ESC, values)[1]
-    values["CheckSum"] = byd_checksum(0xAF, data)
+    data = packer.make_can_msg("ACC_CMD", CanBus.PT, values)[1]
+    values["CHECKSUM"] = byd_checksum(0xAF, data)
 
-    return packer.make_can_msg("ACC_CMD", CanBus.ESC, values)
+    return packer.make_can_msg("ACC_CMD", CanBus.PT, values)
 
 
 def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
@@ -269,12 +273,12 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
         "Notify": 0,
         "Status": 0,
         "SETME3_0xFFF": 0xFFF,
-        "Counter": 0,
+        "COUNTER": 0,
         "SETME4_0xF": 0xF,
     }
 
     # 计算校验和
-    data = packer.make_can_msg("ACC_HUD_ADAS", CanBus.ESC, values)[1]
-    values["CheckSum"] = byd_checksum(0xAF, data)
+    data = packer.make_can_msg("ACC_HUD_ADAS", CanBus.PT, values)[1]
+    values["CHECKSUM"] = byd_checksum(0xAF, data)
 
-    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.ESC, values)
+    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.PT, values)

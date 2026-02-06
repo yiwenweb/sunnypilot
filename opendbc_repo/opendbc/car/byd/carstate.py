@@ -198,7 +198,7 @@ class CarState(CarStateBase):
         
         # cruiseState.available = ACC is on (state 2=ACC_ON, 3=ACC_ACTIVE, or 5=FORCE_ACCEL)
         # This indicates the ACC system is ready and can be engaged
-        ret.cruiseState.available = acc_state in (2, 3, 5)
+        ret.cruiseState.available = acc_state in (1, 2, 3, 5)
         
         # cruiseState.enabled = ACC is actively controlling the vehicle (state 3=ACC_ACTIVE)
         ret.cruiseState.enabled = acc_state == 3
@@ -308,7 +308,7 @@ class CarState(CarStateBase):
         # Main switch toggle (ACC On/Off)
         if main_on != self.main_on_prev:
             events.append(structs.CarState.ButtonEvent(
-                type=ButtonType.altButton1,
+                type=ButtonType.mainCruise,
                 pressed=main_on,
             ))
         self.main_on_prev = main_on
@@ -362,7 +362,7 @@ class CarState(CarStateBase):
         messages_bus0 = [
             # Basic messages - 20Hz
             ("EPS", 0),
-            ("CARSPEED", 20),
+            ("CARSPEED", 0),
             ("DRIVE_STATE", 20),
             ("PEDAL", 20),
             ("YAW_RATE", 20),
