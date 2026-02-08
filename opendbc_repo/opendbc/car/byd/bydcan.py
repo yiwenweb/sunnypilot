@@ -14,7 +14,11 @@ def byd_checksum(byte_key: int, dat: bytes) -> int:
     """
     计算BYD CAN报文校验和
     算法: 基于字节高低4位分别求和后取反
+    注意: 计算时 byte 7 (checksum位) 必须为 0
     """
+    # Ensure byte 7 is 0 for calculation
+    if len(dat) >= 8:
+        dat = dat[:7] + b'\x00'
     first_bytes_sum = sum(byte >> 4 for byte in dat)
     second_bytes_sum = sum(byte & 0xF for byte in dat)
     remainder = second_bytes_sum >> 4
@@ -155,18 +159,15 @@ def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare:
     # 计算校验和
     # ACC_EPS_STATE 的 COUNTER/CHECKSUM 已从 DBC 中移除（因为 RX 端不递增）
     # 但 TX 端仍需手动设置 checksum 到 byte 7
-    data = packer.make_can_msg("ACC_EPS_STATE", CanBus.CAM, values)[1]
-    # Manually compute and set checksum in byte 7
-    cs = byd_checksum(0xAF, data[:7] + b'\x00')
     msg = packer.make_can_msg("ACC_EPS_STATE", CanBus.CAM, values)
-    # msg is (addr, data, bus) - need to modify data byte 7
     dat = bytearray(msg[1])
-    dat[7] = cs
+    dat[7] = byd_checksum(0xAF, dat)
     return (msg[0], bytes(dat), msg[2])
 
 
 def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
-                   resume_from_standstill: bool, standstill_state: bool, long_active: bool):
+                   resume_from_standstill: bool, standstill_state: bool, long_active: bool,
+                   counter: int = 0):
     """
     生成ACC控制指令报文 (ACC_CMD - 0x32E)
     用于openpilot纵向控制
@@ -205,11 +206,11 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
 
     values = {
         "AccelCmd": 0,
-        "ComfortBandUpper": 0.05,
-        "ComfortBandLower": 0.05,
-        "JerkUpperLimit": jerk_upper,
+        "ComfortBandUpper": 0,
+        "ComfortBandLower": 0,
+        "JerkUpperLimit": 0,
         "SETME1_0x1": 1,
-        "JerkLowerLimit": jerk_lower,
+        "JerkLowerLimit": 0,
         "ResumeFromStandstill": 0,
         "StandstillState": 0,
         "BrakeBehaviour": 0,
@@ -217,7 +218,7 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
         "AccControlActive": 0,
         "AccOverrideOrStandstill": 0,
         "EspBehaviour": 0,
-        "COUNTER": 0,
+        "COUNTER": counter,
         "SETME2_0xF": 0xF,
     }
 
@@ -243,7 +244,8 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
 
 
 def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
-                   set_distance: int, acc_state: int, enabled: bool):
+                   set_distance: int, acc_state: int, enabled: bool,
+                   counter: int = 0):
     """
     生成ACC HUD显示报文 (ACC_HUD_ADAS - 0x32D)
     用于更新仪表盘显示
@@ -259,7 +261,7 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
         enabled: 是否启用
     """
     values = {
-        "SetSpeed": set_speed / 0.5,  # 转换为报文格式
+        "SetSpeed": set_speed,  # physical value in km/h, packer applies DBC scale
         "HasLead": 1 if has_lead else 0,
         "SetDistance": set_distance,
         "LeadingDistance": 0,
@@ -271,9 +273,9 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
         "CloseWarning": 0,
         "SETME2_0x1": 1,
         "Notify": 0,
-        "Status": 0,
+        "Status": 4,  # old version idle = 4
         "SETME3_0xFFF": 0xFFF,
-        "COUNTER": 0,
+        "COUNTER": counter,
         "SETME4_0xF": 0xF,
     }
 

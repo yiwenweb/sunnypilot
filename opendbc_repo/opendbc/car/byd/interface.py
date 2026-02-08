@@ -63,25 +63,21 @@ class CarInterface(CarInterfaceBase):
         # 转向控制类型: 扭矩控制
         ret.steerControlType = SteerControlType.torque
 
-        # 配置扭矩调优参数
+        # 配置扭矩调优参数 (使用 torque 模式，与旧版本一致)
         CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
 
-        # 转向执行器延迟
-        ret.steerActuatorDelay = 0.12
-        ret.steerLimitTimer = 0.4
+        # 转向执行器延迟 (旧版本: 0.3)
+        ret.steerActuatorDelay = 0.3
+        ret.steerLimitTimer = 0.5
 
         # ========== 车型专属参数 ==========
         if candidate == CAR.BYD_TANG_DM_2018:
-            # 比亚迪唐DM 2018款专属调优
-            ret.lateralTuning.init('pid')
-            ret.lateralTuning.pid.kiBP = [0.0]
-            ret.lateralTuning.pid.kpBP = [0.0]
-            ret.lateralTuning.pid.kpV = [0.5]  # 比例增益
-            ret.lateralTuning.pid.kiV = [0.08]  # 积分增益
-            ret.lateralTuning.pid.kf = 0.00006  # 前馈增益
+            # 比亚迪唐DM 2018款 — 参数来自旧版本
+            # lateralTuning 使用 torque 模式 (由 configure_torque_tune 设置)
+            # torque tuning: kp=1.0, ki=0.1, kf=1.0, friction=0.1
 
-            # 唐DM的EPS响应较慢，增加延迟
-            ret.steerActuatorDelay = 0.15
+            # 唐DM的EPS响应较慢
+            ret.steerActuatorDelay = 0.3
             ret.steerLimitTimer = 0.5
 
             # 标记为PHEV
@@ -118,10 +114,9 @@ class CarInterface(CarInterfaceBase):
         # TODO: 启用雷达后需要验证 RADAR_MRR 消息格式
         ret.radarUnavailable = True
 
-        # 纵向控制
-        # BYD车型默认使用原厂ACC，openpilot仅控制横向
-        # 如需启用openpilot纵向控制，需要额外硬件支持
-        ret.openpilotLongitudinalControl = False
+        # 纵向控制 — 旧版本 openpilotLongitudinalControl=True
+        # 需要发送 813, 814, 815 到 Bus 0
+        ret.openpilotLongitudinalControl = True
 
         if not ret.openpilotLongitudinalControl:
             ret.safetyConfigs[0].safetyParam |= BydSafetyFlags.STOCK_LONGITUDINAL.value
@@ -129,10 +124,10 @@ class CarInterface(CarInterfaceBase):
         # 最小启用速度 (BYD原厂ACC支持全速域)
         ret.minEnableSpeed = -1.0
 
-        # 停车相关参数
-        ret.vEgoStopping = 0.25
-        ret.vEgoStarting = 0.25
-        ret.stoppingDecelRate = 0.3
+        # 停车相关参数 (from old version)
+        ret.vEgoStopping = 0.3
+        ret.vEgoStarting = 0.5
+        ret.stoppingDecelRate = 0.15
 
         # 混动车型响应更快
         if ret.flags & BydFlags.PHEV.value or ret.flags & BydFlags.EV.value:

@@ -149,11 +149,11 @@ class CAR(Platforms):
     BYD_TANG_DM_2018 = BydPlatformConfig(
         [BydCarDocs("BYD Tang DM 2018", "ACC + LKAS")],
         CarSpecs(
-            mass=2390.0,      # Curb weight (kg)
+            mass=2526.0,      # Curb weight (kg) - from old version
             wheelbase=2.82,   # Wheelbase (m)
-            steerRatio=15.3,  # Steering ratio
+            steerRatio=19.0,  # Steering ratio - from old version
             centerToFrontRatio=0.44,
-            tireStiffnessFactor=0.7,
+            tireStiffnessFactor=1.0,  # from old version
         ),
         dbc_dict('byd_tang_dm_2018'),
         flags=BydFlags.PHEV | BydFlags.HAS_RADAR,
