@@ -195,10 +195,12 @@ class CarState(CarStateBase):
         acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
         
         # BYD AccState 实际值: 0=OFF, 1=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
-        # 旧版本行为: available 和 enabled 在 AccState>=1 时同时为 True
-        # 停车按ACC开关 → AccState=1, 行驶中激活 → AccState=3
+        # 旧版本验证: available 和 enabled 是分开的
+        #   avail=True, en=False → ACC开启待机 (AccState=1)
+        #   avail=True, en=True  → ACC激活控制 (AccState=3 或由 controlsd 判断)
+        #   avail=False, en=False → ACC关闭 (AccState=0)
         ret.cruiseState.available = acc_state in (1, 3, 5)
-        ret.cruiseState.enabled = acc_state in (1, 3, 5)
+        ret.cruiseState.enabled = acc_state == 3
         
         # Standstill state - derived from vehicle speed (Requirement 5.3)
         # Note: ACC_CMD (814) is a TX message, so we can't read StandstillState from it
