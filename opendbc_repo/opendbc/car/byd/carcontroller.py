@@ -9,7 +9,7 @@ from enum import StrEnum
 
 from opendbc.can import CANPacker
 from opendbc.car import Bus, structs
-from opendbc.car.common.numpy_fast import clip
+from numpy import clip
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.byd.bydcan import create_steering_control, byd_checksum
 from opendbc.car.byd.values import CarControllerParams, CanBus

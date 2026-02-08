@@ -368,20 +368,25 @@ class CarState(CarStateBase):
             ("YAW_RATE", 20),
             ("AXAY", 20),
 
-            # Body messages - 10Hz
+            # Body messages
             ("BCM", 1),
             ("STALKS", 1),
-            ("EPB", 10),
+            ("EPB", 0),
 
-            # PCM buttons on Bus 0
-            ("PCM_BUTTONS", 20),
-            ("ACC_EPS_STATE", 20),
+            # PCM buttons on Bus 0 - frequency 0 to auto-learn
+            ("PCM_BUTTONS", 0),
+            # ACC_EPS_STATE frequency set to 0: when openpilot sends 790,
+            # EPS behavior may change, affecting 792 timing
+            ("ACC_EPS_STATE", 0),
         ]
 
         # Bus 2 messages - ACC/LKAS (RX only)
         # Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages, not RX
+        # ACC_HUD_ADAS frequency set to 0 to skip frequency check:
+        # When openpilot sends 790 on Bus 0, panda forwards to Bus 2,
+        # which may cause MPC to change ACC_HUD_ADAS timing, triggering timeout
         messages_bus2 = [
-            ("ACC_HUD_ADAS", 20),
+            ("ACC_HUD_ADAS", 0),
         ]
 
         return {

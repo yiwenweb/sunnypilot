@@ -115,7 +115,8 @@ class CarInterface(CarInterfaceBase):
         ret.centerToFront = ret.wheelbase * 0.44
 
         # 雷达配置
-        ret.radarUnavailable = candidate not in RADAR_CAR
+        # TODO: 启用雷达后需要验证 RADAR_MRR 消息格式
+        ret.radarUnavailable = True
 
         # 纵向控制
         # BYD车型默认使用原厂ACC，openpilot仅控制横向
