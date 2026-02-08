@@ -83,7 +83,6 @@ class CarState(CarStateBase):
             tuple: (CarState, CarStateSP) containing parsed vehicle state
         """
         cp = can_parsers[Bus.pt]      # Bus 0 - Powertrain
-        cp_cam = can_parsers[Bus.cam]  # Bus 2 - ACC/LKAS
 
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
@@ -188,33 +187,32 @@ class CarState(CarStateBase):
         ret.seatbeltUnlatched = not driver_seatbelt_fastened
 
         # Cruise control status (Requirements 5.1, 5.2, 5.3)
-        # Parse ACC state from ACC_HUD_ADAS message (Requirement 5.1)
-        # DBC signal: AccState : 19|3@1+ (1,0) [0|7] "" - 3-bit unsigned value
-        # VAL_ 813 AccState 0 "OFF" 1 "ACC_ON" 3 "ACC_ACTIVE" 5 "FORCE_ACCEL" 7 "ERROR"
-        # AccState values: 0=OFF, 1=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
-        acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
-        
-        # BYD AccState 实际值: 0=OFF, 1=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
-        # 旧版本验证: available 和 enabled 是分开的
-        #   avail=True, en=False → ACC开启待机 (AccState=1)
-        #   avail=True, en=True  → ACC激活控制 (AccState=3 或由 controlsd 判断)
-        #   avail=False, en=False → ACC关闭 (AccState=0)
-        ret.cruiseState.available = acc_state in (1, 3, 5)
-        ret.cruiseState.enabled = acc_state == 3
-        
+        # 注意: openpilot 发送 813 到 Bus 0，panda 转发到 Bus 2，
+        # 所以 Bus 2 上的 813 是 openpilot 自己发的，不是原厂 MPC 的。
+        # 因此不能从 Bus 2 的 813 读取 AccState。
+        #
+        # BTN_TOGGLE_ACC_OnOff 是状态信号（不是脉冲）:
+        #   1 = ACC 已开启, 0 = ACC 已关闭
+        # 直接用作 cruiseState.available
+        main_on = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
+
+        ret.cruiseState.available = main_on
+
+        # cruiseState.enabled 的逻辑:
+        # available=True 只表示 ACC 系统已开启（仪表显示 ACC 图标）
+        # enabled=True 表示 ACC 正在主动控制车辆（用户按了 RES/SET）
+        # openpilot controlsd 会在收到 accelCruise/decelCruise 按钮事件时
+        # 将 enabled 设为 True，所以这里只需要设 enabled=available
+        # controlsd 会根据按钮事件和条件来管理实际的 engage/disengage
+        ret.cruiseState.enabled = main_on
+
         # Standstill state - derived from vehicle speed (Requirement 5.3)
-        # Note: ACC_CMD (814) is a TX message, so we can't read StandstillState from it
-        # Instead, use the speed-based standstill already calculated above
         ret.cruiseState.standstill = ret.standstill
 
-        # Parse set speed from ACC_HUD_ADAS message (Requirement 5.2)
-        # DBC signal: SetSpeed : 0|9@1+ (0.5,0) [0|255.5] "km/h" - 9-bit unsigned, scale 0.5
-        # CANParser applies the 0.5 scale from DBC, so value is already in km/h
-        # Convert to m/s using CV.KPH_TO_MS for sunnypilot internal use
-        ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
-
-        # Main switch status (used for button events)
-        main_on = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
+        # Set speed: 由于 Bus 2 的 813 是 openpilot 自己的回声，
+        # 无法从中读取原厂 MPC 的 SetSpeed。
+        # 设为 0，让 openpilot 使用自己内部管理的 set speed。
+        ret.cruiseState.speed = 0
 
         # Button events
         ret.buttonEvents = self._parse_button_events(cp, main_on)
@@ -380,13 +378,9 @@ class CarState(CarStateBase):
         ]
 
         # Bus 2 messages - ACC/LKAS (RX only)
-        # Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages, not RX
-        # ACC_HUD_ADAS frequency set to 0 to skip frequency check:
-        # When openpilot sends 790 on Bus 0, panda forwards to Bus 2,
-        # which may cause MPC to change ACC_HUD_ADAS timing, triggering timeout
-        messages_bus2 = [
-            ("ACC_HUD_ADAS", 0),
-        ]
+        # Note: Bus 2 的 813/814/815/790 都是 openpilot 通过 panda 转发的回声，
+        # 不是原厂 MPC 的数据，所以不需要解析。
+        messages_bus2 = []
 
         return {
             Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus0, 0),
