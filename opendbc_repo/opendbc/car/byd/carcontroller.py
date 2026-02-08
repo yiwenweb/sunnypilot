@@ -81,7 +81,7 @@ class CarController(CarControllerBase):
             # 车辆ECU会在Bus 2上将AccState改写为3
             can_sends.append(create_acc_hud(
                 self.packer, self.CP, CS,
-                set_speed=CS.cruiseState.speed * 3.6,
+                set_speed=CC.hudControl.setSpeed * 3.6 if CC.hudControl.setSpeed > 0 else 0,
                 has_lead=CC.enabled,  # 旧版本激活时 HasLead=1
                 set_distance=4,  # 旧版本激活时 SetDist=4
                 acc_state=1 if CC.enabled else 0,  # 旧版本发送端始终用1，不是3
