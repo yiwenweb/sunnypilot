@@ -63,8 +63,17 @@ class CarInterface(CarInterfaceBase):
         # 转向控制类型: 扭矩控制
         ret.steerControlType = SteerControlType.torque
 
-        # 配置扭矩调优参数 (使用 torque 模式，与旧版本一致)
-        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+        # 配置扭矩调优参数 — 手动设置与旧版本完全一致的参数
+        # 旧版本: kp=1.0, ki=0.1, kf=1.0, friction=0.1
+        # 不使用 configure_torque_tune，因为它会设置 ki=0.3 和从替代车型查表的 friction/latAccelFactor
+        ret.lateralTuning.init('torque')
+        ret.lateralTuning.torque.kp = 1.0
+        ret.lateralTuning.torque.ki = 0.1
+        ret.lateralTuning.torque.kf = 1.0
+        ret.lateralTuning.torque.friction = 0.1
+        ret.lateralTuning.torque.latAccelFactor = 1.0
+        ret.lateralTuning.torque.latAccelOffset = 0.0
+        ret.lateralTuning.torque.steeringAngleDeadzoneDeg = 0.0
 
         # 转向执行器延迟 (旧版本: 0.3)
         ret.steerActuatorDelay = 0.3
@@ -72,15 +81,7 @@ class CarInterface(CarInterfaceBase):
 
         # ========== 车型专属参数 ==========
         if candidate == CAR.BYD_TANG_DM_2018:
-            # 比亚迪唐DM 2018款 — 参数来自旧版本
-            # lateralTuning 使用 torque 模式 (由 configure_torque_tune 设置)
-            # torque tuning: kp=1.0, ki=0.1, kf=1.0, friction=0.1
-
-            # 唐DM的EPS响应较慢
-            ret.steerActuatorDelay = 0.3
-            ret.steerLimitTimer = 0.5
-
-            # 标记为PHEV
+            # 比亚迪唐DM 2018款
             ret.flags |= BydFlags.PHEV.value
 
         elif candidate == CAR.BYD_HAN_EV_2020:

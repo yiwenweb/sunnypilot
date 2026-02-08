@@ -222,4 +222,4 @@ FW_QUERY_CONFIG = FwQueryConfig(
 )
 
 # Steering threshold
-STEER_THRESHOLD = 100
+STEER_THRESHOLD = 50

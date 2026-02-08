@@ -137,10 +137,8 @@ class CarState(CarStateBase):
         ret.steeringTorqueEps = self.steer_torque_motor
 
         # Detect if driver is actively steering (steeringPressed)
-        # Driver is considered to be steering when absolute torque exceeds threshold
-        # Threshold of 100 is typical for detecting intentional steering input
-        # This is used for driver override detection in LKAS systems
-        ret.steeringPressed = abs(self.steer_torque_driver) > 100
+        # Threshold of 50 matches old version behavior (旧版本约50)
+        ret.steeringPressed = abs(self.steer_torque_driver) > 50
 
         # Gear parsing (Requirement 3.4)
         # Parse gear position from DRIVE_STATE message
@@ -192,16 +190,15 @@ class CarState(CarStateBase):
         # Cruise control status (Requirements 5.1, 5.2, 5.3)
         # Parse ACC state from ACC_HUD_ADAS message (Requirement 5.1)
         # DBC signal: AccState : 19|3@1+ (1,0) [0|7] "" - 3-bit unsigned value
-        # VAL_ 813 AccState 0 "OFF" 2 "ACC_ON" 3 "ACC_ACTIVE" 5 "FORCE_ACCEL" 7 "ERROR"
-        # AccState values: 0=OFF, 2=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
+        # VAL_ 813 AccState 0 "OFF" 1 "ACC_ON" 3 "ACC_ACTIVE" 5 "FORCE_ACCEL" 7 "ERROR"
+        # AccState values: 0=OFF, 1=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
         acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
         
-        # cruiseState.available = ACC is on (state 2=ACC_ON, 3=ACC_ACTIVE, or 5=FORCE_ACCEL)
-        # This indicates the ACC system is ready and can be engaged
-        ret.cruiseState.available = acc_state in (1, 2, 3, 5)
-        
-        # cruiseState.enabled = ACC is actively controlling the vehicle (state 3=ACC_ACTIVE)
-        ret.cruiseState.enabled = acc_state == 3
+        # BYD AccState 实际值: 0=OFF, 1=ACC_ON, 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=ERROR
+        # 旧版本行为: available 和 enabled 在 AccState>=1 时同时为 True
+        # 停车按ACC开关 → AccState=1, 行驶中激活 → AccState=3
+        ret.cruiseState.available = acc_state in (1, 3, 5)
+        ret.cruiseState.enabled = acc_state in (1, 3, 5)
         
         # Standstill state - derived from vehicle speed (Requirement 5.3)
         # Note: ACC_CMD (814) is a TX message, so we can't read StandstillState from it
