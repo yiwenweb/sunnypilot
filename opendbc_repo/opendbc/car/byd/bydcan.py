@@ -223,16 +223,15 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
     }
 
     if long_active:
-        # 根据前车距离调整舒适带
-        comfort_band = 0.05 if mrr_lead_dist > 50 else 0.10
-
+        # 旧版本验证: 激活时只设 AccReqNotStandstill=1, AccControlActive=0
+        # 车辆ECU根据AccReq来决定是否执行加速
         values.update({
             "AccelCmd": accel,
-            "ComfortBandUpper": comfort_band,
-            "ComfortBandLower": comfort_band,
+            "ComfortBandUpper": 0.05,
+            "ComfortBandLower": 0.05,
             "ResumeFromStandstill": 1 if resume_from_standstill else 0,
             "StandstillState": 1 if standstill_state else 0,
-            "AccControlActive": 1,
+            "AccControlActive": 0,
             "AccReqNotStandstill": 0 if standstill_state else 1,
         })
 

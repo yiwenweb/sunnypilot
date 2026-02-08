@@ -77,12 +77,14 @@ class CarController(CarControllerBase):
             ))
 
             # 813 (ACC_HUD_ADAS) on Bus 0
+            # 旧版本: 激活时 AccState=1 (不是3), AccOn1=1, HasLead=1, SetDist=4
+            # 车辆ECU会在Bus 2上将AccState改写为3
             can_sends.append(create_acc_hud(
                 self.packer, self.CP, CS,
                 set_speed=CS.cruiseState.speed * 3.6,
-                has_lead=False,
-                set_distance=3,
-                acc_state=3 if CC.enabled else 0,
+                has_lead=CC.enabled,  # 旧版本激活时 HasLead=1
+                set_distance=4,  # 旧版本激活时 SetDist=4
+                acc_state=1 if CC.enabled else 0,  # 旧版本发送端始终用1，不是3
                 enabled=CC.enabled,
                 counter=self.acc_counter,
             ))
@@ -93,7 +95,7 @@ class CarController(CarControllerBase):
 
         # === Forward 944 (PCM_BUTTONS) to Bus 2 — every 5th frame (20Hz) ===
         if self.frame % 5 == 0:
-            can_sends.append(self._forward_pcm_buttons())
+            can_sends.append(self._forward_pcm_buttons(CS, CC.enabled))
 
         # Update actuators
         new_actuators = actuators.as_builder()
@@ -114,11 +116,16 @@ class CarController(CarControllerBase):
         dat[7] = byd_checksum(0xAF, dat)
         return (815, bytes(dat), CanBus.PT)
 
-    def _forward_pcm_buttons(self):
-        """Forward PCM_BUTTONS (944) to Bus 2 matching old version.
-        Old version: 00 d0 ff ff ff ff xF CC
+    def _forward_pcm_buttons(self, CS, enabled):
+        """Forward PCM_BUTTONS (944) to Bus 2 with actual button state.
+        旧版本验证:
+          空闲: 00 d0 ff ff ff ff xF CC (Toggle=0)
+          激活: 03 d1 ff ff ff ff xF CC (Toggle=1, byte0 bit0-1 set)
         """
         dat = bytearray([0x00, 0xd0, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00])
+        if enabled:
+            dat[0] = 0x03  # 旧版本激活时 byte0=0x03
+            dat[1] = 0xd1  # 旧版本激活时 Toggle=1
         dat[6] = (self.btn_counter << 4) | 0xF
         dat[7] = byd_checksum(0xAF, dat)
         self.btn_counter = (self.btn_counter + 1) & 0xF
