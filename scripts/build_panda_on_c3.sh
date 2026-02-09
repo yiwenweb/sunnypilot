@@ -37,15 +37,15 @@ echo "[OK] prebuilt 标记已恢复"
 echo ""
 echo ">>> Step 1: 拉取最新代码..."
 cd "$OPENPILOT_DIR"
-git pull origin staging-tici || echo "警告: git pull 失败，继续使用本地代码"
+git pull myrepo staging-tici || echo "警告: git pull 失败，继续使用本地代码"
 
 # Step 4: Clone master-tici 分支（有完整源码）到临时目录
 echo ""
-echo ">>> Step 2: 克隆 sunnypilot master-tici 分支（完整源码）..."
+echo ">>> Step 2: 克隆 sunnypilot master-tici 分支（完整源码+子模块）..."
 rm -rf "$BUILD_DIR"
-# 浅克隆，只要最新的一个 commit，节省空间和时间
-git clone --depth 1 --branch master-tici https://github.com/sunnypilot/sunnypilot.git "$BUILD_DIR"
-echo "[OK] master-tici 克隆完成"
+# 浅克隆 + 递归子模块（panda、opendbc_repo 等都是子模块）
+git clone --depth 1 --recurse-submodules --shallow-submodules --branch master-tici https://github.com/sunnypilot/sunnypilot.git "$BUILD_DIR"
+echo "[OK] master-tici 克隆完成（含子模块）"
 
 # Step 5: 复制你的 byd.h 和 safety.h 到编译目录
 echo ""
