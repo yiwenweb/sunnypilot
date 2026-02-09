@@ -1,38 +1,51 @@
 #!/usr/bin/env python3
-"""诊断 openpilot 当前状态"""
+"""诊断 openpilot 当前状态 - v3"""
 from cereal import messaging
 import time
+import subprocess
 
-sm = messaging.SubMaster(['selfdriveState', 'carState', 'livePose'])
+# 检查关键进程是否在运行
+print("=== 进程检查 ===")
+result = subprocess.run(['pgrep', '-af', 'card|selfdrive|pandad|locationd'], capture_output=True, text=True)
+print(result.stdout if result.stdout else "没有找到相关进程")
+
+print("\n=== 消息检查 ===")
+sm = messaging.SubMaster(['selfdriveState', 'carState', 'livePose', 'pandaStates', 'carParams'])
 printed = set()
-for i in range(100):
-    sm.update(1000)
-    if sm.updated['selfdriveState'] and 'ss' not in printed:
-        ss = sm['selfdriveState']
-        print(f"--- selfdriveState ---")
-        print(f"state={ss.state} enabled={ss.enabled} active={ss.active}")
-        print(f"alertText1={ss.alertText1}")
-        print(f"alertText2={ss.alertText2}")
-        print(f"alertType={ss.alertType}")
-        printed.add('ss')
-    if sm.updated['carState'] and 'cs' not in printed:
-        cs = sm['carState']
-        print(f"--- carState ---")
-        print(f"cruiseAvail={cs.cruiseState.available} cruiseEnabled={cs.cruiseState.enabled}")
-        print(f"vEgo={cs.vEgo:.1f} canValid={cs.canValid}")
-        print(f"steerFaultTemp={cs.steerFaultTemporary} steerFaultPerm={cs.steerFaultPermanent}")
-        print(f"gasPressed={cs.gasPressed} brakePressed={cs.brakePressed}")
-        print(f"gearShifter={cs.gearShifter}")
-        evts = [str(e.name) for e in cs.events]
-        print(f"events={evts}")
-        printed.add('cs')
-    if sm.updated['livePose'] and 'lp' not in printed:
-        lp = sm['livePose']
-        print(f"--- livePose ---")
-        print(f"inputsOK={lp.inputsOK} posenetOK={lp.posenetOK} sensorsOK={lp.sensorsOK}")
-        printed.add('lp')
-    if len(printed) >= 3:
+for i in range(60):
+    sm.update(500)
+    for svc in ['selfdriveState', 'carState', 'livePose', 'pandaStates', 'carParams']:
+        if sm.updated[svc] and svc not in printed:
+            print(f"\n--- {svc} (frame={sm.recv_frame[svc]}, valid={sm.valid[svc]}) ---")
+            if svc == 'selfdriveState':
+                ss = sm[svc]
+                print(f"  state={ss.state} enabled={ss.enabled} active={ss.active}")
+                print(f"  alertText1={ss.alertText1}")
+                print(f"  alertType={ss.alertType}")
+            elif svc == 'carState':
+                cs = sm[svc]
+                print(f"  cruiseAvail={cs.cruiseState.available} cruiseEnabled={cs.cruiseState.enabled}")
+                print(f"  vEgo={cs.vEgo:.1f} canValid={cs.canValid}")
+                print(f"  steerFaultTemp={cs.steerFaultTemporary} steerFaultPerm={cs.steerFaultPermanent}")
+                print(f"  gearShifter={cs.gearShifter}")
+            elif svc == 'livePose':
+                lp = sm[svc]
+                print(f"  inputsOK={lp.inputsOK} posenetOK={lp.posenetOK} sensorsOK={lp.sensorsOK}")
+            elif svc == 'pandaStates':
+                for j, ps in enumerate(sm[svc]):
+                    print(f"  panda[{j}]: safety={ps.safetyModel} ignLine={ps.ignitionLine} ignCan={ps.ignitionCan}")
+            elif svc == 'carParams':
+                cp = sm[svc]
+                print(f"  brand={cp.brand} carFingerprint={cp.carFingerprint}")
+                print(f"  openpilotLongitudinalControl={cp.openpilotLongitudinalControl}")
+                print(f"  pcmCruise={cp.pcmCruise}")
+            printed.add(svc)
+    if len(printed) >= 5:
         break
     time.sleep(0.2)
-if not printed:
-    print("超时: 未收到任何消息")
+
+missing = set(['selfdriveState', 'carState', 'livePose', 'pandaStates', 'carParams']) - printed
+if missing:
+    print(f"\n未收到: {missing}")
+    for svc in missing:
+        print(f"  {svc}: recv_frame={sm.recv_frame[svc]} valid={sm.valid[svc]}")
