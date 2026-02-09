@@ -4,32 +4,35 @@ from cereal import messaging
 import time
 
 sm = messaging.SubMaster(['selfdriveState', 'carState', 'livePose'])
-for i in range(30):
+printed = set()
+for i in range(100):
     sm.update(1000)
-    if sm.updated['selfdriveState']:
+    if sm.updated['selfdriveState'] and 'ss' not in printed:
         ss = sm['selfdriveState']
-        print(f"state={ss.state}")
-        print(f"enabled={ss.enabled}")
-        print(f"active={ss.active}")
+        print(f"--- selfdriveState ---")
+        print(f"state={ss.state} enabled={ss.enabled} active={ss.active}")
         print(f"alertText1={ss.alertText1}")
         print(f"alertText2={ss.alertText2}")
         print(f"alertType={ss.alertType}")
-        print(f"alertStatus={ss.alertStatus}")
-    if sm.updated['carState']:
+        printed.add('ss')
+    if sm.updated['carState'] and 'cs' not in printed:
         cs = sm['carState']
-        print(f"cruiseAvail={cs.cruiseState.available}")
-        print(f"cruiseEnabled={cs.cruiseState.enabled}")
-        print(f"vEgo={cs.vEgo:.1f}")
-        print(f"steerFaultTemp={cs.steerFaultTemporary}")
-        print(f"steerFaultPerm={cs.steerFaultPermanent}")
-        print(f"canValid={cs.canValid}")
-    if sm.updated['livePose']:
+        print(f"--- carState ---")
+        print(f"cruiseAvail={cs.cruiseState.available} cruiseEnabled={cs.cruiseState.enabled}")
+        print(f"vEgo={cs.vEgo:.1f} canValid={cs.canValid}")
+        print(f"steerFaultTemp={cs.steerFaultTemporary} steerFaultPerm={cs.steerFaultPermanent}")
+        print(f"gasPressed={cs.gasPressed} brakePressed={cs.brakePressed}")
+        print(f"gearShifter={cs.gearShifter}")
+        evts = [str(e.name) for e in cs.events]
+        print(f"events={evts}")
+        printed.add('cs')
+    if sm.updated['livePose'] and 'lp' not in printed:
         lp = sm['livePose']
-        print(f"inputsOK={lp.inputsOK}")
-        print(f"posenetOK={lp.posenetOK}")
-        print(f"sensorsOK={lp.sensorsOK}")
-    if sm.updated['selfdriveState']:
+        print(f"--- livePose ---")
+        print(f"inputsOK={lp.inputsOK} posenetOK={lp.posenetOK} sensorsOK={lp.sensorsOK}")
+        printed.add('lp')
+    if len(printed) >= 3:
         break
-    time.sleep(0.5)
-else:
-    print("超时: 未收到 selfdriveState")
+    time.sleep(0.2)
+if not printed:
+    print("超时: 未收到任何消息")
