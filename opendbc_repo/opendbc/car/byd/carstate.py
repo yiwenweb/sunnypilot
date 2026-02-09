@@ -198,13 +198,11 @@ class CarState(CarStateBase):
 
         ret.cruiseState.available = main_on
 
-        # cruiseState.enabled 的逻辑:
-        # available=True 只表示 ACC 系统已开启（仪表显示 ACC 图标）
-        # enabled=True 表示 ACC 正在主动控制车辆（用户按了 RES/SET）
-        # openpilot controlsd 会在收到 accelCruise/decelCruise 按钮事件时
-        # 将 enabled 设为 True，所以这里只需要设 enabled=available
-        # controlsd 会根据按钮事件和条件来管理实际的 engage/disengage
-        ret.cruiseState.enabled = main_on
+        # cruiseState.enabled 设为 False:
+        # pcmCruise=False 模式下，openpilot 通过 buttonEnable 事件来管理 engage。
+        # 用户按 RES/SET 按钮（accelCruise/decelCruise）释放时触发 enable。
+        # 按 Cancel 按钮触发 disable。
+        ret.cruiseState.enabled = False
 
         # Standstill state - derived from vehicle speed (Requirement 5.3)
         ret.cruiseState.standstill = ret.standstill

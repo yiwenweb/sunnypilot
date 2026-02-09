@@ -125,6 +125,11 @@ class CarInterface(CarInterfaceBase):
         # 最小启用速度 (BYD原厂ACC支持全速域)
         ret.minEnableSpeed = -1.0
 
+        # pcmCruise=False: openpilot 不依赖 PCM 的巡航状态来 engage/disengage。
+        # 而是通过按钮事件（RES/SET 按钮释放时触发 buttonEnable）来管理。
+        # 这样按 ACC 开关只是 available=True，还需要按 RES/SET 才能真正激活。
+        ret.pcmCruise = False
+
         # 停车相关参数 (from old version)
         ret.vEgoStopping = 0.3
         ret.vEgoStarting = 0.5
