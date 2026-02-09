@@ -160,9 +160,9 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
     if (byd_stock_longitudinal) {
       tx = false;
     } else {
-      // Signal: AccelCmd - 8-bit, scale 0.05, offset -5
+      // Signal: AccelCmd - 8-bit unsigned, scale 0.05, offset -5
       // Raw value 100 = 0 m/s^2
-      int accel_raw = msg->data[0];
+      unsigned int accel_raw = msg->data[0];
 
       // Limits: -3.5 m/s^2 (raw 30) to +2.0 m/s^2 (raw 140)
       bool violation = (accel_raw > 140U) || (accel_raw < 30U);
@@ -195,27 +195,19 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
   return tx;
 }
 
-static int byd_fwd_hook(int bus_num, int addr) {
-  // Forward Bus 0 -> Bus 2 and Bus 2 -> Bus 0 (passthrough)
-  // Block openpilot TX messages from being forwarded back
-  // (prevent original MPC messages from conflicting with openpilot's)
-  if (bus_num == BYD_MAIN_BUS) {
-    // Bus 0 -> Bus 2: block 790 (openpilot replaces MPC's LKAS control)
-    // Also block 813, 814, 815 when openpilot sends them
-    if (addr == BYD_ACC_MPC_STATE) return -1;
+static bool byd_fwd_hook(int bus_num, int addr) {
+  // Default forwarding (Bus 0 <-> Bus 2) is handled by get_fwd_bus() in safety.h.
+  // TX messages with check_relay=true (790, 814) are auto-blocked by safety_fwd_hook().
+  // Here we only need to block additional messages that openpilot replaces.
+  if (bus_num == 0) {
+    // Block 813, 815 from Bus 0 -> Bus 2 when openpilot controls longitudinal
     if (!byd_stock_longitudinal) {
-      if (addr == BYD_ACC_HUD_ADAS) return -1;
-      if (addr == BYD_ACC_CMD) return -1;
-      if (addr == BYD_ACC_AEB) return -1;
+      if ((addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_AEB)) {
+        return true;
+      }
     }
-    return BYD_CAM_BUS;
   }
-  if (bus_num == BYD_CAM_BUS) {
-    // Bus 2 -> Bus 0: forward everything
-    // (original MPC messages that openpilot doesn't replace)
-    return BYD_MAIN_BUS;
-  }
-  return -1;
+  return false;
 }
 
 static safety_config byd_init(uint16_t param) {
