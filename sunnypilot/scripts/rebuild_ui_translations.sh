@@ -26,31 +26,30 @@ echo "  未翻译: $(grep -c 'type=\"unfinished\"' selfdrive/ui/translations/mai
 echo ""
 echo "[2/5] 生成资源 C++ 源码..."
 
-# 生成 qrc 文件
-cat > /tmp/translations_assets.qrc << 'EOF'
+TR_DIR="$BASEDIR/selfdrive/ui/translations"
+
+# 生成 qrc 文件（使用绝对路径）
+cat > /tmp/translations_assets.qrc << EOF
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
-<file alias="main_en">main_en.qm</file>
-<file alias="main_de">main_de.qm</file>
-<file alias="main_fr">main_fr.qm</file>
-<file alias="main_pt-BR">main_pt-BR.qm</file>
-<file alias="main_es">main_es.qm</file>
-<file alias="main_tr">main_tr.qm</file>
-<file alias="main_ar">main_ar.qm</file>
-<file alias="main_th">main_th.qm</file>
-<file alias="main_zh-CHT">main_zh-CHT.qm</file>
-<file alias="main_zh-CHS">main_zh-CHS.qm</file>
-<file alias="main_ko">main_ko.qm</file>
-<file alias="main_ja">main_ja.qm</file>
+<file alias="main_en">${TR_DIR}/main_en.qm</file>
+<file alias="main_de">${TR_DIR}/main_de.qm</file>
+<file alias="main_fr">${TR_DIR}/main_fr.qm</file>
+<file alias="main_pt-BR">${TR_DIR}/main_pt-BR.qm</file>
+<file alias="main_es">${TR_DIR}/main_es.qm</file>
+<file alias="main_tr">${TR_DIR}/main_tr.qm</file>
+<file alias="main_ar">${TR_DIR}/main_ar.qm</file>
+<file alias="main_th">${TR_DIR}/main_th.qm</file>
+<file alias="main_zh-CHT">${TR_DIR}/main_zh-CHT.qm</file>
+<file alias="main_zh-CHS">${TR_DIR}/main_zh-CHS.qm</file>
+<file alias="main_ko">${TR_DIR}/main_ko.qm</file>
+<file alias="main_ja">${TR_DIR}/main_ja.qm</file>
 </qresource>
 </RCC>
 EOF
 
-# rcc 需要在 .qm 文件所在目录运行
-cd "$BASEDIR/selfdrive/ui/translations"
 rcc /tmp/translations_assets.qrc -o /tmp/translations_res.cc
 echo "  translations_res.cc: $(stat -c%s /tmp/translations_res.cc) bytes"
-cd "$BASEDIR"
 
 # 3. 编译为共享库
 echo ""
