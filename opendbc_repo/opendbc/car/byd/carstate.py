@@ -73,6 +73,10 @@ class CarState(CarStateBase):
         # Dynamic signals (Requirement 6.2)
         self.ax_sensor = 0.0
 
+        # Steer fault detection
+        self.steer_fault_count = 0  # Counter for persistent fault detection
+        self.STEER_FAULT_PERMANENT_THRESHOLD = 100  # ~1 second at 100Hz
+
     def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
         """Parse CAN messages and return vehicle state.
 
@@ -104,6 +108,11 @@ class CarState(CarStateBase):
 
         # Set standstill when vehicle speed is below 0.1 m/s (Requirement 6.5)
         ret.standstill = ret.vEgo < 0.1
+
+        # Cluster speed for UI display
+        # CarDisplaySpeed from CARSPEED message is the instrument cluster speed
+        # vEgoCluster lets the UI show the same speed as the dashboard
+        ret.vEgoCluster = ret.vEgoRaw
 
         # Steering angle parsing (Requirements 3.2, 3.3)
         # Parse steering angle from EPS message (Requirement 3.2)
@@ -138,6 +147,24 @@ class CarState(CarStateBase):
         # Detect if driver is actively steering (steeringPressed)
         # Threshold of 50 matches old version behavior (旧版本约50)
         ret.steeringPressed = abs(self.steer_torque_driver) > 50
+
+        # Steering fault detection
+        # TorqueFailed: EPS reports torque control failure
+        # SteerWarning: EPS reports steering system warning
+        # SteerErrorCode: 3-bit error code (0 = no error)
+        torque_failed = cp.vl["ACC_EPS_STATE"]["TorqueFailed"] == 1
+        steer_warning = cp.vl["ACC_EPS_STATE"]["SteerWarning"] == 1
+        steer_error_code = int(cp.vl["ACC_EPS_STATE"]["SteerErrorCode"])
+
+        # Temporary fault: any steering warning or torque failure
+        ret.steerFaultTemporary = torque_failed or steer_warning
+
+        # Permanent fault: TorqueFailed persists for >1 second, or error code is non-zero
+        if torque_failed:
+            self.steer_fault_count += 1
+        else:
+            self.steer_fault_count = 0
+        ret.steerFaultPermanent = (self.steer_fault_count > self.STEER_FAULT_PERMANENT_THRESHOLD) or (steer_error_code > 0)
 
         # Gear parsing (Requirement 3.4)
         # Parse gear position from DRIVE_STATE message
