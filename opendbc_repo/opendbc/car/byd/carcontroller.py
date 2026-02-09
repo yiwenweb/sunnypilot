@@ -37,70 +37,75 @@ class CarController(CarControllerBase):
         lat_active = CC.latActive
         long_active = CC.longActive
 
-        # === Lateral control ===
-        if lat_active:
-            new_steer = int(round(actuators.torque * self.params.STEER_MAX))
-            new_steer = clip(new_steer,
-                             self.apply_steer_last - self.params.STEER_DELTA_DOWN,
-                             self.apply_steer_last + self.params.STEER_DELTA_UP)
-            apply_steer = clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX)
+        # === 只在 enabled 时才发送控制消息 ===
+        # 使用 allOutput safety 模式时，panda 会转发原厂 MPC 的 Bus 2 消息到 Bus 0。
+        # 如果 openpilot 同时也在 Bus 0 上发送同地址消息，会造成冲突，
+        # 导致车辆报 "请检查自动紧急刹车系统" 等错误。
+        # 因此：未 enabled 时不发送任何控制消息，让原厂 MPC 消息正常通过。
+        if CC.enabled:
+            # === Lateral control ===
+            if lat_active:
+                new_steer = int(round(actuators.torque * self.params.STEER_MAX))
+                new_steer = clip(new_steer,
+                                 self.apply_steer_last - self.params.STEER_DELTA_DOWN,
+                                 self.apply_steer_last + self.params.STEER_DELTA_UP)
+                apply_steer = clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX)
+            else:
+                apply_steer = 0
+            self.apply_steer_last = apply_steer
+
+            # 790 (ACC_MPC_STATE) on Bus 0 — every frame (100Hz)
+            lkas_active = lat_active and CS.lkas_prepared
+            lkas_req_prepare = lat_active
+
+            can_sends.append(create_steering_control(
+                self.packer, self.CP, CS,
+                apply_steer if lkas_active else 0,
+                lkas_req_prepare,
+                lkas_active,
+                CC.hudControl,
+                self.lkas_counter,
+            ))
+            self.lkas_counter = (self.lkas_counter + 1) & 0xF
+
+            # === Longitudinal messages — every other frame (50Hz) ===
+            if self.frame % 2 == 0:
+                # 814 (ACC_CMD) on Bus 0
+                can_sends.append(create_acc_cmd(
+                    self.packer, self.CP, CS,
+                    mrr_lead_dist=100.0,
+                    accel=actuators.accel if long_active else 0.0,
+                    resume_from_standstill=False,
+                    standstill_state=False,
+                    long_active=long_active,
+                    counter=self.acc_counter,
+                ))
+
+                # 813 (ACC_HUD_ADAS) on Bus 0
+                can_sends.append(create_acc_hud(
+                    self.packer, self.CP, CS,
+                    set_speed=CC.hudControl.setSpeed * 3.6 if CC.hudControl.setSpeed > 0 else 0,
+                    has_lead=True,
+                    set_distance=4,
+                    acc_state=1,
+                    enabled=True,
+                    counter=self.acc_counter,
+                ))
+
+                # 815 (ACC_AEB) on Bus 0 — raw bytes matching old version
+                can_sends.append(self._create_acc_aeb(self.acc_counter))
+                self.acc_counter = (self.acc_counter + 1) & 0xF
+
+            # === Forward 944 (PCM_BUTTONS) to Bus 2 — every 5th frame (20Hz) ===
+            if self.frame % 5 == 0:
+                can_sends.append(self._forward_pcm_buttons(CS, True))
         else:
-            apply_steer = 0
-        self.apply_steer_last = apply_steer
-
-        # 790 (ACC_MPC_STATE) on Bus 0 — every frame (100Hz)
-        # Old version: ReqPrepare=0 when not active
-        lkas_active = lat_active and CS.lkas_prepared
-        lkas_req_prepare = lat_active
-
-        can_sends.append(create_steering_control(
-            self.packer, self.CP, CS,
-            apply_steer if lkas_active else 0,
-            lkas_req_prepare,
-            lkas_active,
-            CC.hudControl,
-            self.lkas_counter,
-        ))
-        self.lkas_counter = (self.lkas_counter + 1) & 0xF
-
-        # === Longitudinal messages — every other frame (50Hz) ===
-        if self.frame % 2 == 0:
-            # 814 (ACC_CMD) on Bus 0
-            can_sends.append(create_acc_cmd(
-                self.packer, self.CP, CS,
-                mrr_lead_dist=100.0,
-                accel=actuators.accel if long_active else 0.0,
-                resume_from_standstill=False,
-                standstill_state=False,
-                long_active=long_active,
-                counter=self.acc_counter,
-            ))
-
-            # 813 (ACC_HUD_ADAS) on Bus 0
-            # 旧版本: 激活时 AccState=1 (不是3), AccOn1=1, HasLead=1, SetDist=4
-            # 车辆ECU会在Bus 2上将AccState改写为3
-            can_sends.append(create_acc_hud(
-                self.packer, self.CP, CS,
-                set_speed=CC.hudControl.setSpeed * 3.6 if CC.hudControl.setSpeed > 0 else 0,
-                has_lead=CC.enabled,  # 旧版本激活时 HasLead=1
-                set_distance=4,  # 旧版本激活时 SetDist=4
-                acc_state=1 if CC.enabled else 0,  # 旧版本发送端始终用1，不是3
-                enabled=CC.enabled,
-                counter=self.acc_counter,
-            ))
-
-            # 815 (ACC_AEB) on Bus 0 — raw bytes matching old version
-            can_sends.append(self._create_acc_aeb(self.acc_counter))
-            self.acc_counter = (self.acc_counter + 1) & 0xF
-
-        # === Forward 944 (PCM_BUTTONS) to Bus 2 — every 5th frame (20Hz) ===
-        if self.frame % 5 == 0:
-            can_sends.append(self._forward_pcm_buttons(CS, CC.enabled))
+            self.apply_steer_last = 0
 
         # Update actuators
         new_actuators = actuators.as_builder()
-        new_actuators.torque = apply_steer / self.params.STEER_MAX if self.params.STEER_MAX else 0
-        new_actuators.torqueOutputCan = apply_steer
+        new_actuators.torque = self.apply_steer_last / self.params.STEER_MAX if self.params.STEER_MAX else 0
+        new_actuators.torqueOutputCan = self.apply_steer_last
         if long_active:
             new_actuators.accel = actuators.accel
 
