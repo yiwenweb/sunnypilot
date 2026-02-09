@@ -165,26 +165,22 @@ fi
 # --- Step 5: 编译 panda 固件 ---
 echo ""
 echo ">>> Step 5: 编译 panda 固件..."
-cd "$BUILD_DIR"
 
-# 尝试多种编译方式
-if [ -f "$BUILD_DIR/SConstruct" ]; then
-    echo "使用顶层 scons 编译 panda/..."
-    scons -j$(nproc) panda/
-elif [ -f "$BUILD_DIR/panda/SConstruct" ]; then
+# 重要: 不能用顶层 SConstruct 编译，因为它依赖 rednose_repo 等子模块。
+# 直接进入 panda 子目录编译，panda 有自己的 SConstruct。
+cd "$BUILD_DIR/panda"
+
+if [ -f "SConstruct" ]; then
     echo "使用 panda/SConstruct 编译..."
-    cd "$BUILD_DIR/panda"
     scons -j$(nproc)
-elif [ -f "$BUILD_DIR/panda/board/Makefile" ]; then
+elif [ -f "board/Makefile" ]; then
     echo "使用 panda/board/Makefile 编译..."
-    cd "$BUILD_DIR/panda/board"
+    cd board
     make -j$(nproc)
 else
-    echo "错误: 找不到编译入口！"
-    echo "BUILD_DIR 内容:"
-    ls -la "$BUILD_DIR/"
-    echo "panda 目录:"
-    ls -la "$BUILD_DIR/panda/" 2>/dev/null
+    echo "错误: panda 目录中找不到 SConstruct 或 Makefile！"
+    echo "panda 目录内容:"
+    ls -la "$BUILD_DIR/panda/"
     echo "panda/board 目录:"
     ls -la "$BUILD_DIR/panda/board/" 2>/dev/null
     exit 1
