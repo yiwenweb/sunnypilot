@@ -1,118 +1,108 @@
 #!/bin/bash
 # ============================================================
-# 在 C3 上重编译 UI 以更新内嵌翻译
+# 在 C3 上重编译翻译资源并注入 UI
 #
-# 背景: staging-tici 是预编译分支，翻译 .qm 文件被嵌入到
-#       UI 二进制(selfdrive/ui/ui)中。更新 .qm 文件后需要
-#       重编译 UI 才能生效。
+# 原理: 用 rcc 把新的 .qm 编译成 C++ 源码，再编译成共享库，
+#       通过 LD_PRELOAD 在 UI 启动时加载，覆盖内嵌的旧翻译。
 #
-# 用法: SSH 到 C3，然后运行:
-#   cd /data/openpilot && bash scripts/rebuild_ui_translations.sh
+# 用法: SSH 到 C3:
+#   cd /data/openpilot
+#   bash sunnypilot/scripts/rebuild_ui_translations.sh
 # ============================================================
 set -e
 BASEDIR="/data/openpilot"
 cd "$BASEDIR"
 
-echo "========================================="
-echo "  重编译 UI 以更新翻译"
-echo "========================================="
+echo "=== 重编译翻译资源 ==="
 
-# ---- 1. 拉取最新代码 ----
-echo ""
-echo "[1/6] 拉取最新代码..."
-# 自动检测 remote 名称
+# 1. 拉取最新代码
 REMOTE=$(git remote | head -1)
-echo "  使用 remote: $REMOTE"
-git pull "$REMOTE" staging-tici || echo "⚠ git pull 失败，使用本地文件"
+echo "[1/5] 拉取最新代码 (remote: $REMOTE)..."
+git pull "$REMOTE" staging-tici 2>/dev/null || echo "⚠ pull 失败，继续"
+echo "  .qm 大小: $(stat -c%s selfdrive/ui/translations/main_zh-CHS.qm) bytes"
+echo "  未翻译: $(grep -c 'type=\"unfinished\"' selfdrive/ui/translations/main_zh-CHS.ts 2>/dev/null || echo 0)"
 
-echo "  .ts 未翻译: $(grep -c 'type=\"unfinished\"' selfdrive/ui/translations/main_zh-CHS.ts 2>/dev/null || echo 0)"
-echo "  .qm 大小: $(stat -c%s selfdrive/ui/translations/main_zh-CHS.qm 2>/dev/null) bytes"
-
-# ---- 2. 备份原始 UI ----
+# 2. 用 rcc 编译资源为 C++ 源码
 echo ""
-echo "[2/6] 备份原始 UI..."
-cp selfdrive/ui/ui selfdrive/ui/ui.original
-echo "  已备份 ($(stat -c%s selfdrive/ui/ui.original) bytes)"
+echo "[2/5] 生成资源 C++ 源码..."
 
-# ---- 3. 从 upstream 获取构建文件 ----
+# 生成 qrc 文件
+cat > /tmp/translations_assets.qrc << 'EOF'
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+<file alias="main_en">main_en.qm</file>
+<file alias="main_de">main_de.qm</file>
+<file alias="main_fr">main_fr.qm</file>
+<file alias="main_pt-BR">main_pt-BR.qm</file>
+<file alias="main_es">main_es.qm</file>
+<file alias="main_tr">main_tr.qm</file>
+<file alias="main_ar">main_ar.qm</file>
+<file alias="main_th">main_th.qm</file>
+<file alias="main_zh-CHT">main_zh-CHT.qm</file>
+<file alias="main_zh-CHS">main_zh-CHS.qm</file>
+<file alias="main_ko">main_ko.qm</file>
+<file alias="main_ja">main_ja.qm</file>
+</qresource>
+</RCC>
+EOF
+
+# rcc 需要在 .qm 文件所在目录运行
+cd "$BASEDIR/selfdrive/ui/translations"
+rcc /tmp/translations_assets.qrc -o /tmp/translations_res.cc
+echo "  translations_res.cc: $(stat -c%s /tmp/translations_res.cc) bytes"
+cd "$BASEDIR"
+
+# 3. 编译为共享库
 echo ""
-echo "[3/6] 获取构建配置..."
-git remote add upstream https://github.com/sunnypilot/sunnypilot.git 2>/dev/null || true
-git fetch upstream master-tici --depth=1 2>&1 | tail -3
+echo "[3/5] 编译共享库..."
+g++ -shared -fPIC /tmp/translations_res.cc -o /tmp/libui_translations_override.so \
+    $(pkg-config --cflags --libs Qt5Core)
+echo "  libui_translations_override.so: $(stat -c%s /tmp/libui_translations_override.so) bytes"
 
-# 获取构建所需文件
-for f in SConstruct; do
-    git show upstream/master-tici:$f > $f 2>/dev/null
-    echo "  ✓ $f"
-done
+# 复制到 openpilot 目录
+cp /tmp/libui_translations_override.so "$BASEDIR/selfdrive/ui/libui_translations_override.so"
 
-# 获取 site_scons 目录
-git checkout upstream/master-tici -- site_scons/ 2>/dev/null
-echo "  ✓ site_scons/"
-
-# ---- 4. 临时移除 prebuilt ----
+# 4. 修改 UI 启动方式，注入 LD_PRELOAD
 echo ""
-echo "[4/6] 准备编译环境..."
-PREBUILT_EXISTED=0
-if [ -f prebuilt ]; then
-    mv prebuilt prebuilt.disabled
-    PREBUILT_EXISTED=1
-    echo "  prebuilt 已临时禁用"
-fi
-export PYTHONPATH="$BASEDIR"
+echo "[4/5] 配置 LD_PRELOAD 启动..."
 
-# ---- 5. 编译 UI ----
-echo ""
-echo "[5/6] 编译 selfdrive/ui/ui （约 15-30 分钟）..."
-echo "  请耐心等待..."
-echo ""
-
-BUILD_OK=0
-if scons -j4 selfdrive/ui/ui 2>&1 | tee /tmp/ui_build.log | tail -50; then
-    BUILD_OK=1
-fi
-
-# ---- 6. 清理 ----
-echo ""
-echo "[6/6] 清理..."
-
-# 恢复 prebuilt
-if [ $PREBUILT_EXISTED -eq 1 ]; then
-    mv prebuilt.disabled prebuilt
-fi
-
-# 删除构建文件（不污染 staging-tici）
-rm -f SConstruct
-rm -rf site_scons/
-rm -f selfdrive/assets/assets.cc 2>/dev/null
-rm -rf .sconsign.dblite 2>/dev/null
-
-if [ $BUILD_OK -eq 1 ] && [ -f selfdrive/ui/ui ] && [ selfdrive/ui/ui -nt selfdrive/ui/ui.original ]; then
-    NEW_SIZE=$(stat -c%s selfdrive/ui/ui)
-    echo ""
-    echo "========================================="
-    echo "  ✅ 编译成功！"
-    echo "  新 UI 大小: $NEW_SIZE bytes"
-    echo "  原始备份: selfdrive/ui/ui.original"
-    echo ""
-    echo "  重启以加载新翻译:"
-    echo "    sudo reboot"
-    echo ""
-    echo "  如需恢复原始 UI:"
-    echo "    cp selfdrive/ui/ui.original selfdrive/ui/ui"
-    echo "    sudo reboot"
-    echo "========================================="
+# 备份原始 ui
+if [ ! -f "$BASEDIR/selfdrive/ui/ui.real" ]; then
+    cp "$BASEDIR/selfdrive/ui/ui" "$BASEDIR/selfdrive/ui/ui.real"
+    echo "  已备份 ui -> ui.real"
 else
-    echo ""
-    echo "========================================="
-    echo "  ❌ 编译失败"
-    echo "  恢复原始 UI..."
-    cp selfdrive/ui/ui.original selfdrive/ui/ui
-    echo "  完整日志: /tmp/ui_build.log"
-    echo ""
-    echo "  如果反复失败，可以尝试方案 A:"
-    echo "    从 master-tici 分支获取 SConstruct"
-    echo "    删除 prebuilt 文件"
-    echo "    重启设备（系统会自动编译）"
-    echo "========================================="
+    echo "  ui.real 已存在，跳过备份"
 fi
+
+# 创建 wrapper 脚本替代原始 ui
+cat > "$BASEDIR/selfdrive/ui/ui" << 'WRAPPER'
+#!/bin/bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+export LD_PRELOAD="$DIR/libui_translations_override.so"
+exec "$DIR/ui.real" "$@"
+WRAPPER
+chmod +x "$BASEDIR/selfdrive/ui/ui"
+
+echo "  wrapper 脚本已创建"
+
+# 5. 清理
+echo ""
+echo "[5/5] 清理临时文件..."
+rm -f /tmp/translations_res.cc /tmp/translations_assets.qrc /tmp/libui_translations_override.so
+rm -f SConstruct 2>/dev/null
+rm -rf site_scons/ 2>/dev/null
+[ -f prebuilt.disabled ] && mv prebuilt.disabled prebuilt
+
+echo ""
+echo "========================================="
+echo "  ✅ 完成！"
+echo ""
+echo "  重启以加载新翻译:"
+echo "    sudo reboot"
+echo ""
+echo "  如需恢复原始 UI:"
+echo "    cd /data/openpilot"
+echo "    cp selfdrive/ui/ui.real selfdrive/ui/ui"
+echo "    rm selfdrive/ui/libui_translations_override.so"
+echo "    sudo reboot"
+echo "========================================="
