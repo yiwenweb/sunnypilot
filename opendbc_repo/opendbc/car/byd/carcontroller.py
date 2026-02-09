@@ -37,23 +37,20 @@ class CarController(CarControllerBase):
         lat_active = CC.latActive
         long_active = CC.longActive
 
-        # === 只在 enabled 时才发送控制消息 ===
-        # 使用 allOutput safety 模式时，panda 会转发原厂 MPC 的 Bus 2 消息到 Bus 0。
-        # 如果 openpilot 同时也在 Bus 0 上发送同地址消息，会造成冲突，
-        # 导致车辆报 "请检查自动紧急刹车系统" 等错误。
-        # 因此：未 enabled 时不发送任何控制消息，让原厂 MPC 消息正常通过。
-        if CC.enabled:
-            # === Lateral control ===
-            if lat_active:
-                new_steer = int(round(actuators.torque * self.params.STEER_MAX))
-                new_steer = clip(new_steer,
-                                 self.apply_steer_last - self.params.STEER_DELTA_DOWN,
-                                 self.apply_steer_last + self.params.STEER_DELTA_UP)
-                apply_steer = clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX)
-            else:
-                apply_steer = 0
-            self.apply_steer_last = apply_steer
+        # === 横向控制 (790) — latActive 时发送 ===
+        # MADS 模式下，按 ACC 开关激活横向，不需要等纵向 enabled。
+        # 790 (ACC_MPC_STATE) 只在 latActive 时发送，避免与原厂 MPC 消息冲突。
+        if lat_active:
+            new_steer = int(round(actuators.torque * self.params.STEER_MAX))
+            new_steer = clip(new_steer,
+                             self.apply_steer_last - self.params.STEER_DELTA_DOWN,
+                             self.apply_steer_last + self.params.STEER_DELTA_UP)
+            apply_steer = clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX)
+        else:
+            apply_steer = 0
+        self.apply_steer_last = apply_steer
 
+        if lat_active or CC.enabled:
             # 790 (ACC_MPC_STATE) on Bus 0 — every frame (100Hz)
             lkas_active = lat_active and CS.lkas_prepared
             lkas_req_prepare = lat_active
@@ -68,7 +65,9 @@ class CarController(CarControllerBase):
             ))
             self.lkas_counter = (self.lkas_counter + 1) & 0xF
 
-            # === Longitudinal messages — every other frame (50Hz) ===
+        # === 纵向消息 (813/814/815) — enabled 时才发送 ===
+        # 未 enabled 时不发送，让原厂 MPC 消息正常通过，避免 AEB 报错。
+        if CC.enabled:
             if self.frame % 2 == 0:
                 # 814 (ACC_CMD) on Bus 0
                 can_sends.append(create_acc_cmd(
@@ -99,8 +98,6 @@ class CarController(CarControllerBase):
             # === Forward 944 (PCM_BUTTONS) to Bus 2 — every 5th frame (20Hz) ===
             if self.frame % 5 == 0:
                 can_sends.append(self._forward_pcm_buttons(CS, True))
-        else:
-            self.apply_steer_last = 0
 
         # Update actuators
         new_actuators = actuators.as_builder()
