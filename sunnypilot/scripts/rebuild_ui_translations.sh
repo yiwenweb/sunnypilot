@@ -20,7 +20,10 @@ echo "========================================="
 # ---- 1. 拉取最新代码 ----
 echo ""
 echo "[1/6] 拉取最新代码..."
-git pull origin staging-tici || echo "⚠ git pull 失败，使用本地文件"
+# 自动检测 remote 名称
+REMOTE=$(git remote | head -1)
+echo "  使用 remote: $REMOTE"
+git pull "$REMOTE" staging-tici || echo "⚠ git pull 失败，使用本地文件"
 
 echo "  .ts 未翻译: $(grep -c 'type=\"unfinished\"' selfdrive/ui/translations/main_zh-CHS.ts 2>/dev/null || echo 0)"
 echo "  .qm 大小: $(stat -c%s selfdrive/ui/translations/main_zh-CHS.qm 2>/dev/null) bytes"
