@@ -143,8 +143,8 @@ class CarInterface(CarInterfaceBase):
         if ret.flags & BydFlags.PHEV.value or ret.flags & BydFlags.EV.value:
             ret.longitudinalActuatorDelay = 0.05
 
-        # 盲点监测
-        ret.enableBsm = candidate in RADAR_CAR
+        # 盲点监测 — 只有带 BSM 硬件的车型才启用
+        ret.enableBsm = bool(ret.flags & BydFlags.HAS_BSM)
 
         return ret
 
