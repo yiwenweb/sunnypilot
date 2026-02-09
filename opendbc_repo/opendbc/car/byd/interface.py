@@ -20,7 +20,7 @@ SteerControlType = structs.CarParams.SteerControlType
 
 class CarInterface(CarInterfaceBase):
     """BYD vehicle interface class.
-    
+
     Provides vehicle parameter configuration and initialization for BYD vehicles.
     Inherits from CarInterfaceBase and implements required static methods.
     """
@@ -39,7 +39,7 @@ class CarInterface(CarInterfaceBase):
     def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw,
                     alpha_long, is_release, docs) -> structs.CarParams:
         """Configure vehicle parameters.
-        
+
         Args:
             ret: CarParams structure to populate
             candidate: Vehicle candidate (CAR enum value)
@@ -48,17 +48,21 @@ class CarInterface(CarInterfaceBase):
             alpha_long: Whether alpha longitudinal control is enabled
             is_release: Whether this is a release build
             docs: Whether generating documentation
-            
+
         Returns:
             Configured CarParams structure
         """
         ret.brand = "byd"
 
-        # 安全配置 - 暂时使用 allOutput 模式（等待包含 BYD safety 的固件）
-        # TODO: 当 panda 固件包含 byd.h 后，改为 SafetyModel.byd
-        # safety_param=1 启用 passthrough 模式，允许 Bus 0 和 Bus 2 之间的消息转发
-        # 这对于 BYD 车型至关重要，因为 ACC/LKAS 消息在 Bus 2 上
-        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.allOutput, safety_param=1)]
+        # 安全配置 - 使用 SAFETY_BYD 模式
+        # byd.h 实现了:
+        #   - RX checks: EPS, CARSPEED, DRIVE_STATE, ACC_EPS_STATE, PEDAL, PCM_BUTTONS
+        #   - TX whitelist: 790(LKAS), 813(HUD), 814(ACC), 815(AEB) on Bus 0, 944 on Bus 2
+        #   - 转向扭矩限制 (max_torque=300, rate limiting)
+        #   - 纵向加速度限制 (-3.5 ~ +2.0 m/s²)
+        #   - Bus 0 <-> Bus 2 消息转发 (fwd hook)
+        #   - MADS 支持 (acc_main_on from PCM_BUTTONS)
+        ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
 
         # 转向控制类型: 扭矩控制
         ret.steerControlType = SteerControlType.torque
@@ -120,7 +124,7 @@ class CarInterface(CarInterfaceBase):
         ret.openpilotLongitudinalControl = True
 
         if not ret.openpilotLongitudinalControl:
-            ret.safetyConfigs[0].safetyParam |= BydSafetyFlags.STOCK_LONGITUDINAL.value
+            ret.safetyConfigs[0].safetyParam |= 1  # BYD_PARAM_STOCK_LONGITUDINAL
 
         # 最小启用速度 (BYD原厂ACC支持全速域)
         ret.minEnableSpeed = -1.0
@@ -154,7 +158,7 @@ class CarInterface(CarInterfaceBase):
     @staticmethod
     def init(CP, CP_SP, can_recv, can_send):
         """Initialize vehicle interface.
-        
+
         Called when the vehicle interface is first initialized.
         BYD vehicles do not require ECU disabling.
         """
@@ -163,7 +167,7 @@ class CarInterface(CarInterfaceBase):
     @staticmethod
     def deinit(CP, can_recv, can_send):
         """Deinitialize vehicle interface.
-        
+
         Called when the vehicle interface is being shut down.
         """
         pass

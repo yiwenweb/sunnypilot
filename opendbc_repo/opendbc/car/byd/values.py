@@ -20,10 +20,10 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
     """BYD vehicle control parameters.
-    
+
     Defines steering control limits and rates for BYD vehicles.
     Parameters are tuned for Tang DM 2018 EPS characteristics.
-    
+
     Attributes:
         STEER_STEP: Steering control period
         STEER_MAX: Maximum steering torque
@@ -40,7 +40,7 @@ class CarControllerParams:
 
     # 转向控制参数
     STEER_STEP = 1  # 转向控制周期
-    STEER_MAX = 1500  # 最大转向扭矩 (适配唐DM EPS)
+    STEER_MAX = 1023  # 最大转向扭矩 (LKAS_Output 是 11-bit signed, 范围 [-1024, 1023])
     STEER_ERROR_MAX = 350  # 最大转向误差
 
     # 转向速率限制 (防止EPS过载)
@@ -91,12 +91,12 @@ class BydSafetyFlags(IntFlag):
 
 class CanBus:
     """BYD CAN bus definitions.
-    
+
     Bus layout:
     - Bus 0: Powertrain CAN (EPS, ESP, VCU, BCM)
     - Bus 1: Auxiliary CAN (radar, body)
     - Bus 2: ACC/LKAS CAN (MPC camera, forwarded from Bus 0 by panda)
-    
+
     For sending:
     - ACC_MPC_STATE (790): Send on Bus 0 (to EPS)
     - ACC_EPS_STATE (792) spoof: Send on Bus 2 (to MPC)
@@ -111,11 +111,11 @@ class CanBus:
 
 def dbc_dict(pt, radar=None):
     """Generate DBC dictionary.
-    
+
     Args:
         pt: Powertrain DBC file name
         radar: Optional radar DBC file name
-        
+
     Returns:
         Dictionary mapping bus types to DBC file names
     """
