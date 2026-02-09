@@ -27,10 +27,10 @@ CRUISE_BUTTONS_DICT = {
 
 class CarState(CarStateBase):
     """BYD vehicle state parsing class.
-    
+
     Parses CAN messages and populates the CarState structure with vehicle data.
     Inherits from CarStateBase and implements required methods.
-    
+
     Attributes:
         frame: Frame counter
         cruise_buttons_prev: Previous cruise button state
@@ -47,7 +47,7 @@ class CarState(CarStateBase):
 
     def __init__(self, CP, CP_SP):
         """Initialize CarState.
-        
+
         Args:
             CP: CarParams structure
             CP_SP: CarParams sunnypilot extension
@@ -69,16 +69,16 @@ class CarState(CarStateBase):
         # Steering state
         self.steer_torque_driver = 0
         self.steer_torque_motor = 0
-        
+
         # Dynamic signals (Requirement 6.2)
         self.ax_sensor = 0.0
 
     def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
         """Parse CAN messages and return vehicle state.
-        
+
         Args:
             can_parsers: Dictionary containing CANParser instances
-            
+
         Returns:
             tuple: (CarState, CarStateSP) containing parsed vehicle state
         """
@@ -93,15 +93,15 @@ class CarState(CarStateBase):
         # Parse vehicle display speed from CARSPEED message (12-bit unsigned, 1 km/h scale)
         # DBC signal: CarDisplaySpeed : 0|12@1+ (1,0) [0|255] "km/h"
         v_ego_raw_kmh = cp.vl["CARSPEED"]["CarDisplaySpeed"]
-        
+
         # Convert km/h to m/s using CV.KPH_TO_MS constant (Requirement 3.1)
         ret.vEgoRaw = v_ego_raw_kmh * CV.KPH_TO_MS
-        
+
         # Apply Kalman filtering for smooth velocity estimation (Requirement 6.3)
         # update_speed_kf returns (filtered_speed, acceleration) tuple
         # The Kalman filter provides smooth velocity and calculates acceleration (Requirement 6.4)
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
-        
+
         # Set standstill when vehicle speed is below 0.1 m/s (Requirement 6.5)
         ret.standstill = ret.vEgo < 0.1
 
@@ -111,7 +111,7 @@ class CarState(CarStateBase):
         # The 0.1 degree scale is applied by CANParser via DBC definition
         # Raw 16-bit signed value is automatically converted to degrees
         ret.steeringAngleDeg = cp.vl["EPS"]["SteeringAngle"]
-        
+
         # Parse steering angle rate from EPS message (Requirement 3.3)
         # DBC signal: SteeringAngleRate : 16|8@1+ (4,0) [0|1020] "deg/s"
         # The scale factor of 4 is applied by CANParser via DBC definition
@@ -124,13 +124,13 @@ class CarState(CarStateBase):
         # 12-bit signed value representing driver applied torque to steering wheel
         # Positive values = clockwise torque, Negative values = counter-clockwise torque
         self.steer_torque_driver = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
-        
+
         # Parse motor (EPS) steering torque from ACC_EPS_STATE message (Requirement 5.8)
         # DBC signal: MainTorque : 8|12@1- (1,0) [-2048|2047] "" MPC
         # 12-bit signed value representing EPS motor output torque
         # This is the torque being applied by the electric power steering motor
         self.steer_torque_motor = cp.vl["ACC_EPS_STATE"]["MainTorque"]
-        
+
         # Store torque values in CarState for use by CarController and other components
         ret.steeringTorque = self.steer_torque_driver
         ret.steeringTorqueEps = self.steer_torque_motor
@@ -155,7 +155,7 @@ class CarState(CarStateBase):
         # Note: The CANParser applies the 0.01 scale from DBC, so we compare against 0.01 (1%)
         accelerator_pedal = cp.vl["PEDAL"]["AcceleratorPedal"]
         ret.gasPressed = accelerator_pedal > 0.01  # Pressed when > 1%
-        
+
         # Parse brake pressed status from DRIVE_STATE message (Requirement 3.5)
         # DBC signal: BrakePressed : 37|1@0+ (1,0) [0|1] "" - 1-bit boolean
         ret.brakePressed = cp.vl["DRIVE_STATE"]["BrakePressed"] == 1
@@ -220,7 +220,7 @@ class CarState(CarStateBase):
         # LKAS active status will be tracked internally by CarController when sending commands
         # For now, set to False as we're not actively controlling LKAS yet
         self.lkas_active = False
-        
+
         # Parse LKAS prepared status from ACC_EPS_STATE message (Requirement 5.6)
         # DBC signal: LKAS_Prepared : 0|1@1+ (1,0) [0|1] "" MPC
         # 1-bit boolean: 1 = EPS is ready for LKAS control, 0 = EPS not ready
@@ -236,7 +236,7 @@ class CarState(CarStateBase):
         # Valid range: [-2.0, 2.0] rad/s (positive = clockwise rotation)
         # This signal is used by sunnypilot for vehicle dynamics calculations
         ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
-        
+
         # Longitudinal acceleration parsing (Requirement 6.2 - Optional)
         # Parse longitudinal acceleration from AXAY message
         # DBC signal: Ax : 0|12@1+ (0.027167,-21.593) [-10.0|10.0] "m/s^2"
@@ -260,14 +260,14 @@ class CarState(CarStateBase):
 
     def _parse_gear(self, gear: int) -> GearShifter:
         """Parse gear position (Requirement 3.4).
-        
+
         Maps BYD gear values to sunnypilot GearShifter enum.
         DBC definition: Gear : 40|3@1+ (1,0) [0|7]
         VAL_ 578 Gear 1 "P" 2 "R" 3 "N" 4 "D"
-        
+
         Args:
             gear: Raw gear value from CAN (1=P, 2=R, 3=N, 4=D)
-            
+
         Returns:
             GearShifter enum value (park, reverse, neutral, drive, or unknown)
         """
@@ -281,20 +281,20 @@ class CarState(CarStateBase):
 
     def _parse_button_events(self, cp, main_on: bool) -> list:
         """Parse button events (Requirement 5.4).
-        
+
         Generates ButtonEvent objects for cruise control button state changes.
-        
+
         DBC signals from PCM_BUTTONS (944):
         - BTN_AccUpDown_Cmd: 0=NOTPRESSED, 1=SET, 3=RES
         - BTN_AccCancel: 0=not pressed, 1=cancel pressed
         - BTN_AccDistanceDecrease: 0=not pressed, 1=pressed
         - BTN_AccDistanceIncrease: 0=not pressed, 1=pressed
         - BTN_TOGGLE_ACC_OnOff: 0=not pressed, 1=pressed
-        
+
         Args:
             cp: CAN parser with PCM_BUTTONS message data
             main_on: Current state of ACC main switch
-            
+
         Returns:
             List of ButtonEvent objects for any button state changes
         """
@@ -310,7 +310,7 @@ class CarState(CarStateBase):
 
         # Cruise speed buttons (SET/RES)
         cruise_buttons = int(cp.vl["PCM_BUTTONS"]["BTN_AccUpDown_Cmd"])
-        events.extend(create_button_events(cruise_buttons, self.cruise_buttons_prev, 
+        events.extend(create_button_events(cruise_buttons, self.cruise_buttons_prev,
                                            CRUISE_BUTTONS_DICT, unpressed_btn=0))
         self.cruise_buttons_prev = cruise_buttons
 
@@ -325,7 +325,7 @@ class CarState(CarStateBase):
         events.extend(create_button_events(distance_decrease, self.distance_decrease_prev,
                                            {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
         self.distance_decrease_prev = distance_decrease
-        
+
         distance_increase = int(cp.vl["PCM_BUTTONS"]["BTN_AccDistanceIncrease"])
         events.extend(create_button_events(distance_increase, self.distance_increase_prev,
                                            {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
@@ -336,24 +336,28 @@ class CarState(CarStateBase):
     @staticmethod
     def get_can_parsers(CP, CP_SP) -> dict[StrEnum, CANParser]:
         """Get CAN parsers for vehicle state parsing.
-        
+
         Configures CANParser with required messages and frequencies.
-        
+
         BYD CAN Bus Layout:
         - Bus 0: Powertrain messages (EPS, speed, pedals, buttons, etc.)
         - Bus 2: ACC/LKAS RX messages (ACC_EPS_STATE, ACC_HUD_ADAS)
-        
+
         Note: ACC_MPC_STATE (790) and ACC_CMD (814) are TX messages sent by
         openpilot, not RX messages, so they are not included in the parser.
-        
+
         Args:
             CP: CarParams structure
             CP_SP: CarParams sunnypilot extension
-            
+
         Returns:
             Dictionary mapping bus types to CANParser instances
         """
         # Bus 0 messages - Powertrain
+        # 频率说明:
+        #   >0: 固定频率检查（超时 = 1/freq * 10）
+        #   0:  自动学习频率（初始超时10秒，收到3条后自动计算）
+        #   float('nan'): 跳过存活检查（ignore_alive=True）
         messages_bus0 = [
             # Basic messages - 20Hz
             ("EPS", 0),
@@ -370,17 +374,15 @@ class CarState(CarStateBase):
 
             # PCM buttons on Bus 0 - frequency 0 to auto-learn
             ("PCM_BUTTONS", 0),
-            # ACC_EPS_STATE frequency set to 0: when openpilot sends 790,
-            # EPS behavior may change, affecting 792 timing
-            ("ACC_EPS_STATE", 0),
+            # ACC_EPS_STATE: EPS 持续发送的状态消息，但在 openpilot 开始发送 790 前
+            # 时序可能不稳定。使用 nan 跳过存活检查，避免影响 canValid。
+            ("ACC_EPS_STATE", float('nan')),
         ]
 
-        # Bus 2 messages - ACC/LKAS (RX only)
         # Note: Bus 2 的 813/814/815/790 都是 openpilot 通过 panda 转发的回声，
         # 不是原厂 MPC 的数据，所以不需要解析。
-        messages_bus2 = []
+        # 不注册空的 Bus 2 parser，否则 canValid 检查会因为 bus_timeout 而失败。
 
         return {
             Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus0, 0),
-            Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus2, 2),
         }
