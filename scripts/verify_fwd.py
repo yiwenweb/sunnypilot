@@ -22,7 +22,10 @@ def sniff(p, duration=3):
     end = time.time() + duration
     while time.time() < end:
         for msg in p.can_recv():
-            addr, _, dat, bus = msg
+            if len(msg) == 4:
+                addr, _, dat, bus = msg
+            else:
+                addr, dat, bus = msg
             if addr in WATCH_ADDRS:
                 key = (addr, bus)
                 seen[key] = seen.get(key, 0) + 1
