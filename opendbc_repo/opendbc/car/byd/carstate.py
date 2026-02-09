@@ -151,20 +151,25 @@ class CarState(CarStateBase):
         # Steering fault detection
         # TorqueFailed: EPS reports torque control failure
         # SteerWarning: EPS reports steering system warning
-        # SteerErrorCode: 3-bit error code (0 = no error)
+        # SteerErrorCode: 3-bit error code — 含义未完全验证，暂不用于故障判断
+        #
+        # 重要: 在 openpilot 没有发送 790 (LKAS_Active=1) 之前，
+        # EPS 的 TorqueFailed 可能默认就是 1（因为没有收到有效的 LKAS 请求）。
+        # 这不是真正的故障，所以只在 LKAS 已经 prepared 之后才检测故障。
         torque_failed = cp.vl["ACC_EPS_STATE"]["TorqueFailed"] == 1
-        steer_warning = cp.vl["ACC_EPS_STATE"]["SteerWarning"] == 1
-        steer_error_code = int(cp.vl["ACC_EPS_STATE"]["SteerErrorCode"])
 
-        # Temporary fault: any steering warning or torque failure
-        ret.steerFaultTemporary = torque_failed or steer_warning
-
-        # Permanent fault: TorqueFailed persists for >1 second, or error code is non-zero
-        if torque_failed:
-            self.steer_fault_count += 1
+        # 只在 LKAS prepared 后才报告故障，避免启动时误报
+        if self.lkas_prepared:
+            ret.steerFaultTemporary = torque_failed
+            if torque_failed:
+                self.steer_fault_count += 1
+            else:
+                self.steer_fault_count = 0
+            ret.steerFaultPermanent = self.steer_fault_count > self.STEER_FAULT_PERMANENT_THRESHOLD
         else:
+            ret.steerFaultTemporary = False
+            ret.steerFaultPermanent = False
             self.steer_fault_count = 0
-        ret.steerFaultPermanent = (self.steer_fault_count > self.STEER_FAULT_PERMANENT_THRESHOLD) or (steer_error_code > 0)
 
         # Gear parsing (Requirement 3.4)
         # Parse gear position from DRIVE_STATE message
