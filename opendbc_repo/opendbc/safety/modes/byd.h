@@ -197,16 +197,39 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 
 static bool byd_fwd_hook(int bus_num, int addr) {
   // Default forwarding (Bus 0 <-> Bus 2) is handled by get_fwd_bus() in safety.h.
-  // TX messages with check_relay=true (790, 814) are auto-blocked by safety_fwd_hook().
-  // Here we only need to block additional messages that openpilot replaces.
+  // All TX messages use check_relay=false, so static blocking does NOT apply.
+  // We handle ALL forwarding control here dynamically.
+  //
+  // BYD CAN 架构:
+  //   原厂 MPC 在 Bus 2 上发送 790/813/814/815，panda 转发到 Bus 0 给 EPS/ESP。
+  //   openpilot 也在 Bus 0 上发送 790/813/814/815。
+  //   当 openpilot 控制时，必须阻止 Bus 2→Bus 0 方向的原厂 MPC 消息，
+  //   否则 EPS/ESP 收到两套冲突的消息 → AEB/安全系统报错。
+  //   当 openpilot 不控制时，让原厂 MPC 消息正常通过。
+
   if (bus_num == 0) {
-    // Block 813, 815 from Bus 0 -> Bus 2 when openpilot controls longitudinal
-    if (!byd_stock_longitudinal) {
-      if ((addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_AEB)) {
+    // Bus 0 → Bus 2 方向:
+    // 阻止 openpilot 发送的消息回传到 Bus 2（避免 MPC 收到冲突消息）
+    if (controls_allowed || !byd_stock_longitudinal) {
+      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
+          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
       }
     }
   }
+
+  if (bus_num == 2) {
+    // Bus 2 → Bus 0 方向:
+    // 当 openpilot 正在控制时，阻止原厂 MPC 的 790/813/814/815 到达 EPS/ESP
+    // 当 openpilot 未控制时，放行原厂 MPC 消息（保持原厂功能正常）
+    if (controls_allowed) {
+      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
+          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 
@@ -232,10 +255,14 @@ static safety_config byd_init(uint16_t param) {
   };
 
   // TX whitelist: messages openpilot is allowed to send
+  // check_relay=false for all: BYD 的原厂 MPC 在 Bus 2 上发送 790/813/814/815，
+  // panda 默认转发到 Bus 0。如果 check_relay=true，static blocking 会始终阻止
+  // Bus 2→Bus 0 方向的转发，导致 EPS/ESP 收不到原厂 MPC 消息 → 车辆报 AEB 错误。
+  // 改为 check_relay=false，由 byd_fwd_hook 根据 controls_allowed 动态控制转发。
   static const CanMsg BYD_TX_MSGS[] = {
-    {BYD_ACC_MPC_STATE, BYD_MAIN_BUS, 8, .check_relay = true},   // 790 - LKAS control
+    {BYD_ACC_MPC_STATE, BYD_MAIN_BUS, 8, .check_relay = false},  // 790 - LKAS control
     {BYD_ACC_HUD_ADAS,  BYD_MAIN_BUS, 8, .check_relay = false},  // 813 - ACC HUD
-    {BYD_ACC_CMD,        BYD_MAIN_BUS, 8, .check_relay = true},   // 814 - ACC command
+    {BYD_ACC_CMD,        BYD_MAIN_BUS, 8, .check_relay = false},  // 814 - ACC command
     {BYD_ACC_AEB,        BYD_MAIN_BUS, 8, .check_relay = false},  // 815 - AEB
     {BYD_PCM_BUTTONS_FWD, BYD_CAM_BUS, 8, .check_relay = false},  // 944 - Button forward to Bus 2
   };
