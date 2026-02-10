@@ -66,38 +66,42 @@ class CarController(CarControllerBase):
             self.lkas_counter = (self.lkas_counter + 1) & 0xF
 
         # === 纵向消息 (813/814/815) ===
-        # 813 (ACC_HUD_ADAS): latActive 或 enabled 时都要发送。
-        #   EPS 需要看到 813 上的 AccState=ACC_ON 才会回复 LKAS_Prepared=1。
-        #   如果只发 790 不发 813，EPS 认为 ACC 未激活，拒绝准备 LKAS。
-        # 814/815: 只在 enabled 时发送（纵向控制）。
+        # EPS 需要看到完整的 ACC 消息组 (813+814+815) 才会回复 LKAS_Prepared=1。
+        # 只发 790+813 不发 814/815，EPS 会报 TorqueFail=1 SteerWarn=1。
+        # 所以横向激活时也要发送全套消息（814/815 用安全的空闲值）。
         if lat_active or CC.enabled:
             if self.frame % 2 == 0:
-                # 813 (ACC_HUD_ADAS) on Bus 0 — 横向或纵向激活时都发送
+                # 813 (ACC_HUD_ADAS) on Bus 0
+                # 横向-only 时用合理的 set_speed（当前车速+10），避免 255km/h 异常值
+                if CC.enabled and CC.hudControl.setSpeed > 0:
+                    hud_set_speed = CC.hudControl.setSpeed * 3.6
+                else:
+                    # 横向-only: 用当前车速+10 km/h 作为显示速度，最低30
+                    hud_set_speed = max(30.0, CS.vEgoCluster * 3.6 + 10.0)
+
                 can_sends.append(create_acc_hud(
                     self.packer, self.CP, CS,
-                    set_speed=CC.hudControl.setSpeed * 3.6 if CC.hudControl.setSpeed > 0 else 0,
-                    has_lead=True,
+                    set_speed=hud_set_speed,
+                    has_lead=False,
                     set_distance=4,
                     acc_state=1,  # ACC_ON
                     enabled=True,
                     counter=self.acc_counter,
                 ))
 
-                if CC.enabled:
-                    # 814 (ACC_CMD) on Bus 0 — 只在纵向 enabled 时发送
-                    can_sends.append(create_acc_cmd(
-                        self.packer, self.CP, CS,
-                        mrr_lead_dist=100.0,
-                        accel=actuators.accel if long_active else 0.0,
-                        resume_from_standstill=False,
-                        standstill_state=False,
-                        long_active=long_active,
-                        counter=self.acc_counter,
-                    ))
+                # 814 (ACC_CMD) on Bus 0
+                can_sends.append(create_acc_cmd(
+                    self.packer, self.CP, CS,
+                    mrr_lead_dist=100.0,
+                    accel=actuators.accel if long_active else 0.0,
+                    resume_from_standstill=False,
+                    standstill_state=False,
+                    long_active=long_active,
+                    counter=self.acc_counter,
+                ))
 
-                    # 815 (ACC_AEB) on Bus 0 — 只在纵向 enabled 时发送
-                    can_sends.append(self._create_acc_aeb(self.acc_counter))
-
+                # 815 (ACC_AEB) on Bus 0
+                can_sends.append(self._create_acc_aeb(self.acc_counter))
                 self.acc_counter = (self.acc_counter + 1) & 0xF
 
         # === Forward 944 (PCM_BUTTONS) to Bus 2 ===

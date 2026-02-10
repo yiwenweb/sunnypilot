@@ -167,8 +167,16 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
       // Limits: -3.5 m/s^2 (raw 30) to +2.0 m/s^2 (raw 140)
       bool violation = (accel_raw > 140U) || (accel_raw < 30U);
 
-      // Don't allow longitudinal control if controls not allowed
-      violation |= !get_longitudinal_allowed();
+      if (get_longitudinal_allowed()) {
+        // 纵向控制激活: 允许完整加速度范围
+      } else if (is_lat_active()) {
+        // 横向-only 模式: 只允许 accel=0 (raw=100) 的空闲消息
+        // EPS 需要看到完整的 ACC 消息组才会回复 LKAS_Prepared=1
+        violation |= (accel_raw != 100U);
+      } else {
+        // 既没有横向也没有纵向: 不允许发送
+        violation = true;
+      }
 
       if (violation) {
         tx = false;
@@ -237,13 +245,16 @@ static bool byd_fwd_hook(int bus_num, int addr) {
     //   使用 controls_allowed 判断。只有按 RES/SET engage 后才发送替代消息。
     //   横向-only 模式下，openpilot 不发送 813/814/815，
     //   所以必须让原厂 MPC 的 813/814/815 继续通过，否则 ACC/AEB 系统会报错。
-    // 790 + 813: 横向激活时阻止（openpilot 在 latActive 时发送 790 和 813）
+    // 横向激活时: 阻止所有 ACC 消息 (790/813/814/815)
+    // openpilot 在 latActive 时发送全套 ACC 消息（814/815 用空闲值），
+    // 必须阻止原厂 MPC 的对应消息，否则 EPS/ESP 收到两套冲突消息。
     if (is_lat_active()) {
-      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS)) {
+      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
+          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
       }
     }
-    // 814 + 815: 纵向激活时阻止
+    // 纵向激活时: 同样阻止（is_lat_active 可能不包含纵向-only 场景）
     if (controls_allowed) {
       if ((addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
