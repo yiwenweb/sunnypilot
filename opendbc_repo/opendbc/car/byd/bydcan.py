@@ -45,15 +45,21 @@ def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
         hud_control: HUD控制信息
         counter: 报文计数器 (0-15)
     """
+    # 原厂 MPC 空闲 790 raw: 42 81 00 40 71 00 xC CC
+    # 解码: AutoBeam=2, LeftLane=0(GRAY), Config=1(ALARM),
+    #        SETME2=1, MPC_State=0, AutoFullBeam_OnOff=1,
+    #        LKAS_Output=0, ReqPrepare=0, Active=0,
+    #        SETME5=1, RightLane=0(GRAY), LKAS_State=7
+    # 关键差异: Config=1(不是3), LKAS_State=7(不是0), AutoFullBeam=1(不是0),
+    #           LaneState=0/GRAY(不是1/GREEN)
     values = {
-        # 保持原厂默认值
-        "AutoFullBeamState": 2,  # AutoFullBeamInactive
-        "LeftLaneState": 1,  # GREEN
-        "LKAS_Config": 3,  # ALARM_AND_LKA
+        "AutoFullBeamState": 2,       # AutoFullBeamInactive (和原厂一致)
+        "LeftLaneState": 0,           # GRAY (原厂空闲=0, 不是GREEN=1)
+        "LKAS_Config": 1,             # ALARM (原厂=1, 不是 ALARM_AND_LKA=3)
         "SETME2_0x1": 1,
         "ReqHandsOnSteeringWheel": 0,
         "MPC_State": 0,
-        "AutoFullBeam_OnOff": 0,
+        "AutoFullBeam_OnOff": 1,      # 原厂=1 (不是0)
         "LKAS_Output": 0,
         "LKAS_ReqPrepare": 0,
         "LKAS_Active": 0,
@@ -61,10 +67,10 @@ def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
         "TrafficSignRecognition_OnOff": 0,
         "SETME4_0x0": 0,
         "SETME5_0x1": 1,
-        "RightLaneState": 1,  # GREEN
-        "LKAS_State": 0,
+        "RightLaneState": 0,          # GRAY (原厂空闲=0)
+        "LKAS_State": 7,              # 原厂空闲=7 (不是0)
         "TrafficSignRecognition_Result": 0,
-        "LKAS_AlarmType": 0,  # VIBRATION
+        "LKAS_AlarmType": 0,
         "SETME7_0x3": 3,
         "COUNTER": counter,
     }
@@ -73,23 +79,15 @@ def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
     values["LKAS_ReqPrepare"] = 1 if req_prepare else 0
 
     if active:
-        # LKAS激活状态
-        mpc_state = 0  # 正常控制
+        # LKAS激活: 切换到 LKA 模式
         values.update({
             "LKAS_Output": req_torque,
             "LKAS_Active": 1,
-            "LKAS_State": 2,  # 正常控制状态
+            "LKAS_Config": 3,         # ALARM_AND_LKA — 激活时切换到 LKA 模式
+            "LKAS_State": 2,          # 正常控制状态
             # 车道线状态 (根据HUD控制更新)
             "LeftLaneState": 3 if hud_control.leftLaneDepart else (2 if hud_control.leftLaneVisible else 1),
             "RightLaneState": 3 if hud_control.rightLaneDepart else (2 if hud_control.rightLaneVisible else 1),
-        })
-    else:
-        # LKAS关闭状态
-        # 注意: 这会禁用原厂AEB功能中的转向辅助
-        values.update({
-            "LKAS_Output": 0,
-            "LKAS_Active": 0,
-            "LKAS_State": 0,
         })
 
     # 计算校验和
