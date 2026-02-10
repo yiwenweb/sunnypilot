@@ -143,6 +143,13 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     // 修复: 在收到 DRIVE_STATE (578, 20Hz) 时手动调用 mads_state_update，
     // 确保 MADS 状态机正常运行。
     if (msg->addr == BYD_DRIVE_STATE) {
+      // 额外修复: mads_set_alternative_experience() 调用 m_mads_state_init()
+      // 重置 system_enabled=false。C++ pandad 可能在 set_safety_mode 之后
+      // 调用 set_alternative_experience，导致 system_enabled 被重置。
+      // 直接恢复 system_enabled 而不重置其他 MADS 状态。
+      if ((alternative_experience & ALT_EXP_ENABLE_MADS) && !m_mads_state.system_enabled) {
+        m_mads_state.system_enabled = true;
+      }
       mads_state_update(vehicle_moving, acc_main_on, controls_allowed,
                         brake_pressed || regen_braking, steering_disengage);
     }
