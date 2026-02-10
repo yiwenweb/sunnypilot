@@ -131,6 +131,21 @@ static void byd_rx_hook(const CANPacket_t *msg) {
       acc_main_on = GET_BIT(msg, 8U);
       mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
     }
+
+    // 关键修复: 手动调用 mads_state_update
+    // BYD 所有 TX 消息都设置了 check_relay=false（因为原厂 MPC 在 Bus 2 上发送
+    // 790/813/814/815，如果 check_relay=true 会触发 relay_malfunction）。
+    // 但 safety.h 中的 mads_state_update 只在 stock_ecu_check() 中被调用，
+    // 而 stock_ecu_check() 只在 check_relay=true 的消息匹配时才执行。
+    // 因此 mads_state_update 永远不会被调用 → controls_allowed_lat 永远为 false
+    // → is_lat_active() 永远为 false → 所有 790 消息被 panda 拒绝。
+    //
+    // 修复: 在收到 DRIVE_STATE (578, 20Hz) 时手动调用 mads_state_update，
+    // 确保 MADS 状态机正常运行。
+    if (msg->addr == BYD_DRIVE_STATE) {
+      mads_state_update(vehicle_moving, acc_main_on, controls_allowed,
+                        brake_pressed || regen_braking, steering_disengage);
+    }
   }
 }
 
