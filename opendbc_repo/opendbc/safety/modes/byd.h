@@ -128,8 +128,24 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     // With pcmCruise=False, openpilot manages controls_allowed via heartbeat.
     // acc_main_on is used by MADS for lateral-only activation.
     if (msg->addr == BYD_PCM_BUTTONS) {
+      bool prev_acc = acc_main_on;
       acc_main_on = GET_BIT(msg, 8U);
       mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+
+      // 直接控制 controls_allowed_lat — 绕过 MADS 状态机
+      // MADS 状态机通过 mads_state_update → m_update_control_state 来设置
+      // controls_allowed_lat，但在实际测试中始终无法正常工作。
+      // 可能原因: mads_state_update 在 578(50Hz) 上调用，而 944(20Hz) 频率更低，
+      // 导致 edge detection 时序问题，或者 m_mads_state_init 被反复调用重置状态。
+      // 直接方案: ACC ON → controls_allowed_lat=true, ACC OFF → false
+      if (acc_main_on && !prev_acc) {
+        // ACC OFF→ON: 激活横向控制
+        m_mads_state.controls_allowed_lat = true;
+        m_mads_state.system_enabled = true;
+      } else if (!acc_main_on && prev_acc) {
+        // ACC ON→OFF: 关闭横向控制
+        m_mads_state.controls_allowed_lat = false;
+      }
     }
 
     // 关键修复: 手动调用 mads_state_update
