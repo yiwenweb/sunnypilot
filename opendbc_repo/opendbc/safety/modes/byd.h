@@ -237,11 +237,15 @@ static bool byd_fwd_hook(int bus_num, int addr) {
     //   使用 controls_allowed 判断。只有按 RES/SET engage 后才发送替代消息。
     //   横向-only 模式下，openpilot 不发送 813/814/815，
     //   所以必须让原厂 MPC 的 813/814/815 继续通过，否则 ACC/AEB 系统会报错。
-    if (is_lat_active() && (addr == BYD_ACC_MPC_STATE)) {
-      return true;
+    // 790 + 813: 横向激活时阻止（openpilot 在 latActive 时发送 790 和 813）
+    if (is_lat_active()) {
+      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS)) {
+        return true;
+      }
     }
+    // 814 + 815: 纵向激活时阻止
     if (controls_allowed) {
-      if ((addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+      if ((addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
       }
     }
