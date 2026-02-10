@@ -15,6 +15,7 @@ from opendbc.can import CANPacker
 from opendbc.car import Bus, structs
 from numpy import clip
 from opendbc.car.interfaces import CarControllerBase
+from opendbc.car.lateral import apply_driver_steer_torque_limits
 from opendbc.car.byd.bydcan import create_steering_control, create_acc_cmd, create_acc_hud, byd_checksum
 from opendbc.car.byd.values import CarControllerParams, CanBus
 
@@ -42,10 +43,12 @@ class CarController(CarControllerBase):
         # 790 (ACC_MPC_STATE) 只在 latActive 时发送，避免与原厂 MPC 消息冲突。
         if lat_active:
             new_steer = int(round(actuators.torque * self.params.STEER_MAX))
-            new_steer = int(clip(new_steer,
-                             self.apply_steer_last - self.params.STEER_DELTA_DOWN,
-                             self.apply_steer_last + self.params.STEER_DELTA_UP))
-            apply_steer = int(clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX))
+            # 使用标准 openpilot 扭矩限制函数 (和 Hyundai/Toyota/VW 等一致)
+            # 正确处理正/负方向的 rate limiting + 驾驶员扭矩对抗限制
+            apply_steer = apply_driver_steer_torque_limits(
+                new_steer, self.apply_steer_last,
+                CS.out.steeringTorque, self.params,
+            )
         else:
             apply_steer = 0
         self.apply_steer_last = apply_steer
