@@ -42,10 +42,10 @@ class CarController(CarControllerBase):
         # 790 (ACC_MPC_STATE) 只在 latActive 时发送，避免与原厂 MPC 消息冲突。
         if lat_active:
             new_steer = int(round(actuators.torque * self.params.STEER_MAX))
-            new_steer = clip(new_steer,
+            new_steer = int(clip(new_steer,
                              self.apply_steer_last - self.params.STEER_DELTA_DOWN,
-                             self.apply_steer_last + self.params.STEER_DELTA_UP)
-            apply_steer = clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX)
+                             self.apply_steer_last + self.params.STEER_DELTA_UP))
+            apply_steer = int(clip(new_steer, -self.params.STEER_MAX, self.params.STEER_MAX))
         else:
             apply_steer = 0
         self.apply_steer_last = apply_steer
@@ -101,10 +101,10 @@ class CarController(CarControllerBase):
 
         # Update actuators
         new_actuators = actuators.as_builder()
-        new_actuators.torque = self.apply_steer_last / self.params.STEER_MAX if self.params.STEER_MAX else 0
-        new_actuators.torqueOutputCan = self.apply_steer_last
+        new_actuators.torque = float(self.apply_steer_last / self.params.STEER_MAX) if self.params.STEER_MAX else 0.0
+        new_actuators.torqueOutputCan = int(self.apply_steer_last)
         if long_active:
-            new_actuators.accel = actuators.accel
+            new_actuators.accel = float(actuators.accel)
 
         self.frame += 1
         return new_actuators, can_sends
