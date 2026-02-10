@@ -209,8 +209,9 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == 0) {
     // Bus 0 → Bus 2 方向:
-    // 阻止 openpilot 发送的消息回传到 Bus 2（避免 MPC 收到冲突消息）
-    if (controls_allowed || !byd_stock_longitudinal) {
+    // 阻止 openpilot 发送的消息回传到 Bus 2（避免原厂 MPC 收到冲突消息）
+    // 条件: 横向或纵向激活，或者非 stock longitudinal 模式
+    if (is_lat_active() || !byd_stock_longitudinal) {
       if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
           (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
@@ -220,11 +221,27 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == 2) {
     // Bus 2 → Bus 0 方向:
-    // 当 openpilot 正在控制时，阻止原厂 MPC 的 790/813/814/815 到达 EPS/ESP
+    // 当 openpilot 正在控制时，阻止原厂 MPC 对应消息到达 EPS/ESP
     // 当 openpilot 未控制时，放行原厂 MPC 消息（保持原厂功能正常）
+    //
+    // 关键修复: 分别处理横向和纵向消息
+    //
+    // 790 (ACC_MPC_STATE) — 转向控制消息:
+    //   使用 is_lat_active() 判断。MADS 模式下按 ACC 开关只激活横向控制
+    //   (controls_allowed_lat=true)，不会设置 controls_allowed=true。
+    //   如果只检查 controls_allowed，横向激活时原厂 MPC 的 790 仍会转发到 Bus 0，
+    //   与 openpilot 发送的 790 冲突 → CAN 总线仲裁错误 → canValid=false
+    //   → locationd inputsOK=false → "communication issue" → "locationd temporary error"
+    //
+    // 813/814/815 — 纵向控制消息 (ACC HUD/CMD/AEB):
+    //   使用 controls_allowed 判断。只有按 RES/SET engage 后才发送替代消息。
+    //   横向-only 模式下，openpilot 不发送 813/814/815，
+    //   所以必须让原厂 MPC 的 813/814/815 继续通过，否则 ACC/AEB 系统会报错。
+    if (is_lat_active() && (addr == BYD_ACC_MPC_STATE)) {
+      return true;
+    }
     if (controls_allowed) {
-      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+      if ((addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
       }
     }
