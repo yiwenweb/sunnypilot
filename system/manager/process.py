@@ -50,6 +50,13 @@ def launcher(proc: str, name: str) -> None:
 def nativelauncher(pargs: list[str], cwd: str, name: str) -> None:
   os.environ['MANAGER_DAEMON'] = name
 
+  # UI 翻译覆盖: 如果存在翻译覆盖 .so，通过 LD_PRELOAD 注入
+  # 这样 git pull 不会破坏翻译，只要 .so 文件存在就自动生效
+  if name == "ui":
+    tr_so = os.path.join(BASEDIR, "selfdrive", "ui", "libui_translations_override.so")
+    if os.path.isfile(tr_so):
+      os.environ['LD_PRELOAD'] = tr_so
+
   # exec the process
   os.chdir(cwd)
   os.execvp(pargs[0], pargs)

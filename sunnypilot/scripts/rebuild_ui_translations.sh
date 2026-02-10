@@ -1,9 +1,10 @@
 #!/bin/bash
 # ============================================================
-# 在 C3 上重编译翻译资源并注入 UI
+# 在 C3 上重编译翻译资源并生成覆盖库
 #
-# 原理: 用 rcc 把新的 .qm 编译成 C++ 源码，再编译成共享库，
-#       通过 LD_PRELOAD 在 UI 启动时加载，覆盖内嵌的旧翻译。
+# 原理: 用 rcc 把新的 .qm 编译成 C++ 源码，再编译成共享库。
+#       manager 启动 UI 时自动通过 LD_PRELOAD 加载，覆盖内嵌的旧翻译。
+#       (逻辑在 system/manager/process.py 的 nativelauncher 中)
 #
 # 用法: SSH 到 C3:
 #   cd /data/openpilot
@@ -15,20 +16,24 @@ cd "$BASEDIR"
 
 echo "=== 重编译翻译资源 ==="
 
-# 1. 拉取最新代码
-REMOTE=$(git remote | head -1)
-echo "[1/5] 拉取最新代码 (remote: $REMOTE)..."
-git pull "$REMOTE" staging-tici 2>/dev/null || echo "⚠ pull 失败，继续"
-echo "  .qm 大小: $(stat -c%s selfdrive/ui/translations/main_zh-CHS.qm) bytes"
-echo "  未翻译: $(grep -c 'type=\"unfinished\"' selfdrive/ui/translations/main_zh-CHS.ts 2>/dev/null || echo 0)"
-
-# 2. 用 rcc 编译资源为 C++ 源码
-echo ""
-echo "[2/5] 生成资源 C++ 源码..."
-
 TR_DIR="$BASEDIR/selfdrive/ui/translations"
+OUTPUT_SO="$BASEDIR/selfdrive/ui/libui_translations_override.so"
 
-# 生成 qrc 文件（使用绝对路径）
+echo "[1/4] 检查 .qm 文件..."
+echo "  zh-CHS.qm: $(stat -c%s "$TR_DIR/main_zh-CHS.qm" 2>/dev/null || echo '不存在') bytes"
+echo "  .ts 未翻译: $(grep -c 'type="unfinished"' "$TR_DIR/main_zh-CHS.ts" 2>/dev/null || echo 0)"
+
+# 如果之前有 wrapper 脚本方案的残留，恢复原始 ui
+if [ -f "$BASEDIR/selfdrive/ui/ui.real" ]; then
+    echo "  检测到旧方案残留，恢复原始 ui..."
+    cp "$BASEDIR/selfdrive/ui/ui.real" "$BASEDIR/selfdrive/ui/ui"
+    rm -f "$BASEDIR/selfdrive/ui/ui.real"
+    echo "  已恢复"
+fi
+
+echo ""
+echo "[2/4] 生成资源 C++ 源码..."
+
 cat > /tmp/translations_assets.qrc << EOF
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
@@ -51,57 +56,27 @@ EOF
 rcc /tmp/translations_assets.qrc -o /tmp/translations_res.cc
 echo "  translations_res.cc: $(stat -c%s /tmp/translations_res.cc) bytes"
 
-# 3. 编译为共享库
 echo ""
-echo "[3/5] 编译共享库..."
-g++ -shared -fPIC /tmp/translations_res.cc -o /tmp/libui_translations_override.so \
+echo "[3/4] 编译共享库..."
+g++ -shared -fPIC /tmp/translations_res.cc -o "$OUTPUT_SO" \
     $(pkg-config --cflags --libs Qt5Core)
-echo "  libui_translations_override.so: $(stat -c%s /tmp/libui_translations_override.so) bytes"
+echo "  libui_translations_override.so: $(stat -c%s "$OUTPUT_SO") bytes"
 
-# 复制到 openpilot 目录
-cp /tmp/libui_translations_override.so "$BASEDIR/selfdrive/ui/libui_translations_override.so"
-
-# 4. 修改 UI 启动方式，注入 LD_PRELOAD
 echo ""
-echo "[4/5] 配置 LD_PRELOAD 启动..."
-
-# 备份原始 ui
-if [ ! -f "$BASEDIR/selfdrive/ui/ui.real" ]; then
-    cp "$BASEDIR/selfdrive/ui/ui" "$BASEDIR/selfdrive/ui/ui.real"
-    echo "  已备份 ui -> ui.real"
-else
-    echo "  ui.real 已存在，跳过备份"
-fi
-
-# 创建 wrapper 脚本替代原始 ui
-cat > "$BASEDIR/selfdrive/ui/ui" << 'WRAPPER'
-#!/bin/bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-export LD_PRELOAD="$DIR/libui_translations_override.so"
-exec "$DIR/ui.real" "$@"
-WRAPPER
-chmod +x "$BASEDIR/selfdrive/ui/ui"
-
-echo "  wrapper 脚本已创建"
-
-# 5. 清理
-echo ""
-echo "[5/5] 清理临时文件..."
-rm -f /tmp/translations_res.cc /tmp/translations_assets.qrc /tmp/libui_translations_override.so
-rm -f SConstruct 2>/dev/null
-rm -rf site_scons/ 2>/dev/null
-[ -f prebuilt.disabled ] && mv prebuilt.disabled prebuilt
+echo "[4/4] 清理临时文件..."
+rm -f /tmp/translations_res.cc /tmp/translations_assets.qrc
 
 echo ""
 echo "========================================="
 echo "  ✅ 完成！"
 echo ""
+echo "  翻译覆盖库已生成: $OUTPUT_SO"
+echo "  manager 启动 UI 时会自动通过 LD_PRELOAD 加载"
+echo ""
 echo "  重启以加载新翻译:"
 echo "    sudo reboot"
 echo ""
-echo "  如需恢复原始 UI:"
-echo "    cd /data/openpilot"
-echo "    cp selfdrive/ui/ui.real selfdrive/ui/ui"
-echo "    rm selfdrive/ui/libui_translations_override.so"
+echo "  如需移除翻译覆盖:"
+echo "    rm $OUTPUT_SO"
 echo "    sudo reboot"
 echo "========================================="
