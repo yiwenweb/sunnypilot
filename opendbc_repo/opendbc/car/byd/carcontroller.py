@@ -60,7 +60,7 @@ class CarController(CarControllerBase):
             # 直接发送 LKAS_Active=1 + 扭矩。
             # 先发 ReqPrepare=1 几帧，然后直接激活。
             lkas_active = lat_active
-            lkas_req_prepare = lat_active
+            lkas_req_prepare = False  # 旧版本 cabana 分析: ReqPrepare 大部分时间=0
 
             can_sends.append(create_steering_control(
                 self.packer, self.CP, CS,

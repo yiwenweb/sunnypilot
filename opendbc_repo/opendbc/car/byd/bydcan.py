@@ -79,15 +79,19 @@ def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
     values["LKAS_ReqPrepare"] = 1 if req_prepare else 0
 
     if active:
-        # LKAS激活: 切换到 LKA 模式
+        # LKAS激活: 保持原厂格式，只改 Output 和 Active
+        # cabana 旧版本分析:
+        #   - LKAS_Config 始终=1 (ALARM)，不切换到 3 (ALARM_AND_LKA)
+        #   - LKAS_State 始终=7，不切换到 2
+        #   - ReqPrepare 大部分时间=0，只偶尔闪烁=1
+        #   - Active=1 时直接输出 torque，EPS 立即响应
         values.update({
             "LKAS_Output": req_torque,
             "LKAS_Active": 1,
-            "LKAS_Config": 3,         # ALARM_AND_LKA — 激活时切换到 LKA 模式
-            "LKAS_State": 2,          # 正常控制状态
+            # 保持原厂值: Config=1(ALARM), State=7
             # 车道线状态 (根据HUD控制更新)
-            "LeftLaneState": 3 if hud_control.leftLaneDepart else (2 if hud_control.leftLaneVisible else 1),
-            "RightLaneState": 3 if hud_control.rightLaneDepart else (2 if hud_control.rightLaneVisible else 1),
+            "LeftLaneState": 2 if hud_control.leftLaneVisible else 0,
+            "RightLaneState": 2 if hud_control.rightLaneVisible else 0,
         })
 
     # 计算校验和
