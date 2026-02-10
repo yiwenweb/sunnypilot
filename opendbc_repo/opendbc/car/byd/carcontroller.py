@@ -52,7 +52,11 @@ class CarController(CarControllerBase):
 
         if lat_active or CC.enabled:
             # 790 (ACC_MPC_STATE) on Bus 0 — every frame (100Hz)
-            lkas_active = lat_active and CS.lkas_prepared
+            # 注意: EPS 空闲时 LKAS_Prepared 始终为 0，TorqueFail=1 SteerWarn=1
+            # 这是 EPS 的默认状态，不是错误。旧版本可能不检查 LKAS_Prepared，
+            # 直接发送 LKAS_Active=1 + 扭矩。
+            # 先发 ReqPrepare=1 几帧，然后直接激活。
+            lkas_active = lat_active
             lkas_req_prepare = lat_active
 
             can_sends.append(create_steering_control(
