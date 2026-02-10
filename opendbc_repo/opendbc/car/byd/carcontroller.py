@@ -81,7 +81,7 @@ class CarController(CarControllerBase):
                     hud_set_speed = CC.hudControl.setSpeed * 3.6
                 else:
                     # 横向-only: 用当前车速+10 km/h 作为显示速度，最低30
-                    hud_set_speed = max(30.0, CS.vEgoCluster * 3.6 + 10.0)
+                    hud_set_speed = max(30.0, CS.out.vEgoCluster * 3.6 + 10.0)
 
                 can_sends.append(create_acc_hud(
                     self.packer, self.CP, CS,
