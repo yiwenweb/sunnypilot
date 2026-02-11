@@ -83,6 +83,10 @@ class CarInterface(CarInterfaceBase):
         ret.steerActuatorDelay = 0.3
         ret.steerLimitTimer = 0.5
 
+        # 允许停车时转向 — BYD EPS 在停车时也能接受扭矩指令
+        # 如果不设置，controlsd 会在 vEgo < 0.3 时强制 latActive=False
+        ret.steerAtStandstill = True
+
         # ========== 车型专属参数 ==========
         if candidate == CAR.BYD_TANG_DM_2018:
             # 比亚迪唐DM 2018款
