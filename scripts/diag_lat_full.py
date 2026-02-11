@@ -60,6 +60,17 @@ def main():
         print("  openpilot 可能没有运行")
         return
 
+    # 等待 carParams (每50秒发布一次，最多等60秒)
+    print("等待 carParams (最多60秒)...")
+    got_params = False
+    for _ in range(600):
+        sm.update(100)
+        if sm.updated['carParams'] and sm['carParams'].brand != "":
+            got_params = True
+            break
+    if not got_params:
+        print("  *** 警告: 未收到有效 carParams，显示当前值 (可能是默认值)")
+
     # 3. 检查 carParams
     print("\n--- 3. CarParams ---")
     cp = sm['carParams']
