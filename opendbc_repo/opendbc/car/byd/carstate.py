@@ -58,6 +58,8 @@ class CarState(CarStateBase):
         # Button states for change detection
         self.cruise_buttons_prev = 0
         self.main_on_prev = False
+        self.main_on = False
+        self.acc_toggle_pressed_prev = False
         self.cancel_button_prev = 0
         self.distance_decrease_prev = 0
         self.distance_increase_prev = 0
@@ -211,10 +213,12 @@ class CarState(CarStateBase):
         # 所以 Bus 2 上的 813 是 openpilot 自己发的，不是原厂 MPC 的。
         # 因此不能从 Bus 2 的 813 读取 AccState。
         #
-        # BTN_TOGGLE_ACC_OnOff 是状态信号（不是脉冲）:
-        #   1 = ACC 已开启, 0 = ACC 已关闭
-        # 直接用作 cruiseState.available
-        main_on = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
+        # BTN_TOGGLE_ACC_OnOff 是按键脉冲（按下/释放），需要在软件侧做开关状态锁存
+        acc_toggle_pressed = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
+        if acc_toggle_pressed and not self.acc_toggle_pressed_prev:
+            self.main_on = not self.main_on
+        self.acc_toggle_pressed_prev = acc_toggle_pressed
+        main_on = self.main_on
 
         ret.cruiseState.available = main_on
 

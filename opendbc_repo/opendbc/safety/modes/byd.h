@@ -70,6 +70,7 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
 };
 
 static bool byd_stock_longitudinal = false;
+static bool byd_acc_toggle_pressed_prev = false;
 
 static void byd_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == BYD_MAIN_BUS) {
@@ -124,13 +125,15 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     }
 
     // Update acc_main_on from PCM_BUTTONS (944)
-    // BTN_TOGGLE_ACC_OnOff at bit 8 — this is a state signal (1=ACC on, 0=ACC off)
-    // With pcmCruise=False, openpilot manages controls_allowed via heartbeat.
-    // acc_main_on is used by MADS for lateral-only activation.
     if (msg->addr == BYD_PCM_BUTTONS) {
-      bool prev_acc = acc_main_on;
-      acc_main_on = GET_BIT(msg, 8U);
-      mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+      const bool toggle_pressed = GET_BIT(msg, 8U);
+      const bool prev_acc = acc_main_on;
+      if (toggle_pressed && !byd_acc_toggle_pressed_prev) {
+        acc_main_on = !acc_main_on;
+      }
+      byd_acc_toggle_pressed_prev = toggle_pressed;
+
+      mads_button_press = toggle_pressed ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
 
       // 直接控制 controls_allowed_lat — 绕过 MADS 状态机
       // MADS 状态机通过 mads_state_update → m_update_control_state 来设置
