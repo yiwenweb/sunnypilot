@@ -74,20 +74,29 @@ def decode_792(dat):
     }
 
 def main():
-    sm = messaging.SubMaster(['can', 'carControl', 'carState', 'carParams'])
+    sm = messaging.SubMaster(['can', 'carControl', 'carState'])
 
     print("=== EPS 转向响应监控 ===")
     print("等待数据...")
 
-    # 等待 carParams
-    for _ in range(600):
+    # 等待 carState 先到
+    for _ in range(50):
         sm.update(100)
-        if sm.updated['carParams'] and sm['carParams'].brand:
+        if sm.updated['carState']:
             break
 
-    cp = sm['carParams']
-    print(f"brand={cp.brand} fp={cp.carFingerprint} safety={cp.safetyConfigs[0].safetyModel if cp.safetyConfigs else '?'}")
-    print(f"steerAtStandstill={cp.steerAtStandstill} altExp={cp.alternativeExperience}")
+    # 从 Params 直接读 carParams（避免 50 秒发布周期问题）
+    from cereal import car
+    from openpilot.common.params import Params
+    params = Params()
+    cp_raw = params.get("CarParams")
+    if cp_raw:
+        with car.CarParams.from_bytes(cp_raw) as cp:
+            print(f"brand={cp.brand} fp={cp.carFingerprint} safety={cp.safetyConfigs[0].safetyModel if cp.safetyConfigs else '?'}")
+            print(f"steerAtStandstill={cp.steerAtStandstill} altExp={cp.alternativeExperience}")
+    else:
+        print("*** CarParams 未找到!")
+
     print()
     print("格式: 790(发送) → 792(EPS响应) | carControl")
     print("-" * 100)
@@ -100,7 +109,7 @@ def main():
             sm.update(50)
 
             if sm.updated['can']:
-                for msg in sm['can'].can:
+                for msg in sm['can']:
                     bus = msg.src
                     addr = msg.address
                     dat = msg.dat
