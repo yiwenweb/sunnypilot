@@ -33,20 +33,62 @@ FINGERPRINTS = {
     #   792 (ACC_EPS_STATE), 813 (ACC_HUD_ADAS), 814 (ACC_CMD),
     #   834 (PEDAL), 944 (PCM_BUTTONS)
     # BYD Tang DM 2018
-    # Bus 0 messages only (ACC/LKAS messages are on Bus 2)
+    # 必须包含 Bus 0 上所有 < 0x800 的消息 ID，否则 fingerprint 匹配会失败
+    # （eliminate_incompatible_cars 会因为未知消息而淘汰候选车型）
+    # 数据来源: 实际 CAN 总线抓包 (2025)
     CAR.BYD_TANG_DM_2018: [{
-        85: 8,    # EPB - Electronic parking brake
-        287: 5,   # EPS - Steering angle/rate (5-byte message)
-        289: 8,   # CARSPEED - Vehicle speed display
-        301: 8,   # BCM - Body control (door status)
-        307: 8,   # STALKS - Lights/turn signals
-        546: 8,   # YAW_RATE - Yaw rate
-        547: 8,   # AXAY - Acceleration
-        578: 8,   # DRIVE_STATE - Gear/brake
-        660: 8,   # BELT - Seatbelt status
-        694: 8,   # DATETIME - Date/time
-        834: 8,   # PEDAL - Pedal status
-        944: 8,   # PCM_BUTTONS - Cruise buttons
+        85: 8,    # EPB
+        140: 8,
+        269: 8,
+        270: 8,
+        287: 5,   # EPS (5-byte)
+        289: 8,   # CARSPEED
+        290: 8,
+        291: 8,
+        301: 8,   # BCM
+        307: 8,   # STALKS
+        315: 8,
+        464: 8,
+        496: 8,
+        522: 8,
+        523: 8,
+        527: 8,
+        530: 8,
+        536: 8,
+        537: 8,
+        544: 8,
+        546: 8,   # YAW_RATE
+        547: 8,   # AXAY
+        576: 8,
+        577: 8,
+        578: 8,   # DRIVE_STATE
+        588: 8,
+        593: 8,
+        596: 8,
+        636: 8,
+        660: 8,   # BELT
+        694: 8,   # DATETIME
+        784: 8,
+        788: 8,
+        790: 8,   # ACC_MPC_STATE (原厂 MPC 发送)
+        792: 8,   # ACC_EPS_STATE
+        800: 8,
+        801: 8,
+        802: 8,
+        813: 8,   # ACC_HUD_ADAS (原厂 MPC 发送)
+        814: 8,   # ACC_CMD (原厂 MPC 发送)
+        815: 8,   # ACC_AEB (原厂 MPC 发送)
+        833: 8,
+        834: 8,   # PEDAL
+        836: 8,
+        854: 8,
+        860: 8,
+        916: 8,
+        926: 8,
+        944: 8,   # PCM_BUTTONS
+        948: 8,
+        973: 8,
+        985: 8,
     }],
 
     # BYD Han EV 2020
