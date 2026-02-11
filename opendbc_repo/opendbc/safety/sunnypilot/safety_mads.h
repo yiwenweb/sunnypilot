@@ -18,6 +18,7 @@ MADSState m_mads_state;
 
 // state for mads controls_allowed_lat timeout logic
 bool heartbeat_engaged_mads = false;  // MADS enabled, passed in heartbeat USB command
+bool heartbeat_engaged_mads_supported = false;  // true once we observe engaged_mads=true at least once
 uint32_t heartbeat_engaged_mads_mismatches = 0U;  // count of mismatches between heartbeat_engaged_mads and controls_allowed_lat
 
 // ===============================
@@ -131,6 +132,15 @@ inline void m_update_control_state(void) {
 }
 
 inline void mads_heartbeat_engaged_check(void) {
+  if (heartbeat_engaged_mads) {
+    heartbeat_engaged_mads_supported = true;
+  }
+
+  if (!heartbeat_engaged_mads_supported) {
+    heartbeat_engaged_mads_mismatches = 0U;
+    return;
+  }
+
   if (m_mads_state.controls_allowed_lat && !heartbeat_engaged_mads) {
     heartbeat_engaged_mads_mismatches += 1U;
     if (heartbeat_engaged_mads_mismatches >= 3U) {
@@ -158,6 +168,8 @@ extern inline void mads_set_system_state(const bool enabled, const bool disengag
   m_mads_state.system_enabled = enabled;
   m_mads_state.disengage_lateral_on_brake = disengage_lateral_on_brake;
   m_mads_state.pause_lateral_on_brake = pause_lateral_on_brake;
+  heartbeat_engaged_mads_supported = false;
+  heartbeat_engaged_mads_mismatches = 0U;
 }
 
 inline void mads_exit_controls(const DisengageReason reason) {

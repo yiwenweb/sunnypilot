@@ -126,29 +126,8 @@ static void byd_rx_hook(const CANPacket_t *msg) {
 
     // Update acc_main_on from PCM_BUTTONS (944)
     if (msg->addr == BYD_PCM_BUTTONS) {
-      const bool toggle_pressed = GET_BIT(msg, 8U);
-      const bool prev_acc = acc_main_on;
-      if (toggle_pressed && !byd_acc_toggle_pressed_prev) {
-        acc_main_on = !acc_main_on;
-      }
-      byd_acc_toggle_pressed_prev = toggle_pressed;
-
-      mads_button_press = toggle_pressed ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
-
-      // 直接控制 controls_allowed_lat — 绕过 MADS 状态机
-      // MADS 状态机通过 mads_state_update → m_update_control_state 来设置
-      // controls_allowed_lat，但在实际测试中始终无法正常工作。
-      // 可能原因: mads_state_update 在 578(50Hz) 上调用，而 944(20Hz) 频率更低，
-      // 导致 edge detection 时序问题，或者 m_mads_state_init 被反复调用重置状态。
-      // 直接方案: ACC ON → controls_allowed_lat=true, ACC OFF → false
-      if (acc_main_on && !prev_acc) {
-        // ACC OFF→ON: 激活横向控制
-        m_mads_state.controls_allowed_lat = true;
-        m_mads_state.system_enabled = true;
-      } else if (!acc_main_on && prev_acc) {
-        // ACC ON→OFF: 关闭横向控制
-        m_mads_state.controls_allowed_lat = false;
-      }
+      acc_main_on = GET_BIT(msg, 8U);
+      mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
     }
 
     // 关键修复: 手动调用 mads_state_update
@@ -256,13 +235,18 @@ static bool byd_fwd_hook(int bus_num, int addr) {
   //   否则 EPS/ESP 收到两套冲突的消息 → AEB/安全系统报错。
   //   当 openpilot 不控制时，让原厂 MPC 消息正常通过。
 
+  const bool op_lat_active = mads_is_lateral_control_allowed_by_mads();
+  const bool op_active = controls_allowed || op_lat_active;
+
   if (bus_num == 0) {
     // Bus 0 → Bus 2 方向:
     // 阻止 openpilot 发送的消息回传到 Bus 2（避免原厂 MPC 收到冲突消息）
     // 条件: 横向或纵向激活，或者非 stock longitudinal 模式
-    if (is_lat_active() || !byd_stock_longitudinal) {
-      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+    if (op_active) {
+      if (addr == BYD_ACC_MPC_STATE) {
+        return true;
+      }
+      if (!byd_stock_longitudinal && ((addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB))) {
         return true;
       }
     }
@@ -286,18 +270,11 @@ static bool byd_fwd_hook(int bus_num, int addr) {
     //   使用 controls_allowed 判断。只有按 RES/SET engage 后才发送替代消息。
     //   横向-only 模式下，openpilot 不发送 813/814/815，
     //   所以必须让原厂 MPC 的 813/814/815 继续通过，否则 ACC/AEB 系统会报错。
-    // 横向激活时: 阻止所有 ACC 消息 (790/813/814/815)
-    // openpilot 在 latActive 时发送全套 ACC 消息（814/815 用空闲值），
-    // 必须阻止原厂 MPC 的对应消息，否则 EPS/ESP 收到两套冲突消息。
-    if (is_lat_active()) {
-      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+    if (op_active) {
+      if (addr == BYD_ACC_MPC_STATE) {
         return true;
       }
-    }
-    // 纵向激活时: 同样阻止（is_lat_active 可能不包含纵向-only 场景）
-    if (controls_allowed) {
-      if ((addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+      if (!byd_stock_longitudinal && ((addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB))) {
         return true;
       }
     }
