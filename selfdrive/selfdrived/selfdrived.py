@@ -131,6 +131,9 @@ class SelfdriveD(CruiseHelper):
     self.not_running_prev = None
     self.experimental_mode = False
     self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+    if self.personality not in LONGITUDINAL_PERSONALITY_MAP:
+      self.personality = log.LongitudinalPersonality.standard
+      self.params.put_nonblocking('LongitudinalPersonality', self.personality)
     self.recalibrating_seen = False
     self.state_machine = StateMachine()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
@@ -583,6 +586,9 @@ class SelfdriveD(CruiseHelper):
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+      if self.personality not in LONGITUDINAL_PERSONALITY_MAP:
+        self.personality = log.LongitudinalPersonality.standard
+        self.params.put_nonblocking('LongitudinalPersonality', self.personality)
 
       self.mads.read_params()
       time.sleep(0.1)
