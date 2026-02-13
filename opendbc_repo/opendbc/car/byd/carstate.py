@@ -23,7 +23,7 @@ from opendbc.can import CANParser
 from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.byd.values import DBC
+from opendbc.car.byd.values import DBC, STEER_THRESHOLD
 
 ButtonType = structs.CarState.ButtonEvent.Type
 GearShifter = structs.CarState.GearShifter
@@ -108,13 +108,11 @@ class CarState(CarStateBase):
 
         self.frame += 1
 
-        # ===================== 核心修正：车速解析 (CarDisplaySpeed) =====================
-        # 原厂规范：CarDisplaySpeed (12-bit) = 物理车速 / 0.0735 km/h
-        # 修正前错误：scale=1 km/h；修正后：scale=0.0735 km/h（匹配DBC修正点）
-        # DBC信号定义：CarDisplaySpeed : 0|12@1+ (0.0735,0) [0|255] "km/h"
-        v_ego_raw = cp.vl["CARSPEED"]["CarDisplaySpeed"]  # 原始12位值
-        v_ego_kmh = v_ego_raw * 0.0735                    # 转换为物理车速（km/h）
-        ret.vEgoRaw = v_ego_kmh * CV.KPH_TO_MS            # 转换为m/s（openpilot标准单位）
+        # ===================== 车速解析 (CarDisplaySpeed) =====================
+        # DBC 定义: CarDisplaySpeed : 0|12@1+ (0.0735,0) [0|255] "km/h"
+        # CANParser 自动应用 scale=0.0735，返回值已经是物理车速 km/h
+        v_ego_kmh = cp.vl["CARSPEED"]["CarDisplaySpeed"]
+        ret.vEgoRaw = v_ego_kmh * CV.KPH_TO_MS
 
         # Apply Kalman filtering for smooth velocity estimation (Requirement 6.3)
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
@@ -143,8 +141,8 @@ class CarState(CarStateBase):
         ret.steeringTorque = self.steer_torque_driver
         ret.steeringTorqueEps = self.steer_torque_motor
 
-        # 修正：方向盘脱手检测阈值改为5Nm（原厂规则），原50过大导致误判
-        ret.steeringPressed = abs(self.steer_torque_driver) > 5
+        # 方向盘脱手检测：使用 STEER_THRESHOLD（values.py 中定义为 50）
+        ret.steeringPressed = self.update_steering_pressed(abs(self.steer_torque_driver) > STEER_THRESHOLD, 5)
 
         # ===================== 转向故障检测（匹配EPS保护机制） =====================
         # 核心修正：补充steerFault检测（TorqueFailed/SteerWarning触发）

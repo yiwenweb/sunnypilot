@@ -149,7 +149,7 @@ BO_ 790 ACC_MPC_STATE: 8 MPC
  SG_ ReqHandsOnSteeringWheel : 10|1@1+ (1,0) [0|1] "" VCU
  SG_ MPC_State : 11|4@1+ (1,0) [0|15] "" VCU
  SG_ AutoFullBeam_OnOff : 15|1@0+ (1,0) [0|1] "" VCU
- SG_ LKAS_Output : 16|11@1- (1,0) [-5|5] "" EPS  // 修正LKAS扭矩限制为原厂±5Nm
+ SG_ LKAS_Output : 16|11@1- (1,0) [-1024|1023] "" EPS
  SG_ LKAS_ReqPrepare : 27|1@1+ (1,0) [0|1] "" EPS
  SG_ LKAS_Active : 28|1@1+ (1,0) [0|1] "" EPS,VCU
  SG_ SETME3_0x0 : 29|1@0+ (1,0) [0|1] "" VCU [RESERVED - NO FUNCTION]
@@ -161,7 +161,6 @@ BO_ 790 ACC_MPC_STATE: 8 MPC
  SG_ TrafficSignRecognition_Result : 40|8@1+ (5,-5) [-5|1270] "km/h" VCU
  SG_ LKAS_AlarmType : 49|2@0+ (1,0) [0|3] "" VCU
  SG_ SETME7_0x3 : 51|2@0+ (1,0) [0|3] "" VCU [RESERVED - NO FUNCTION]
- SG_ ACC_FaultCode : 44|8@1+ (1,0) [0|255] "" VCU  // 补充ACC故障码信号
  SG_ COUNTER : 52|4@1+ (1,0) [0|15] "" VCU
  SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" VCU
 
@@ -242,8 +241,7 @@ BO_ 884 RADAR_MRR: 8 EPS
  SG_ TargetSpeed : 33|12@1- (0.05,-128) [-128|127.95] "km/h" MPC
  SG_ TargetAccel : 45|8@1- (0.1,-10) [-10|15.5] "m/s²" MPC
  SG_ Confidence : 53|2@1+ (1,0) [0|3] "" MPC
- SG_ COUNTER : 55|4@1+ (1,0) [0|15] "" MPC
- SG_ CHECKSUM : 59|8@1+ (1,0) [0|255] "" MPC
+ SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" MPC
 // ====== RADAR_MRR替换完成 ======
 
 BO_ 944 PCM_BUTTONS: 8 BCM
@@ -306,7 +304,6 @@ CM_ SG_ 790 LKAS_Config "LKAS配置 [VERIFIED] - 0=禁用, 1=报警, 2=LKA, 3=�
 CM_ SG_ 790 LKAS_AlarmType "报警类型 [VERIFIED] - 0=振动, 1=声音, 2=声音+振动";
 CM_ SG_ 790 LKAS_State "LKAS状态 [PARTIAL] - 4-bit state machine, values need documentation";
 CM_ SG_ 790 MPC_State "MPC状态 [PARTIAL] - 4-bit state machine:0=待机,1=ACC激活,2=LKA激活,3=ACC+LKA激活";
-CM_ SG_ 790 ACC_FaultCode "ACC故障码 [VERIFIED] - 0=无故障,1=雷达故障,2=EPS故障,3=车速信号故障";
 CM_ "";
 CM_ "--- ACC_EPS_STATE (792) Signals ---";
 CM_ SG_ 792 LKAS_Prepared "LKAS准备状态 [VERIFIED] - 1=准备就绪, 0=未准备 (适配0km/h激活)";
@@ -365,7 +362,7 @@ CM_ BO_ 547 "AXAY - 加速度 [VERIFIED] - 12-bit, scale 0.027167, offset -21.59
 CM_ BO_ 578 "DRIVE_STATE - 档位/刹车 [VERIFIED] - Gear bit 40-42, BrakePressed bit 37 confirmed (制动优先级最高)";
 CM_ BO_ 660 "BELT - 安全带状态 [VERIFIED] - secondary seatbelt message";
 CM_ BO_ 694 "DATETIME - 日期时间 [VERIFIED] - system date/time broadcast";
-CM_ BO_ 790 "ACC_MPC_STATE - LKAS控制/状态 [PARTIAL] - Status signals verified, LKAS_Output control signal UNVERIFIED (扭矩限制±5Nm)";
+CM_ BO_ 790 "ACC_MPC_STATE - LKAS控制/状态 [PARTIAL] - Status signals verified, LKAS_Output control signal UNVERIFIED (11-bit signed, range ±1023)";
 CM_ BO_ 792 "ACC_EPS_STATE - EPS反馈 [VERIFIED] - MainTorque/SteerDriverTorque 12-bit signed confirmed (含脱手检测)";
 CM_ BO_ 813 "ACC_HUD_ADAS - ACC HUD显示 [VERIFIED] - SetSpeed 9-bit 0.5 scale, AccState 3-bit confirmed (适配0km/h激活)";
 CM_ BO_ 814 "ACC_CMD - ACC控制指令 [VERIFIED] - AccelCmd 8-bit, scale 0.05, offset -5 confirmed (适配0km/h激活)";
@@ -376,7 +373,7 @@ CM_ BO_ 944 "PCM_BUTTONS - 巡航按钮 [VERIFIED] - button signals match refere
 CM_ BO_ 1048 "BSD_RADAR - 盲点监测 [VERIFIED] - blind spot detection signals";
 CM_ "";
 CM_ "=== UNVERIFIED SIGNALS - DO NOT USE FOR CONTROL ===";
-CM_ SG_ 790 LKAS_Output "LKAS转向扭矩输出 [DO_NOT_USE] - 11-bit signed control signal, 扭矩限制±5Nm, DO NOT USE until validated on real vehicle";
+CM_ SG_ 790 LKAS_Output "LKAS转向扭矩输出 [DO_NOT_USE] - 11-bit signed control signal, range ±1023 (物理±5Nm), DO NOT USE until validated on real vehicle";
 CM_ SG_ 790 LKAS_Active "LKAS激活状态 [UNVERIFIED] - range changed from [0|3] to [0|1], needs real vehicle validation";
 CM_ SG_ 790 LKAS_ReqPrepare "LKAS请求准备 [UNVERIFIED] - control signal, needs validation";
 CM_ SG_ 815 AEB_Active "AEB激活标志 [UNVERIFIED] - signal not in reference DBC, needs vehicle validation";

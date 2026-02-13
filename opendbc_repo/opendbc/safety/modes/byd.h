@@ -255,11 +255,15 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == 0) {
     // Bus 0 → Bus 2 方向:
-    // 阻止 openpilot 发送的消息回传到 Bus 2（避免原厂 MPC 收到冲突消息）
-    // 条件: 横向或纵向激活，或者非 stock longitudinal 模式
-    if (is_lat_active() || !byd_stock_longitudinal) {
+    // 当 openpilot 控制时，阻止以下消息转发到 Bus 2:
+    // - 790/813/814/815: openpilot 在 Bus 0 上发送的控制消息，不应回传到 Bus 2
+    //   （避免原厂 MPC 收到冲突消息）
+    // - 792: 真实 EPS 反馈，openpilot 发送假的 792 到 Bus 2 替代
+    // 当 openpilot 未控制时，放行所有消息（保持原厂 MPC 正常工作）
+    if (is_lat_active() || controls_allowed) {
       if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
+          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB) ||
+          (addr == BYD_ACC_EPS_STATE)) {
         return true;
       }
     }
@@ -270,29 +274,18 @@ static bool byd_fwd_hook(int bus_num, int addr) {
     // 当 openpilot 正在控制时，阻止原厂 MPC 对应消息到达 EPS/ESP
     // 当 openpilot 未控制时，放行原厂 MPC 消息（保持原厂功能正常）
     //
-    // 关键修复: 分别处理横向和纵向消息
+    // 横向激活时 (is_lat_active):
+    //   openpilot 发送全套 ACC 消息 (790/813/814/815)，其中 814/815 用空闲值。
+    //   必须阻止原厂 MPC 的对应消息，否则 EPS/ESP 收到两套冲突消息。
     //
-    // 790 (ACC_MPC_STATE) — 转向控制消息:
-    //   使用 is_lat_active() 判断。MADS 模式下按 ACC 开关只激活横向控制
-    //   (controls_allowed_lat=true)，不会设置 controls_allowed=true。
-    //   如果只检查 controls_allowed，横向激活时原厂 MPC 的 790 仍会转发到 Bus 0，
-    //   与 openpilot 发送的 790 冲突 → CAN 总线仲裁错误 → canValid=false
-    //   → locationd inputsOK=false → "communication issue" → "locationd temporary error"
-    //
-    // 813/814/815 — 纵向控制消息 (ACC HUD/CMD/AEB):
-    //   使用 controls_allowed 判断。只有按 RES/SET engage 后才发送替代消息。
-    //   横向-only 模式下，openpilot 不发送 813/814/815，
-    //   所以必须让原厂 MPC 的 813/814/815 继续通过，否则 ACC/AEB 系统会报错。
-    // 横向激活时: 阻止所有 ACC 消息 (790/813/814/815)
-    // openpilot 在 latActive 时发送全套 ACC 消息（814/815 用空闲值），
-    // 必须阻止原厂 MPC 的对应消息，否则 EPS/ESP 收到两套冲突消息。
+    // 纵向激活时 (controls_allowed):
+    //   同样阻止 814/815（is_lat_active 可能不包含纵向-only 场景）
     if (is_lat_active()) {
       if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
           (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
       }
     }
-    // 纵向激活时: 同样阻止（is_lat_active 可能不包含纵向-only 场景）
     if (controls_allowed) {
       if ((addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
         return true;
@@ -334,6 +327,7 @@ static safety_config byd_init(uint16_t param) {
     {BYD_ACC_HUD_ADAS,  BYD_MAIN_BUS, 8, .check_relay = false},  // 813 - ACC HUD
     {BYD_ACC_CMD,        BYD_MAIN_BUS, 8, .check_relay = false},  // 814 - ACC command
     {BYD_ACC_AEB,        BYD_MAIN_BUS, 8, .check_relay = false},  // 815 - AEB
+    {BYD_ACC_EPS_STATE,  BYD_CAM_BUS,  8, .check_relay = false},  // 792 - Fake EPS feedback to MPC
     {BYD_PCM_BUTTONS_FWD, BYD_CAM_BUS, 8, .check_relay = false},  // 944 - Button forward to Bus 2
   };
 

@@ -12,127 +12,101 @@ including steering control, ACC commands, and HUD display messages.
 """
 
 import numpy as np
-import time
 
 from opendbc.car.byd.values import CanBus
-
-# 全局变量：用于方向盘脱手检测的计时（单位：秒）
-hands_off_start_time = None
 
 
 def byd_checksum(dat: bytes) -> int:
     """
-    计算BYD唐DM 2018款原厂补码校验和（修正核心错误）
+    计算BYD唐DM 2018款原厂补码校验和
     原厂算法：CHECKSUM = (0x100 - sum(前7字节) % 0x100) & 0xFF
-    替代原错误的"高低4位求和取反"算法，无byte_key参数（原厂无此参数）
-    
+
     参数:
         dat: CAN报文原始字节数据（长度≥7）
     返回:
         8位校验和值（0-255）
     """
-    # 仅取前7字节参与计算（校验和位byte7不参与）
     sum_7bytes = sum(dat[:7])
-    # 补码校验核心逻辑
     checksum = (0x100 - sum_7bytes % 0x100) & 0xFF
     return checksum
 
 
-def create_steering_control(packer, CP, CS, req_torque: int, req_prepare: bool,
-                            active: bool, hud_control, counter: int):
+def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
+                            active: bool, brake_pressed: bool, hud_control, counter: int):
     """
     生成转向控制报文 (ACC_MPC_STATE - 0x316 / 790)
-    MPC -> Panda -> EPS
-    
-    核心修正：
-    1. 限制LKAS扭矩为原厂±5Nm，避免触发EPS保护（故障码P1562）
-    2. 补充制动优先级逻辑：踩刹车立即关闭LKAS
-    3. 适配0km/h激活：LKAS_Config改为2（LKA模式）
-    
+
     参数:
         packer: CAN打包器
         CP: 车辆参数
-        CS: 车辆状态（含brakePressed等关键状态）
-        req_torque: 请求的转向扭矩（原始值，会被限制在±5Nm）
+        apply_torque: 请求的转向扭矩（原始值，11-bit signed [-1024, 1023]）
         req_prepare: 是否请求准备状态
         active: LKAS是否激活
+        brake_pressed: 刹车是否踩下（制动优先级）
         hud_control: HUD控制信息（车道线可见性）
         counter: 报文计数器 (0-15)
     """
-    # 原厂MPC空闲状态基准值（实车抓取，保证兼容性）
     values = {
-        "AutoFullBeamState": 2,       # AutoFullBeamInactive (和原厂一致)
-        "LeftLaneState": 0,           # GRAY (原厂空闲值)
-        "LKAS_Config": 2,             # 修正：改为2=LKA模式（适配0km/h激活），原1=仅报警
+        "AutoFullBeamState": 2,
+        "LeftLaneState": 0,
+        "LKAS_Config": 2,             # LKA模式（适配0km/h激活）
         "SETME2_0x1": 1,
         "ReqHandsOnSteeringWheel": 0,
         "MPC_State": 0,
-        "AutoFullBeam_OnOff": 1,      # 原厂默认值
-        "LKAS_Output": 0,             # 转向扭矩（后续限制±5Nm）
+        "AutoFullBeam_OnOff": 1,
+        "LKAS_Output": 0,
         "LKAS_ReqPrepare": 0,
-        "LKAS_Active": 0,             # LKAS激活标志（制动优先级会强制置0）
+        "LKAS_Active": 0,
         "SETME3_0x0": 0,
         "TrafficSignRecognition_OnOff": 0,
         "SETME4_0x0": 0,
         "SETME5_0x1": 1,
-        "RightLaneState": 0,          # GRAY (原厂空闲值)
-        "LKAS_State": 7,              # 原厂空闲值
+        "RightLaneState": 0,
+        "LKAS_State": 7,
         "TrafficSignRecognition_Result": 0,
         "LKAS_AlarmType": 0,
         "SETME7_0x3": 3,
         "COUNTER": counter,
-        "CHECKSUM": 0,                # 预留校验和位（最后计算）
+        "CHECKSUM": 0,
     }
 
-    # 更新LKAS准备状态
     values["LKAS_ReqPrepare"] = 1 if req_prepare else 0
 
-    # 制动优先级核心逻辑：踩刹车立即关闭LKAS（安全第一）
-    if getattr(CS, 'brakePressed', False):
-        active = False  # 强制关闭LKAS
+    # 制动优先级：踩刹车立即关闭LKAS
+    if brake_pressed:
+        active = False
         values["LKAS_Active"] = 0
         values["LKAS_Output"] = 0
     elif active:
-        # LKAS激活：仅修改必要参数，保持原厂格式兼容性
-        # 核心修正：限制LKAS扭矩为原厂±5Nm（避免EPS保护）
-        limited_torque = max(-5, min(5, req_torque))  # 原厂最大允许±5Nm
+        # LKAS_Output 是 11-bit signed，DBC scale=1，原始值直接映射到EPS扭矩
+        # apply_torque 已经被 apply_driver_steer_torque_limits 限制在 ±STEER_MAX(1023)
         values.update({
-            "LKAS_Output": limited_torque,            # 限制后扭矩值
-            "LKAS_Active": 1,                         # 激活LKAS
-            # 根据HUD更新车道线状态（提升显示准确性）
+            "LKAS_Output": apply_torque,
+            "LKAS_Active": 1,
             "LeftLaneState": 2 if hud_control.leftLaneVisible else 0,
             "RightLaneState": 2 if hud_control.rightLaneVisible else 0,
         })
 
-    # 计算原厂补码校验和（替换原错误算法）
     data = packer.make_can_msg("ACC_MPC_STATE", CanBus.PT, values)[1]
     values["CHECKSUM"] = byd_checksum(data)
 
     return packer.make_can_msg("ACC_MPC_STATE", CanBus.PT, values)
 
 
-def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare: bool,
-                             lkas_active: bool, enabled: bool):
+def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
+                             lkas_req_prepare: bool, lkas_active: bool, enabled: bool):
     """
     生成EPS反馈欺骗报文 (ACC_EPS_STATE - 0x318 / 792)
-    用于欺骗MPC，防止DTC故障码，保持AEB等安全功能正常工作
-    
-    核心修正：
-    1. 补充方向盘脱手检测逻辑（扭矩<5Nm持续15秒触发报警）
-    2. 修复校验和计算（使用原厂补码算法）
-    
+    发送到Bus 2，欺骗原厂MPC，防止DTC故障码，保持AEB等安全功能正常工作
+
     参数:
         packer: CAN打包器
-        CP: 车辆参数
-        CS: 车辆状态（含steeringTorque方向盘扭矩）
-        fake_torque: 伪造的扭矩反馈值
+        fake_torque: 伪造的EPS扭矩反馈值
+        driver_torque: 驾驶员方向盘扭矩（透传给MPC）
         lkas_req_prepare: LKAS准备请求状态
         lkas_active: LKAS激活状态
         enabled: openpilot是否启用
     """
-    global hands_off_start_time
-
-    # 原厂EPS空闲状态基准值
     values = {
         "LKAS_Prepared": 0,
         "CruiseActivated": 0,
@@ -142,30 +116,13 @@ def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare:
         "SteerErrorCode": 0,
         "MainTorque": 0,
         "SETME3_0x1": 1,
-        "ReportHandsNotOnSteeringWheel": 0,  # 脱手报警标志（核心补充）
+        "ReportHandsNotOnSteeringWheel": 0,
         "SETME4_0x3": 3,
-        "SteerDriverTorque": 0,              # 驾驶员方向盘扭矩（透传）
+        "SteerDriverTorque": int(driver_torque),
         "SETME5_0xFF": 0xF,
         "SETME6_0xFFF": 0xFFF,
     }
 
-    # 透传驾驶员方向盘扭矩（原厂脱手检测依据）
-    values["SteerDriverTorque"] = int(CS.steeringTorque) if hasattr(CS, 'steeringTorque') else 0
-
-    # 方向盘脱手检测逻辑（原厂规则：扭矩<5Nm持续15秒报警）
-    driver_torque = values["SteerDriverTorque"]
-    if enabled and abs(driver_torque) < 5:  # 扭矩<5Nm判定为脱手
-        if hands_off_start_time is None:
-            hands_off_start_time = time.time()  # 开始计时
-        elif time.time() - hands_off_start_time >= 15:  # 持续15秒
-            values["ReportHandsNotOnSteeringWheel"] = 1  # 触发脱手报警
-            values["SteerWarning"] = 1                   # 转向警告
-    else:
-        hands_off_start_time = None  # 重置计时（驾驶员接管）
-        values["ReportHandsNotOnSteeringWheel"] = 0
-        values["SteerWarning"] = 0
-
-    # 根据LKAS状态更新EPS反馈（防止故障码）
     if enabled:
         if lkas_active:
             values.update({
@@ -179,17 +136,10 @@ def create_fake_eps_feedback(packer, CP, CS, fake_torque: int, lkas_req_prepare:
                 "CruiseActivated": 0,
                 "MainTorque": 0,
             })
-        else:
-            values.update({
-                "LKAS_Prepared": 0,
-                "CruiseActivated": 0,
-                "MainTorque": 0,
-            })
 
-    # 生成报文并计算原厂补码校验和（修正原注释错误：792报文仍需校验和）
     msg = packer.make_can_msg("ACC_EPS_STATE", CanBus.CAM, values)
     dat = bytearray(msg[1])
-    dat[7] = byd_checksum(dat)  # 校验和写入byte7
+    dat[7] = byd_checksum(dat)
     return (msg[0], bytes(dat), msg[2])
 
 
