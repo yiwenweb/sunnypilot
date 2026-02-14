@@ -304,10 +304,12 @@ static safety_config byd_init(uint16_t param) {
   // This is safe because we still validate message presence (timeout check).
   static RxCheck byd_rx_checks[] = {
     // 频率设为 10Hz（比实际 20Hz 宽松一倍），避免因 CAN 总线抖动导致误报超时
-    // EPS (287) - 5 bytes
-    // 频率设为 0U: EPS 是事件触发消息，只有方向盘转动时才发送
-    // 静止时 EPS 不发送，如果设置非零频率会导致超时 → safety violation
-    {.msg = {{BYD_EPS, 0, 5, 0U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // 注意: EPS (287) 不在 RxCheck 中！
+    // 18款唐DM 的 EPS 是事件触发消息：只有方向盘转动时才发送。
+    // 静止时 EPS 完全停止发送，任何非零频率都会导致 safety_tick 超时
+    // → controls_allowed=false。frequency=0 会导致除以零（未定义行为）。
+    // EPS 数据仍在 byd_rx_hook 中正常处理（更新 angle_meas），只是不做超时检查。
+    //
     // CARSPEED (289) - 8 bytes
     {.msg = {{BYD_CARSPEED, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // DRIVE_STATE (578) - 8 bytes
