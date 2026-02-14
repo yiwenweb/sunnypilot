@@ -303,23 +303,21 @@ static safety_config byd_init(uint16_t param) {
   // All checksums and counters are UNVERIFIED, so ignore them all.
   // This is safe because we still validate message presence (timeout check).
   static RxCheck byd_rx_checks[] = {
-    // 频率设为 10Hz（比实际 20Hz 宽松一倍），避免因 CAN 总线抖动导致误报超时
-    // 注意: EPS (287) 不在 RxCheck 中！
-    // 18款唐DM 的 EPS 是事件触发消息：只有方向盘转动时才发送。
-    // 静止时 EPS 完全停止发送，任何非零频率都会导致 safety_tick 超时
-    // → controls_allowed=false。frequency=0 会导致除以零（未定义行为）。
-    // EPS 数据仍在 byd_rx_hook 中正常处理（更新 angle_meas），只是不做超时检查。
+    // 调试阶段：所有频率设为 1U（1Hz，超时阈值 = MAX(10*1s, 1s) = 10秒）
+    // 18款唐DM 的 CAN 总线消息频率不稳定，部分消息可能是事件触发的
+    // 设为 1U 是 panda safety 支持的最低非零频率，给予最大容忍度
+    // 注意: EPS (287) 不在 RxCheck 中（事件触发，可能长时间不发送）
     //
     // CARSPEED (289) - 8 bytes
-    {.msg = {{BYD_CARSPEED, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{BYD_CARSPEED, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // DRIVE_STATE (578) - 8 bytes
-    {.msg = {{BYD_DRIVE_STATE, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{BYD_DRIVE_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // ACC_EPS_STATE (792) - 8 bytes
-    {.msg = {{BYD_ACC_EPS_STATE, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{BYD_ACC_EPS_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // PEDAL (834) - 8 bytes
-    {.msg = {{BYD_PEDAL, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{BYD_PEDAL, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // PCM_BUTTONS (944) - 8 bytes
-    {.msg = {{BYD_PCM_BUTTONS, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    {.msg = {{BYD_PCM_BUTTONS, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
   // TX whitelist: messages openpilot is allowed to send

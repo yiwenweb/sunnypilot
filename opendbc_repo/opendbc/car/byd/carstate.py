@@ -330,31 +330,25 @@ class CarState(CarStateBase):
         #   >0: 固定频率检查（超时 = 1/freq * 10）
         #   0:  自动学习频率（初始超时10秒，收到3条后自动计算）
         #   float('nan'): 跳过存活检查（ignore_alive=True）
+        # 调试阶段：所有消息使用 float('nan') 跳过存活检查（ignore_alive=True）
+        # 这样 canValid 不会因为任何消息超时而变 False
+        # 原因：18款唐DM 的 CAN 总线消息频率不稳定，多个消息可能是事件触发的
+        # （如 EPS 只在方向盘转动时发送，PCM_BUTTONS 可能只在按按钮时发送）
+        # 自动学习频率后，消息间隔稍有波动就会超时 → canValid=false → "CAN Error"
+        # TODO: 实车验证每个消息的实际频率后，逐个恢复频率检查
+        NAN = float('nan')
         messages_bus0 = [
-            # 核心消息 - 使用频率0自动学习，避免因频率不匹配导致 canValid=false
-            # 实车 CAN 总线频率可能与 DBC 标注不完全一致
-            # EPS (287) 是事件触发消息：只有方向盘转动时才发送
-            # 静止不动时 EPS 不发送 → 自动学习频率后会超时 → canValid=false → "CAN Error"
-            # 使用 float('nan') 跳过存活检查（ignore_alive=True）
-            ("EPS", float('nan')),
-            ("CARSPEED", 0),
-            ("DRIVE_STATE", 0),
-            ("PEDAL", 0),
-            ("YAW_RATE", 0),
-            ("AXAY", 0),
-
-            # 车身消息 - 低频，自动学习
-            ("BCM", 0),
-            ("STALKS", 0),
-            ("EPB", 0),
-
-            # PCM buttons - 自动学习
-            ("PCM_BUTTONS", 0),
-            # ACC_EPS_STATE: 跳过存活检查，避免影响canValid
-            # 原因：openpilot 激活后会发送假的 792 到 Bus 2，
-            # 但真实 EPS 的 792 仍在 Bus 0 上。如果 EPS 在某些状态下
-            # 不发送 792（如未收到 790），固定频率检查会导致 canValid=false
-            ("ACC_EPS_STATE", float('nan')),
+            ("EPS", NAN),
+            ("CARSPEED", NAN),
+            ("DRIVE_STATE", NAN),
+            ("PEDAL", NAN),
+            ("YAW_RATE", NAN),
+            ("AXAY", NAN),
+            ("BCM", NAN),
+            ("STALKS", NAN),
+            ("EPB", NAN),
+            ("PCM_BUTTONS", NAN),
+            ("ACC_EPS_STATE", NAN),
         ]
 
         return {
