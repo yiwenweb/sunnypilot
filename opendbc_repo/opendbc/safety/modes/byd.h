@@ -257,21 +257,21 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == 0) {
     // Bus 0 → Bus 2 方向:
-    // 原厂架构中，Bus 0 上的消息不应该出现在 Bus 2 上（除了 792 EPS 反馈给 MPC）。
-    // panda 默认双向转发会把 Bus 0 的 62 个消息全部转发到 Bus 2，
-    // 导致原厂 MPC 收到异常消息 → 仪表报"请检查前置毫米波雷达/多功能视频控制器"。
+    // 原厂 MPC 在 Bus 2 上需要读取 Bus 0 的 ECU 消息（EPS、车速、档位等）。
+    // panda 默认转发 Bus 0→Bus 2 是正确的，不能阻断。
     //
-    // 策略: 只放行 792 (EPS 反馈) 到 Bus 2，其他全部阻断。
-    // 当 openpilot 控制时，连 792 也阻断（用假 792 替代）。
+    // 当 openpilot 控制时，阻止以下消息转发到 Bus 2:
+    // - 790/813/814/815: openpilot 在 Bus 0 上发送的控制消息，不应回传到 Bus 2
+    //   （避免原厂 MPC 收到冲突消息）
+    // - 792: 真实 EPS 反馈，openpilot 发送假的 792 到 Bus 2 替代
+    // 当 openpilot 未控制时，放行所有消息（保持原厂 MPC 正常工作）
     if (is_lat_active() || controls_allowed) {
-      // openpilot 控制中: 阻断所有 Bus 0→Bus 2（包括 792，用假 792 替代）
-      return true;
+      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
+          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB) ||
+          (addr == BYD_ACC_EPS_STATE)) {
+        return true;
+      }
     }
-    // openpilot 未控制: 只放行 792，阻断其他所有消息
-    if (addr == BYD_ACC_EPS_STATE) {
-      return false;  // 放行 792 到 Bus 2（MPC 需要读取 EPS 反馈）
-    }
-    return true;  // 阻断其他所有 Bus 0 消息到 Bus 2
   }
 
   if (bus_num == 2) {
