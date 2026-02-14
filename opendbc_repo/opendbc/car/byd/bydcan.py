@@ -18,17 +18,19 @@ from opendbc.car.byd.values import CanBus
 
 def byd_checksum(dat: bytes) -> int:
     """
-    计算BYD唐DM 2018款原厂补码校验和
-    原厂算法：CHECKSUM = (0x100 - sum(前7字节) % 0x100) & 0xFF
+    计算BYD唐DM 2018款原厂校验和
+    原厂算法：sum(all 8 bytes) & 0xFF == 0xFF
+    即 CHECKSUM = (0xFF - sum(前7字节)) & 0xFF
+
+    通过实车嗅探验证（sniff_mpc_frames.py, 39.5秒采样）：
+      790/792/813/814/815 全部符合此算法
 
     参数:
         dat: CAN报文原始字节数据（长度≥7）
     返回:
         8位校验和值（0-255）
     """
-    sum_7bytes = sum(dat[:7])
-    checksum = (0x100 - sum_7bytes % 0x100) & 0xFF
-    return checksum
+    return (0xFF - sum(dat[:7])) & 0xFF
 
 
 def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
@@ -47,9 +49,9 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
         counter: 报文计数器 (0-15)
     """
     values = {
-        "AutoFullBeamState": 2,
+        "AutoFullBeamState": 1,           # 原厂空闲值=1 (实测)
         "LeftLaneState": 0,
-        "LKAS_Config": 2,             # LKA模式（适配0km/h激活）
+        "LKAS_Config": 1,                 # 原厂空闲值=1 (实测)
         "SETME2_0x1": 1,
         "ReqHandsOnSteeringWheel": 0,
         "MPC_State": 0,
@@ -58,7 +60,7 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
         "LKAS_ReqPrepare": 0,
         "LKAS_Active": 0,
         "SETME3_0x0": 0,
-        "TrafficSignRecognition_OnOff": 0,
+        "TrafficSignRecognition_OnOff": 1, # 原厂空闲值=1 (实测)
         "SETME4_0x0": 0,
         "SETME5_0x1": 1,
         "RightLaneState": 0,

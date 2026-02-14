@@ -139,10 +139,8 @@ DECODERS = {
 
 
 def verify_checksum(data: bytes) -> bool:
-    """验证原厂补码校验和"""
-    sum_7 = sum(data[:7])
-    expected = (0x100 - sum_7 % 0x100) & 0xFF
-    return data[7] == expected
+    """验证原厂校验和: sum(all 8 bytes) & 0xFF == 0xFF"""
+    return sum(data[:8]) & 0xFF == 0xFF
 
 
 def main():
