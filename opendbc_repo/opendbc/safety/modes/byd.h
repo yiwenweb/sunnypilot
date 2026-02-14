@@ -244,62 +244,17 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 }
 
 static bool byd_fwd_hook(int bus_num, int addr) {
-  // Default forwarding (Bus 0 <-> Bus 2) is handled by get_fwd_bus() in safety.h.
-  // All TX messages use check_relay=false, so static blocking does NOT apply.
-  // We handle ALL forwarding control here dynamically.
-  //
-  // BYD CAN 架构:
-  //   原厂 MPC 在 Bus 2 上发送 790/813/814/815，panda 转发到 Bus 0 给 EPS/ESP。
-  //   openpilot 也在 Bus 0 上发送 790/813/814/815。
-  //   当 openpilot 控制时，必须阻止 Bus 2→Bus 0 方向的原厂 MPC 消息，
-  //   否则 EPS/ESP 收到两套冲突的消息 → AEB/安全系统报错。
-  //   当 openpilot 不控制时，让原厂 MPC 消息正常通过。
-
-  if (bus_num == 0) {
-    // Bus 0 → Bus 2 方向:
-    // 原厂 MPC 在 Bus 2 上需要读取 Bus 0 的 ECU 消息（EPS、车速、档位等）。
-    // panda 默认转发 Bus 0→Bus 2 是正确的，不能阻断。
-    //
-    // 当 openpilot 控制时，阻止以下消息转发到 Bus 2:
-    // - 790/813/814/815: openpilot 在 Bus 0 上发送的控制消息，不应回传到 Bus 2
-    //   （避免原厂 MPC 收到冲突消息）
-    // - 792: 真实 EPS 反馈，openpilot 发送假的 792 到 Bus 2 替代
-    // 当 openpilot 未控制时，放行所有消息（保持原厂 MPC 正常工作）
-    if (is_lat_active() || controls_allowed) {
-      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB) ||
-          (addr == BYD_ACC_EPS_STATE)) {
-        return true;
-      }
-    }
-  }
-
-  if (bus_num == 2) {
-    // Bus 2 → Bus 0 方向:
-    // 当 openpilot 正在控制时，阻止原厂 MPC 对应消息到达 EPS/ESP
-    // 当 openpilot 未控制时，放行原厂 MPC 消息（保持原厂功能正常）
-    //
-    // 横向激活时 (is_lat_active):
-    //   openpilot 发送全套 ACC 消息 (790/813/814/815)，其中 814/815 用空闲值。
-    //   必须阻止原厂 MPC 的对应消息，否则 EPS/ESP 收到两套冲突消息。
-    //
-    // 纵向激活时 (controls_allowed):
-    //   同样阻止 814/815（is_lat_active 可能不包含纵向-only 场景）
-    if (is_lat_active()) {
-      if ((addr == BYD_ACC_MPC_STATE) || (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
-        return true;
-      }
-    }
-    if (controls_allowed) {
-      if ((addr == BYD_ACC_CMD) || (addr == BYD_ACC_AEB)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  // ============================================================
+  // 测试模式：纯透传，不拦截任何消息
+  // 目的：验证 panda 双向转发本身是否会导致车辆报错
+  // 如果纯透传不报错，说明问题出在拦截逻辑
+  // 如果纯透传也报错，说明问题出在 panda 转发延迟或硬件
+  // ============================================================
+  UNUSED(bus_num);
+  UNUSED(addr);
+  return false;  // 不拦截任何消息，全部透传
 }
+
 
 static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
