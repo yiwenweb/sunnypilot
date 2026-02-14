@@ -303,8 +303,6 @@ static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
   byd_op_tx_active = false;
   byd_op_tx_last_ts = 0U;
-  byd_acc_main_on = false;
-  byd_btn_toggle_prev = false;
 
   // RX checks: messages we monitor from vehicle ECUs on Bus 0
   // All checksums and counters are UNVERIFIED, so ignore them all.
