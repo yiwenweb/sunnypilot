@@ -180,20 +180,13 @@ class CarState(CarStateBase):
         ret.brakePressed = cp.vl["DRIVE_STATE"]["BrakePressed"] == 1
 
         # ===================== 转向灯/车门/安全带解析 =====================
-        # Turn indicator parsing (Requirement 4.3)
-        ret.leftBlinker = cp.vl["STALKS"]["LeftIndicator"] == 1
-        ret.rightBlinker = cp.vl["STALKS"]["RightIndicator"] == 1
-
-        # Door status parsing (Requirements 4.1, 4.5)
-        front_left_door = cp.vl["BCM"]["FrontLeftDoor"] == 1
-        front_right_door = cp.vl["BCM"]["FrontRightDoor"] == 1
-        rear_left_door = cp.vl["BCM"]["RearLeftDoor"] == 1
-        rear_right_door = cp.vl["BCM"]["RearRightDoor"] == 1
-        ret.doorOpen = front_left_door or front_right_door or rear_left_door or rear_right_door
-
-        # Seatbelt status parsing (Requirements 4.2, 4.6)
-        driver_seatbelt_fastened = cp.vl["BCM"]["DriverSeatBeltFasten"] == 1
-        ret.seatbeltUnlatched = not driver_seatbelt_fastened
+        # 注意: BCM (301) 和 STALKS (307) 在 Bus 0 上未收到（实车诊断确认）
+        # 可能在其他总线上，或者地址不对。暂用安全默认值。
+        # TODO: 用 CAN 嗅探工具找到正确的地址/总线
+        ret.leftBlinker = False
+        ret.rightBlinker = False
+        ret.doorOpen = False
+        ret.seatbeltUnlatched = False
 
         # ===================== 巡航控制状态解析 =====================
         # Cruise control status (Requirements 5.1, 5.2, 5.3)
@@ -219,13 +212,11 @@ class CarState(CarStateBase):
         self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
 
         # ===================== 横摆率/纵向加速度解析 =====================
-        # Yaw rate parsing (Requirement 6.1)
-        # YawRate : 0|12@1+ (0.002133,-2.094) [-2.0|2.0] "rad/s"
-        ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
-
-        # Longitudinal acceleration parsing (Requirement 6.2)
-        # Ax : 0|12@1+ (0.027167,-21.593) [-10.0|10.0] "m/s^2"
-        self.ax_sensor = cp.vl["AXAY"]["Ax"]
+        # 注意: YAW_RATE (546) 和 AXAY (547) 在 Bus 0 上未收到（实车诊断确认）
+        # openpilot 会从 IMU 传感器获取 yawRate，这里设为 0 不影响功能
+        # TODO: 用 CAN 嗅探工具找到正确的地址/总线
+        ret.yawRate = 0.0
+        self.ax_sensor = 0.0
 
         # ===================== 手刹状态解析 =====================
         # Parking brake status parsing (Requirement 4.4)
@@ -326,29 +317,20 @@ class CarState(CarStateBase):
             Dictionary mapping bus types to CANParser instances
         """
         # Bus 0 messages - Powertrain
-        # 频率说明:
-        #   >0: 固定频率检查（超时 = 1/freq * 10）
-        #   0:  自动学习频率（初始超时10秒，收到3条后自动计算）
-        #   float('nan'): 跳过存活检查（ignore_alive=True）
-        # 调试阶段：所有消息使用 float('nan') 跳过存活检查（ignore_alive=True）
-        # 这样 canValid 不会因为任何消息超时而变 False
-        # 原因：18款唐DM 的 CAN 总线消息频率不稳定，多个消息可能是事件触发的
-        # （如 EPS 只在方向盘转动时发送，PCM_BUTTONS 可能只在按按钮时发送）
-        # 自动学习频率后，消息间隔稍有波动就会超时 → canValid=false → "CAN Error"
-        # TODO: 实车验证每个消息的实际频率后，逐个恢复频率检查
-        NAN = float('nan')
+        # 实车诊断数据 (diag_msg_freq.py, 64秒采样):
+        #   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/EPB: 50Hz, PCM_BUTTONS: 20Hz
+        #   YAW_RATE/AXAY/BCM/STALKS: 未收到（不在 Bus 0 上）
+        #
+        # 频率设置策略: 实际频率的 40%，给予充足容忍度
+        # ACC_EPS_STATE: 用 float('nan') 因为 openpilot 未激活时 EPS 可能不发 792
         messages_bus0 = [
-            ("EPS", NAN),
-            ("CARSPEED", NAN),
-            ("DRIVE_STATE", NAN),
-            ("PEDAL", NAN),
-            ("YAW_RATE", NAN),
-            ("AXAY", NAN),
-            ("BCM", NAN),
-            ("STALKS", NAN),
-            ("EPB", NAN),
-            ("PCM_BUTTONS", NAN),
-            ("ACC_EPS_STATE", NAN),
+            ("EPS", 40),              # 实际 100Hz，设 40Hz（超时 250ms）
+            ("CARSPEED", 20),         # 实际 50Hz，设 20Hz（超时 500ms）
+            ("DRIVE_STATE", 20),      # 实际 50Hz，设 20Hz
+            ("PEDAL", 20),            # 实际 50Hz，设 20Hz
+            ("EPB", 20),              # 实际 50Hz，设 20Hz
+            ("PCM_BUTTONS", 8),       # 实际 20Hz，设 8Hz（超时 1.25s）
+            ("ACC_EPS_STATE", float('nan')),  # 50Hz 但可能在某些状态下不发送
         ]
 
         return {

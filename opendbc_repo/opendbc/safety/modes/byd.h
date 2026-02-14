@@ -303,21 +303,23 @@ static safety_config byd_init(uint16_t param) {
   // All checksums and counters are UNVERIFIED, so ignore them all.
   // This is safe because we still validate message presence (timeout check).
   static RxCheck byd_rx_checks[] = {
-    // 调试阶段：所有频率设为 1U（1Hz，超时阈值 = MAX(10*1s, 1s) = 10秒）
-    // 18款唐DM 的 CAN 总线消息频率不稳定，部分消息可能是事件触发的
-    // 设为 1U 是 panda safety 支持的最低非零频率，给予最大容忍度
-    // 注意: EPS (287) 不在 RxCheck 中（事件触发，可能长时间不发送）
+    // 实车诊断数据 (diag_msg_freq.py, 64秒采样):
+    //   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/EPB: 50Hz, PCM_BUTTONS: 20Hz
+    //   YAW_RATE/AXAY/BCM/STALKS: 未收到（不在 Bus 0 上，已从 carstate 移除）
     //
-    // CARSPEED (289) - 8 bytes
-    {.msg = {{BYD_CARSPEED, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // DRIVE_STATE (578) - 8 bytes
-    {.msg = {{BYD_DRIVE_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // ACC_EPS_STATE (792) - 8 bytes
+    // 频率设为实际值的 50%，safety_tick 超时 = MAX(10/freq, 1s)
+    // EPS (287) - 5 bytes, 实际 100Hz
+    {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // CARSPEED (289) - 8 bytes, 实际 50Hz
+    {.msg = {{BYD_CARSPEED, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // DRIVE_STATE (578) - 8 bytes, 实际 50Hz
+    {.msg = {{BYD_DRIVE_STATE, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // ACC_EPS_STATE (792) - 8 bytes, 实际 50Hz（但可能在某些状态下不发送，设低频）
     {.msg = {{BYD_ACC_EPS_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // PEDAL (834) - 8 bytes
-    {.msg = {{BYD_PEDAL, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // PCM_BUTTONS (944) - 8 bytes
-    {.msg = {{BYD_PCM_BUTTONS, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // PEDAL (834) - 8 bytes, 实际 50Hz
+    {.msg = {{BYD_PEDAL, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // PCM_BUTTONS (944) - 8 bytes, 实际 20Hz
+    {.msg = {{BYD_PCM_BUTTONS, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
   // TX whitelist: messages openpilot is allowed to send
