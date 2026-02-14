@@ -146,21 +146,12 @@ class CarState(CarStateBase):
 
         # ===================== 转向故障检测（匹配EPS保护机制） =====================
         # 注意：SteerErrorCode/TorqueFailed/SteerWarning 均为 [UNVERIFIED] 信号
-        # 在实车验证这些信号含义之前，不能用于触发 steerFaultPermanent
-        # 否则 EPS 正常报文中的非零 bit 会被误判为故障 → "LKAS Fault: Restart the car"
-        torque_failed = cp.vl["ACC_EPS_STATE"]["TorqueFailed"] == 1
-        steer_warning = cp.vl["ACC_EPS_STATE"]["SteerWarning"] == 1
-
-        # 临时故障：连续5帧TorqueFailed/SteerWarning
-        if torque_failed or steer_warning:
-            self.steer_fault_count += 1
-            ret.steerFaultTemporary = self.steer_fault_count >= self.TORQUE_FAILED_THRESHOLD
-        else:
-            self.steer_fault_count = 0
-            ret.steerFaultTemporary = False
-
-        # 永久故障：暂时禁用，等实车验证 SteerErrorCode 信号含义后再启用
-        # 原来的逻辑会把 EPS 正常报文中 bits 5-7 的非零值误判为故障
+        # 实车诊断确认：TorqueFailed/SteerWarning 在 EPS 正常工作时持续为 1
+        # 这些 bit 在 BYD 唐DM 上不代表真正的故障，启用会导致：
+        #   steerFaultTemporary=True → "Steering Temporarily Unavailable" 持续告警
+        #   steerFaultPermanent=True → "LKAS Fault: Restart the car"
+        # 全部禁用，等实车验证信号真实含义后再启用
+        ret.steerFaultTemporary = False
         ret.steerFaultPermanent = False
 
         # ===================== 档位解析 =====================
