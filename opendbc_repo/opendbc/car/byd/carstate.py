@@ -333,7 +333,10 @@ class CarState(CarStateBase):
         messages_bus0 = [
             # 核心消息 - 使用频率0自动学习，避免因频率不匹配导致 canValid=false
             # 实车 CAN 总线频率可能与 DBC 标注不完全一致
-            ("EPS", 0),
+            # EPS (287) 是事件触发消息：只有方向盘转动时才发送
+            # 静止不动时 EPS 不发送 → 自动学习频率后会超时 → canValid=false → "CAN Error"
+            # 使用 float('nan') 跳过存活检查（ignore_alive=True）
+            ("EPS", float('nan')),
             ("CARSPEED", 0),
             ("DRIVE_STATE", 0),
             ("PEDAL", 0),
