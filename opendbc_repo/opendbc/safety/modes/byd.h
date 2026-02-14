@@ -8,6 +8,8 @@
 // RX messages (from vehicle ECUs on Bus 0)
 #define BYD_EPS              0x11FU  // 287 - Steering angle and rate from EPS
 #define BYD_CARSPEED         0x121U  // 289 - Vehicle speed display
+#define BYD_YAW_RATE         0x222U  // 546 - Yaw rate from ESP
+#define BYD_AXAY             0x223U  // 547 - Longitudinal acceleration from ESP
 #define BYD_DRIVE_STATE      0x242U  // 578 - Gear, brake pedal from VCU
 #define BYD_ACC_EPS_STATE    0x318U  // 792 - EPS feedback, driver torque
 #define BYD_PEDAL            0x342U  // 834 - Accelerator and brake pedal
@@ -303,15 +305,20 @@ static safety_config byd_init(uint16_t param) {
   // All checksums and counters are UNVERIFIED, so ignore them all.
   // This is safe because we still validate message presence (timeout check).
   static RxCheck byd_rx_checks[] = {
-    // 实车诊断数据 (diag_msg_freq.py, 64秒采样):
-    //   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/EPB: 50Hz, PCM_BUTTONS: 20Hz
-    //   YAW_RATE/AXAY/BCM/STALKS: 未收到（不在 Bus 0 上，已从 carstate 移除）
+    // 实车嗅探数据 (sniff_all_buses.py, 22.9秒采样):
+    //   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/YAW_RATE/AXAY: 50Hz
+    //   PCM_BUTTONS/BELT: 20Hz, BCM/STALKS: ~1.5-2Hz, EPB: 1Hz
+    //   BCM/STALKS/EPB 频率太低，不加入 RxCheck（非安全关键信号）
     //
     // 频率设为实际值的 50%，safety_tick 超时 = MAX(10/freq, 1s)
     // EPS (287) - 5 bytes, 实际 100Hz
     {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // CARSPEED (289) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_CARSPEED, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // YAW_RATE (546) - 8 bytes, 实际 50Hz
+    {.msg = {{BYD_YAW_RATE, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // AXAY (547) - 8 bytes, 实际 50Hz
+    {.msg = {{BYD_AXAY, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // DRIVE_STATE (578) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_DRIVE_STATE, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     // ACC_EPS_STATE (792) - 8 bytes, 实际 50Hz（但可能在某些状态下不发送，设低频）

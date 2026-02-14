@@ -180,13 +180,25 @@ class CarState(CarStateBase):
         ret.brakePressed = cp.vl["DRIVE_STATE"]["BrakePressed"] == 1
 
         # ===================== 转向灯/车门/安全带解析 =====================
-        # 注意: BCM (301) 和 STALKS (307) 在 Bus 0 上未收到（实车诊断确认）
-        # 可能在其他总线上，或者地址不对。暂用安全默认值。
-        # TODO: 用 CAN 嗅探工具找到正确的地址/总线
-        ret.leftBlinker = False
-        ret.rightBlinker = False
-        ret.doorOpen = False
-        ret.seatbeltUnlatched = False
+        # 全总线嗅探确认: BCM (301) 1.5Hz, STALKS (307) 1.9Hz 均在 Bus 0 上
+        # 转向灯: STALKS (307) LeftIndicator/RightIndicator
+        ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_stalk(
+            100,  # blinker_time: 保持亮 100 帧（~1秒 at 100Hz update rate）
+            cp.vl["STALKS"]["LeftIndicator"] == 1,
+            cp.vl["STALKS"]["RightIndicator"] == 1,
+        )
+
+        # 车门: BCM (301) — 任一车门打开即为 True
+        ret.doorOpen = any([
+            cp.vl["BCM"]["FrontLeftDoor"],
+            cp.vl["BCM"]["FrontRightDoor"],
+            cp.vl["BCM"]["RearLeftDoor"],
+            cp.vl["BCM"]["RearRightDoor"],
+            cp.vl["BCM"]["BootDoor"],
+        ])
+
+        # 安全带: BCM (301) DriverSeatBeltFasten — 1=已系, 0=未系
+        ret.seatbeltUnlatched = cp.vl["BCM"]["DriverSeatBeltFasten"] == 0
 
         # ===================== 巡航控制状态解析 =====================
         # Cruise control status (Requirements 5.1, 5.2, 5.3)
@@ -212,11 +224,11 @@ class CarState(CarStateBase):
         self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
 
         # ===================== 横摆率/纵向加速度解析 =====================
-        # 注意: YAW_RATE (546) 和 AXAY (547) 在 Bus 0 上未收到（实车诊断确认）
-        # openpilot 会从 IMU 传感器获取 yawRate，这里设为 0 不影响功能
-        # TODO: 用 CAN 嗅探工具找到正确的地址/总线
-        ret.yawRate = 0.0
-        self.ax_sensor = 0.0
+        # 全总线嗅探确认: YAW_RATE (546) 50Hz, AXAY (547) 50Hz 均在 Bus 0 上
+        # YawRate: 12-bit, scale 0.002133, offset -2.094, 单位 rad/s
+        ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
+        # Ax: 12-bit, scale 0.027167, offset -21.593, 单位 m/s²
+        self.ax_sensor = cp.vl["AXAY"]["Ax"]
 
         # ===================== 手刹状态解析 =====================
         # Parking brake status parsing (Requirement 4.4)
@@ -317,20 +329,25 @@ class CarState(CarStateBase):
             Dictionary mapping bus types to CANParser instances
         """
         # Bus 0 messages - Powertrain
-        # 实车诊断数据 (diag_msg_freq.py, 64秒采样):
-        #   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/EPB: 50Hz, PCM_BUTTONS: 20Hz
-        #   YAW_RATE/AXAY/BCM/STALKS: 未收到（不在 Bus 0 上）
+        # 全总线嗅探数据 (sniff_all_buses.py, 22.9秒采样):
+        #   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/YAW_RATE/AXAY: 50Hz
+        #   PCM_BUTTONS/BELT: 20Hz, BCM/STALKS: ~1.5-2Hz, EPB: 1Hz
         #
         # 频率设置策略: 实际频率的 40%，给予充足容忍度
+        # BCM/STALKS: 低频消息用 float('nan') 跳过存活检查
         # ACC_EPS_STATE: 用 float('nan') 因为 openpilot 未激活时 EPS 可能不发 792
         messages_bus0 = [
             ("EPS", 40),              # 实际 100Hz，设 40Hz（超时 250ms）
             ("CARSPEED", 20),         # 实际 50Hz，设 20Hz（超时 500ms）
             ("DRIVE_STATE", 20),      # 实际 50Hz，设 20Hz
             ("PEDAL", 20),            # 实际 50Hz，设 20Hz
-            ("EPB", 20),              # 实际 50Hz，设 20Hz
+            ("EPB", float('nan')),    # 实际 1Hz，低频消息跳过存活检查
             ("PCM_BUTTONS", 8),       # 实际 20Hz，设 8Hz（超时 1.25s）
             ("ACC_EPS_STATE", float('nan')),  # 50Hz 但可能在某些状态下不发送
+            ("YAW_RATE", 20),         # 实际 50Hz，设 20Hz
+            ("AXAY", 20),             # 实际 50Hz，设 20Hz
+            ("BCM", float('nan')),    # 实际 ~1.5Hz，低频消息跳过存活检查
+            ("STALKS", float('nan')), # 实际 ~2Hz，低频消息跳过存活检查
         ]
 
         return {
