@@ -49,9 +49,9 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
         counter: 报文计数器 (0-15)
     """
     values = {
-        "AutoFullBeamState": 1,           # 原厂空闲值=1 (实测)
+        "AutoFullBeamState": 2,           # 原厂实测值=2 (sniff确认: c2→低4位=2)
         "LeftLaneState": 0,
-        "LKAS_Config": 1,                 # 原厂空闲值=1 (实测)
+        "LKAS_Config": 3,                 # 原厂实测值=3 (sniff确认: c2→高2位=3, ALARM_AND_LKA)
         "SETME2_0x1": 1,
         "ReqHandsOnSteeringWheel": 0,
         "MPC_State": 0,
@@ -137,7 +137,7 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
         "SteerErrorCode": 7,           # 原厂 EPS 正常状态 = 7
         "MainTorque": 0,
         "SETME3_0x1": 1,
-        "ReportHandsNotOnSteeringWheel": 0,
+        "ReportHandsNotOnSteeringWheel": 1, # 原厂 EPS 正常状态 = 1 (sniff确认: f0→bit5=1)
         "SETME4_0x3": 3,
         "SteerDriverTorque": int(driver_torque),
         "SETME5_0xFF": 0xF,
@@ -229,7 +229,7 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
         "AccReqNotStandstill": 0,
         "AccControlActive": 0,
         "AccOverrideOrStandstill": 0,
-        "EspBehaviour": 0,
+        "EspBehaviour": 1,             # 原厂实测值=1 (sniff确认: byte[5]=0x40→bit6-7=01)
         "COUNTER": counter,
         "SETME2_0xF": 0xF,
         "CHECKSUM": 0,
@@ -264,15 +264,15 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
     生成ACC HUD显示报文 (ACC_HUD_ADAS - 0x32D / 813)
     用于更新仪表盘ACC状态显示（适配0km/h激活）
 
-    原厂 MPC 实测数据 (sniff_mpc_frames.py, 39.5秒):
-      空闲: 00 00 04 01 f4 ff Fx xx → AccState=0, AccOn1=0, Status=4, Notify=0
-      ACC激活: 00 00 7c 4d f7 ff Fx xx → AccState=7, AccOn1=0, Status=7, Notify=38
+    原厂 MPC 实测数据 (sniff_mpc_frames.py + diag_switch_moment.py):
+      空闲: 00 00 04 01 f4 ff Fx xx → AccState=0, AccOn1=?, Status=4, Notify=0
+      ACC激活: 00 00 7c 4d f7 ff Fx xx → AccState=7, AccOn1=1, Status=7, Notify=38
 
     关键发现:
-      - AccOn1 始终为 0（即使 ACC 激活）
+      - AccOn1 = 1（ACC 激活时，sniff 确认 byte[2]=0x7C → bit6=1）
       - AccState=7 表示 ACC 激活（DBC VAL_ 标注为 ERROR 是错误的）
       - Status=7 表示 ACC 激活
-      - Notify=38 表示 ACC 激活通知
+      - Notify=38 表示 ACC 激活通知 (byte[3]=0x4D → (0x4D>>1)&0x7F=38)
 
     参数:
         packer: CAN打包器
@@ -297,7 +297,7 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
         "FCW": 0,
         "SETME1_0x1": 1,
         "AccState": 0,                 # 默认空闲
-        "AccOn1": 0,                   # 原厂始终为 0
+        "AccOn1": 1,                   # 原厂实测始终为 1 (sniff确认: 7c→bit6=1)
         "CloseWarning": 0,
         "SETME2_0x1": 1,
         "Notify": 0,                   # 默认无通知
