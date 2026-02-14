@@ -80,7 +80,7 @@ def decode_813(data: bytes) -> dict:
 
 
 def main():
-    sm = messaging.SubMaster(['can', 'pandaStates', 'controlsState', 'carControl', 'carState'])
+    sm = messaging.SubMaster(['can', 'pandaStates', 'selfdriveState', 'carControl', 'carState'])
 
     # 统计: frames[bus][addr] = {"count": N, "last_data": bytes, "last_ts": float}
     frames = {0: {}, 2: {}}
@@ -127,15 +127,16 @@ def main():
             print(f"{'='*70}")
 
             # === 1. openpilot 状态 ===
-            if sm.updated['controlsState'] or sm.valid['controlsState']:
-                cs = sm['controlsState']
+            if sm.updated['selfdriveState'] or sm.valid['selfdriveState']:
+                ss = sm['selfdriveState']
                 print(f"\n  [openpilot 状态]")
-                print(f"    enabled={cs.enabled}  latActive={cs.lateralActive}"
-                      f"  state={cs.state}")
+                print(f"    enabled={ss.enabled}  active={ss.active}"
+                      f"  state={ss.state}  engageable={ss.engageable}")
 
             if sm.updated['carControl'] or sm.valid['carControl']:
                 cc = sm['carControl']
-                print(f"    latActive={cc.latActive}  longActive={cc.longActive}")
+                print(f"    CC.enabled={cc.enabled}  latActive={cc.latActive}"
+                      f"  longActive={cc.longActive}")
                 if hasattr(cc, 'actuators'):
                     print(f"    torque={cc.actuators.torque:.3f}"
                           f"  torqueOutputCan={cc.actuators.torqueOutputCan}")
