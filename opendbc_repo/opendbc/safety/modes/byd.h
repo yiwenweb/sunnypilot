@@ -75,12 +75,6 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
 
 static bool byd_stock_longitudinal = false;
 
-// ACC 按钮 toggle 状态
-// BTN_TOGGLE_ACC_OnOff 是瞬时按钮（按下=1，松开=0），不是状态信号
-// 需要在 panda 层做 toggle 逻辑：按一次开，再按一次关
-static bool byd_acc_main_on = false;
-static bool byd_btn_toggle_prev = false;
-
 // openpilot 是否正在发送控制消息的标志位
 // 由 tx_hook 在成功发送 790 时设置为 true
 // 由 safety_tick (1Hz) 超时重置为 false
@@ -142,20 +136,11 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     }
 
     // Update acc_main_on from PCM_BUTTONS (944)
-    // BTN_TOGGLE_ACC_OnOff at bit 8 — 这是瞬时按钮（按下=1，松开=0）
-    // 需要做 toggle 逻辑：检测按下的上升沿，每次上升沿切换 acc_main_on
-    // 这和 carstate.py 中的 toggle 逻辑一致
+    // BTN_TOGGLE_ACC_OnOff at bit 8 — 状态信号（车辆内部做 toggle）
+    // 1=ACC ON, 0=ACC OFF，直接读取即可，不需要在 panda 层再做 toggle
+    // 这和 carstate.py 中的逻辑一致
     if (msg->addr == BYD_PCM_BUTTONS) {
-      bool btn_pressed = GET_BIT(msg, 8U);
-
-      // 检测上升沿（按下瞬间）
-      if (btn_pressed && !byd_btn_toggle_prev) {
-        byd_acc_main_on = !byd_acc_main_on;
-      }
-      byd_btn_toggle_prev = btn_pressed;
-
-      // 更新 acc_main_on 供 MADS 状态机使用
-      acc_main_on = byd_acc_main_on;
+      acc_main_on = GET_BIT(msg, 8U);
       mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
     }
 

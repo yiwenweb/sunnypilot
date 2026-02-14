@@ -193,12 +193,9 @@ class CarState(CarStateBase):
 
         # ===================== 巡航控制状态解析 =====================
         # Cruise control status (Requirements 5.1, 5.2, 5.3)
-        # 关键说明：Bus2的813是openpilot自己的回声，无法读取原厂SetSpeed
-        acc_toggle_pressed = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
-        if acc_toggle_pressed and not self.acc_toggle_pressed_prev:
-            self.main_on = not self.main_on
-        self.acc_toggle_pressed_prev = acc_toggle_pressed
-        main_on = self.main_on
+        # BTN_TOGGLE_ACC_OnOff 是状态信号（车辆内部做 toggle，输出 1=ACC ON, 0=ACC OFF）
+        # 不需要在 carstate 里再做 toggle 逻辑
+        main_on = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
 
         ret.cruiseState.available = main_on
         ret.cruiseState.enabled = False  # pcmCruise=False模式，由buttonEnable管理
