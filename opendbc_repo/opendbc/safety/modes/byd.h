@@ -75,6 +75,12 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
 
 static bool byd_stock_longitudinal = false;
 
+// ACC 按钮 toggle 状态
+// BTN_TOGGLE_ACC_OnOff 是瞬时按钮（按下=1，松开=0），不是状态信号
+// 需要在 panda 层做 toggle 逻辑：按一次开，再按一次关
+static bool byd_acc_main_on = false;
+static bool byd_btn_toggle_prev = false;
+
 // openpilot 是否正在发送控制消息的标志位
 // 由 tx_hook 在成功发送 790 时设置为 true
 // 由 safety_tick (1Hz) 超时重置为 false
@@ -136,28 +142,21 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     }
 
     // Update acc_main_on from PCM_BUTTONS (944)
-    // BTN_TOGGLE_ACC_OnOff at bit 8 — this is a state signal (1=ACC on, 0=ACC off)
-    // With pcmCruise=False, openpilot manages controls_allowed via heartbeat.
-    // acc_main_on is used by MADS for lateral-only activation.
+    // BTN_TOGGLE_ACC_OnOff at bit 8 — 这是瞬时按钮（按下=1，松开=0）
+    // 需要做 toggle 逻辑：检测按下的上升沿，每次上升沿切换 acc_main_on
+    // 这和 carstate.py 中的 toggle 逻辑一致
     if (msg->addr == BYD_PCM_BUTTONS) {
-      bool prev_acc = acc_main_on;
-      acc_main_on = GET_BIT(msg, 8U);
-      mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+      bool btn_pressed = GET_BIT(msg, 8U);
 
-      // 直接控制 controls_allowed_lat — 绕过 MADS 状态机
-      // MADS 状态机通过 mads_state_update → m_update_control_state 来设置
-      // controls_allowed_lat，但在实际测试中始终无法正常工作。
-      // 可能原因: mads_state_update 在 578(50Hz) 上调用，而 944(20Hz) 频率更低，
-      // 导致 edge detection 时序问题，或者 m_mads_state_init 被反复调用重置状态。
-      // 直接方案: ACC ON → controls_allowed_lat=true, ACC OFF → false
-      if (acc_main_on && !prev_acc) {
-        // ACC OFF→ON: 激活横向控制
-        m_mads_state.controls_allowed_lat = true;
-        m_mads_state.system_enabled = true;
-      } else if (!acc_main_on && prev_acc) {
-        // ACC ON→OFF: 关闭横向控制
-        m_mads_state.controls_allowed_lat = false;
+      // 检测上升沿（按下瞬间）
+      if (btn_pressed && !byd_btn_toggle_prev) {
+        byd_acc_main_on = !byd_acc_main_on;
       }
+      byd_btn_toggle_prev = btn_pressed;
+
+      // 更新 acc_main_on 供 MADS 状态机使用
+      acc_main_on = byd_acc_main_on;
+      mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
     }
 
     // 关键修复: 手动调用 mads_state_update
@@ -319,6 +318,8 @@ static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
   byd_op_tx_active = false;
   byd_op_tx_last_ts = 0U;
+  byd_acc_main_on = false;
+  byd_btn_toggle_prev = false;
 
   // RX checks: messages we monitor from vehicle ECUs on Bus 0
   // All checksums and counters are UNVERIFIED, so ignore them all.
