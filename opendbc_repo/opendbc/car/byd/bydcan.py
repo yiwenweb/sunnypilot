@@ -96,10 +96,27 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
 
 
 def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
-                             lkas_req_prepare: bool, lkas_active: bool, enabled: bool):
+                             lkas_req_prepare: bool, lkas_active: bool, enabled: bool,
+                             counter: int = 0):
     """
     生成EPS反馈欺骗报文 (ACC_EPS_STATE - 0x318 / 792)
     发送到Bus 2，欺骗原厂MPC，防止DTC故障码，保持AEB等安全功能正常工作
+
+    原厂 EPS 实测数据 (sniff_mpc_frames.py, 39.5秒):
+      fc 00 f0 XX ff ff Cx xx
+      byte[0]=0xFC: LKAS_Prepared=0, CruiseActivated=0, TorqueFailed=1,
+                    SETME1_0x1=1, SteerWarning=1, SteerErrorCode=7
+      byte[2]=0xF0: MainTorque=0, SETME3_0x1=1, ReportHandsNotOnSteeringWheel=1, SETME4_0x3=3
+      byte[4]=0xFF: SETME5_0xFF=0xF
+      byte[5]=0xFF: SETME6_0xFFF=0xFFF
+      byte[6]: 高4位=COUNTER(0-F), 低4位=0xF (SETME)
+      byte[7]: CHECKSUM (sum(all 8 bytes) & 0xFF == 0xFF)
+
+    关键发现:
+      - TorqueFailed=1, SteerWarning=1, SteerErrorCode=7 是 EPS 正常状态
+      - 如果发送 0 会导致 MPC 检测到异常
+      - 792 也有 counter 和 checksum，但 DBC 未定义这两个信号
+      - 必须手动填充 byte[6] 和 byte[7]
 
     参数:
         packer: CAN打包器
@@ -108,14 +125,16 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
         lkas_req_prepare: LKAS准备请求状态
         lkas_active: LKAS激活状态
         enabled: openpilot是否启用
+        counter: 报文计数器 (0-15)
     """
+    # 严格匹配原厂 EPS 的 792 帧格式
     values = {
         "LKAS_Prepared": 0,
         "CruiseActivated": 0,
-        "TorqueFailed": 0,
+        "TorqueFailed": 1,             # 原厂 EPS 正常状态 = 1（非故障）
         "SETME1_0x1": 1,
-        "SteerWarning": 0,
-        "SteerErrorCode": 0,
+        "SteerWarning": 1,             # 原厂 EPS 正常状态 = 1（非故障）
+        "SteerErrorCode": 7,           # 原厂 EPS 正常状态 = 7
         "MainTorque": 0,
         "SETME3_0x1": 1,
         "ReportHandsNotOnSteeringWheel": 0,
@@ -141,6 +160,9 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
 
     msg = packer.make_can_msg("ACC_EPS_STATE", CanBus.CAM, values)
     dat = bytearray(msg[1])
+    # 手动填充 counter 和 checksum（DBC 未定义这两个信号）
+    # 原厂格式: byte[6] = (counter << 4) | 0xF, byte[7] = checksum
+    dat[6] = ((counter & 0xF) << 4) | 0xF
     dat[7] = byd_checksum(dat)
     return (msg[0], bytes(dat), msg[2])
 
@@ -241,11 +263,17 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
     """
     生成ACC HUD显示报文 (ACC_HUD_ADAS - 0x32D / 813)
     用于更新仪表盘ACC状态显示（适配0km/h激活）
-    
-    核心优化：
-    1. 修复校验和计算（使用原厂补码算法）
-    2. 确保SetSpeed兼容0km/h激活逻辑
-    
+
+    原厂 MPC 实测数据 (sniff_mpc_frames.py, 39.5秒):
+      空闲: 00 00 04 01 f4 ff Fx xx → AccState=0, AccOn1=0, Status=4, Notify=0
+      ACC激活: 00 00 7c 4d f7 ff Fx xx → AccState=7, AccOn1=0, Status=7, Notify=38
+
+    关键发现:
+      - AccOn1 始终为 0（即使 ACC 激活）
+      - AccState=7 表示 ACC 激活（DBC VAL_ 标注为 ERROR 是错误的）
+      - Status=7 表示 ACC 激活
+      - Notify=38 表示 ACC 激活通知
+
     参数:
         packer: CAN打包器
         CP: 车辆参数
@@ -253,32 +281,41 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
         set_speed: 设定速度 (km/h，支持0km/h)
         has_lead: 是否检测到前车
         set_distance: 跟车距离档位 (1-4)
-        acc_state: ACC状态（0=OFF/1=ON/3=ACTIVE）
+        acc_state: ACC状态（由调用方传入，但会被覆盖为原厂值）
         enabled: 是否启用
         counter: 报文计数器 (0-15)
     """
-    # 原厂ACC_HUD基准值（适配0km/h激活）
+    # 严格匹配原厂 MPC 帧格式
+    # 空闲: AccState=0, AccOn1=0, Status=4, Notify=0
+    # 激活: AccState=7, AccOn1=0, Status=7, Notify=38
     values = {
-        "SetSpeed": set_speed,          # 支持0km/h设定速度
+        "SetSpeed": set_speed if enabled else 0,
         "HasLead": 1 if has_lead else 0,
-        "SetDistance": max(1, min(4, set_distance)),  # 限制距离档位1-4
+        "SetDistance": max(1, min(4, set_distance)),
         "LeadingDistance": 0,
         "AEB": 0,
         "FCW": 0,
         "SETME1_0x1": 1,
-        "AccState": acc_state,          # 0=OFF/1=ON/3=ACTIVE（适配0km/h）
-        "AccOn1": 1 if enabled else 0,
+        "AccState": 0,                 # 默认空闲
+        "AccOn1": 0,                   # 原厂始终为 0
         "CloseWarning": 0,
         "SETME2_0x1": 1,
-        "Notify": 0,
-        "Status": 4,                    # 原厂空闲值
+        "Notify": 0,                   # 默认无通知
+        "Status": 4,                   # 默认空闲
         "SETME3_0xFFF": 0xFFF,
         "COUNTER": counter,
         "SETME4_0xF": 0xF,
-        "CHECKSUM": 0,                  # 预留校验和位
+        "CHECKSUM": 0,
     }
 
-    # 计算原厂补码校验和
+    if enabled:
+        # 匹配原厂 ACC 激活状态
+        values.update({
+            "AccState": 7,              # 原厂 ACC 激活 = 7（非 DBC 标注的 ERROR）
+            "Status": 7,                # 原厂 ACC 激活 = 7
+            "Notify": 38,               # 原厂 ACC 激活通知
+        })
+
     data = packer.make_can_msg("ACC_HUD_ADAS", CanBus.PT, values)[1]
     values["CHECKSUM"] = byd_checksum(data)
 

@@ -32,6 +32,7 @@ class CarController(CarControllerBase):
         self.apply_steer_last = 0
         self.lkas_counter = 0        # 790 counter (0-15)
         self.acc_counter = 0         # 813/814/815 counter (0-15)
+        self.eps_counter = 0         # 792 counter (0-15)
         self.btn_counter = 0         # 944 counter (0-15)
         self.frame = 0
 
@@ -82,7 +83,7 @@ class CarController(CarControllerBase):
                     set_speed=hud_set_speed,
                     has_lead=False,
                     set_distance=4,
-                    acc_state=1,
+                    acc_state=7,       # 原厂 ACC 激活 = 7
                     enabled=True,
                     counter=self.acc_counter,
                 ))
@@ -103,7 +104,10 @@ class CarController(CarControllerBase):
                 self.acc_counter = (self.acc_counter + 1) & 0xF
 
         # === 4. 792 ACC_EPS_STATE 假反馈到 Bus 2 @ 50Hz ===
-        # 欺骗原厂 MPC，防止 DTC 故障码，保持 AEB 等安全功能正常
+        # 拦截真实 EPS 的 792（防止 MPC 看到 CruiseActivated=1 而自己没发 LKAS_Active=1）
+        # 发送假 792 到 Bus 2，匹配原厂 EPS 空闲状态
+        # 关键修复: TorqueFailed=1, SteerWarning=1, SteerErrorCode=7（原厂正常值）
+        # 关键修复: 手动填充 counter 和 checksum（DBC 未定义）
         if lat_active or long_active:
             if self.frame % 2 == 0:
                 can_sends.append(create_fake_eps_feedback(
@@ -113,7 +117,9 @@ class CarController(CarControllerBase):
                     lkas_req_prepare=False,
                     lkas_active=lat_active,
                     enabled=True,
+                    counter=self.eps_counter,
                 ))
+                self.eps_counter = (self.eps_counter + 1) & 0xF
 
         # === 5. 944 PCM_BUTTONS 转发到 Bus 2 @ 20Hz ===
         if lat_active or long_active:

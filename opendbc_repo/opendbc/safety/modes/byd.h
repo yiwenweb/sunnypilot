@@ -38,9 +38,11 @@ static uint8_t byd_get_counter(const CANPacket_t *msg) {
   return 0U;
 }
 
-// Checksum: algorithm is UNVERIFIED per DBC documentation
-// DBC comments say "sum(bytes[0:7]) & 0xFF" but bydcan.py uses nibble-based algorithm
-// Until validated on real vehicle, ignore checksums on all RX messages
+// Checksum: verified via real vehicle sniff data (sniff_mpc_frames.py)
+// Algorithm: CHECKSUM = (0xFF - sum(bytes[0:7])) & 0xFF
+// Verification: sum(all 8 bytes) & 0xFF == 0xFF
+// All 790/792/813/814/815 frames confirmed to use this algorithm
+// We ignore checksums on RX messages (safety layer doesn't need to validate them)
 static uint32_t byd_get_checksum(const CANPacket_t *msg) {
   UNUSED(msg);
   return 0U;
@@ -290,7 +292,7 @@ static bool byd_fwd_hook(int bus_num, int addr) {
   }
 
   if (bus_num == 0) {
-    // Bus 0 → Bus 2: 始终拦截 openpilot 发的控制消息（防止回传给 MPC）
+    // Bus 0 → Bus 2: 拦截 openpilot 发的控制消息（防止回传给 MPC）
     // 原厂 Bus 0 上没有 790/813/814/815，只可能是 openpilot 发的
     if ((addr == BYD_ACC_MPC_STATE) ||
         (addr == BYD_ACC_HUD_ADAS) ||
@@ -298,7 +300,10 @@ static bool byd_fwd_hook(int bus_num, int addr) {
         (addr == BYD_ACC_AEB)) {
       return true;
     }
-    // 792: 仅在 openpilot 发送时拦截真实 EPS 反馈
+    // 792: openpilot 激活时拦截真实 EPS 的 792，防止 MPC 看到
+    // CruiseActivated=1（EPS 响应 openpilot 的 790），而 MPC 自己没发
+    // LKAS_Active=1，导致 MPC 检测到不一致
+    // openpilot 发送假 792 到 Bus 2 替代真实 792
     if (byd_op_tx_active) {
       if (addr == BYD_ACC_EPS_STATE) {
         return true;
