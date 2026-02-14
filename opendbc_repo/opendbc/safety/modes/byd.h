@@ -73,6 +73,14 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
 
 static bool byd_stock_longitudinal = false;
 
+// openpilot 是否正在发送控制消息的标志位
+// 由 tx_hook 在成功发送 790 时设置为 true
+// 由 safety_tick (1Hz) 超时重置为 false
+// fwd_hook 用此标志位决定是否拦截 MPC 消息
+// 这保证"拦截"和"替代消息发送"严格同步，没有时间差
+static bool byd_op_tx_active = false;
+static uint32_t byd_op_tx_last_ts = 0U;
+
 static void byd_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == BYD_MAIN_BUS) {
     // Update vehicle speed from CARSPEED (289)
@@ -192,6 +200,12 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
     if (steer_torque_cmd_checks(lkas_output, steer_req, BYD_STEERING_LIMITS)) {
       tx = false;
     }
+
+    // 标记 openpilot 正在发送控制消息
+    if (tx) {
+      byd_op_tx_active = true;
+      byd_op_tx_last_ts = microsecond_timer_get();
+    }
   }
 
   // Safety check for ACC_CMD (814) - Longitudinal control on Bus 0
@@ -249,49 +263,44 @@ static bool byd_fwd_hook(int bus_num, int addr) {
   //   Bus 2 = 原厂 MPC (前摄像头)
   //   panda 默认双向转发 Bus 0 <-> Bus 2 (get_fwd_bus)
   //
-  // 需要拦截的三类信号:
-  //   1. ACC 控制指令: 813 (HUD), 814 (AccelCmd), 815 (AEB)
-  //   2. LKA/车道保持指令: 790 (LKAS_Output)
-  //   3. EPS 反馈: 792 (EPS→MPC 方向)
-  //
-  // === Bus 2 → Bus 0 (原厂 MPC → ECU) ===
-  // 横向激活时: 拦截 790/813/814/815，openpilot 在 Bus 0 上发送替代消息
-  // 未激活时: 全部透传，保持原厂 MPC 正常控制
-  //
-  // === Bus 0 → Bus 2 (ECU/openpilot → MPC) ===
-  // 横向激活时:
-  //   拦截 790/813/814/815: openpilot 发到 Bus 0 的消息不能回传到 Bus 2，
-  //     否则 MPC 收到与自己发出内容不同的同 ID 消息会报错
-  //   拦截 792: openpilot 发假 792 到 Bus 2，真实 792 不能同时到达 MPC
-  // 未激活时: 全部透传
+  // 拦截策略: 只在 openpilot 实际发送控制消息时才拦截
+  // byd_op_tx_active 由 tx_hook 在成功发送 790 时设置
+  // 这保证拦截和替代消息严格同步，不会出现：
+  //   "MPC 消息被拦截了但 openpilot 还没发替代消息" 的间隙
 
-  bool dominated = is_lat_active();
+  // 超时检测: 如果 100ms 没有新的 TX，认为 openpilot 停止发送
+  if (byd_op_tx_active) {
+    uint32_t now = microsecond_timer_get();
+    if ((now - byd_op_tx_last_ts) > 100000U) {  // 100ms
+      byd_op_tx_active = false;
+    }
+  }
 
   if (bus_num == 2) {
     // Bus 2 → Bus 0: 拦截原厂 MPC 的控制消息
-    if (dominated) {
-      if ((addr == BYD_ACC_MPC_STATE) ||   // 790 - LKA 转向
-          (addr == BYD_ACC_HUD_ADAS) ||    // 813 - ACC HUD
-          (addr == BYD_ACC_CMD) ||          // 814 - ACC 加速度
-          (addr == BYD_ACC_AEB)) {          // 815 - AEB
+    // 仅在 openpilot 正在发送替代消息时拦截
+    if (byd_op_tx_active) {
+      if ((addr == BYD_ACC_MPC_STATE) ||   // 790
+          (addr == BYD_ACC_HUD_ADAS) ||    // 813
+          (addr == BYD_ACC_CMD) ||          // 814
+          (addr == BYD_ACC_AEB)) {          // 815
         return true;
       }
     }
   }
 
   if (bus_num == 0) {
-    // Bus 0 → Bus 2: 拦截 openpilot 消息回传 + 真实 EPS 反馈
-    // 790/813/814/815 在原厂 Bus 0 上不存在（只有 MPC 在 Bus 2 上发送），
-    // 所以 Bus 0 上出现的这些消息一定是 openpilot 发的，始终拦截不影响原厂功能。
-    // 792 只在横向激活时拦截（未激活时 MPC 需要收到真实 EPS 反馈）。
-    if ((addr == BYD_ACC_MPC_STATE) ||   // 790 - openpilot 发的，不回传给 MPC
-        (addr == BYD_ACC_HUD_ADAS) ||    // 813
-        (addr == BYD_ACC_CMD) ||          // 814
-        (addr == BYD_ACC_AEB)) {          // 815
+    // Bus 0 → Bus 2: 始终拦截 openpilot 发的控制消息（防止回传给 MPC）
+    // 原厂 Bus 0 上没有 790/813/814/815，只可能是 openpilot 发的
+    if ((addr == BYD_ACC_MPC_STATE) ||
+        (addr == BYD_ACC_HUD_ADAS) ||
+        (addr == BYD_ACC_CMD) ||
+        (addr == BYD_ACC_AEB)) {
       return true;
     }
-    if (dominated) {
-      if (addr == BYD_ACC_EPS_STATE) {    // 792 - 真实 EPS 反馈，用假的替代
+    // 792: 仅在 openpilot 发送时拦截真实 EPS 反馈
+    if (byd_op_tx_active) {
+      if (addr == BYD_ACC_EPS_STATE) {
         return true;
       }
     }
@@ -303,6 +312,8 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
 static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
+  byd_op_tx_active = false;
+  byd_op_tx_last_ts = 0U;
 
   // RX checks: messages we monitor from vehicle ECUs on Bus 0
   // All checksums and counters are UNVERIFIED, so ignore them all.
