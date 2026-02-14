@@ -288,20 +288,24 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
     # 严格匹配原厂 MPC 帧格式
     # 空闲: AccState=0, AccOn1=0, Status=4, Notify=0
     # 激活: AccState=7, AccOn1=0, Status=7, Notify=38
+    # 原厂空闲帧: 00 00 04 01 f4 ff Fx xx
+    #   AccState=0, AccOn1=0, Status=4, Notify=0, SetDistance=0
+    # 原厂激活帧: 00 00 7c 4d f7 ff Fx xx
+    #   AccState=7, AccOn1=1, Status=7, Notify=38
     values = {
         "SetSpeed": set_speed if enabled else 0,
         "HasLead": 1 if has_lead else 0,
-        "SetDistance": max(1, min(4, set_distance)),
+        "SetDistance": max(1, min(4, set_distance)) if enabled else 0,
         "LeadingDistance": 0,
         "AEB": 0,
         "FCW": 0,
         "SETME1_0x1": 1,
         "AccState": 0,                 # 默认空闲
-        "AccOn1": 1,                   # 原厂实测始终为 1 (sniff确认: 7c→bit6=1)
+        "AccOn1": 0,                   # 原厂空闲=0, 激活=1
         "CloseWarning": 0,
         "SETME2_0x1": 1,
         "Notify": 0,                   # 默认无通知
-        "Status": 4,                   # 默认空闲
+        "Status": 4,                   # 默认空闲=4
         "SETME3_0xFFF": 0xFFF,
         "COUNTER": counter,
         "SETME4_0xF": 0xF,
@@ -311,9 +315,10 @@ def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
     if enabled:
         # 匹配原厂 ACC 激活状态
         values.update({
-            "AccState": 7,              # 原厂 ACC 激活 = 7（非 DBC 标注的 ERROR）
-            "Status": 7,                # 原厂 ACC 激活 = 7
-            "Notify": 38,               # 原厂 ACC 激活通知
+            "AccState": 7,
+            "AccOn1": 1,                # 原厂激活=1 (sniff确认: 7c→bit6=1)
+            "Status": 7,
+            "Notify": 38,
         })
 
     data = packer.make_can_msg("ACC_HUD_ADAS", CanBus.PT, values)[1]

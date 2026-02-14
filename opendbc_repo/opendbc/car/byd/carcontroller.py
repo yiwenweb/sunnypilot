@@ -1,8 +1,14 @@
 """
 BYD CarController - Vehicle control implementation.
 
-CAN message schedule:
-- 790 (ACC_MPC_STATE) on Bus 0 @ 100Hz — steering control
+关键设计: 始终发送所有控制帧（790/813/814/815/792），即使 openpilot 未激活。
+未激活时发送与原厂 MPC 一致的空闲帧。这样:
+  1. fwd_hook 始终拦截 MPC 帧，不存在切换间隙
+  2. ECU 始终看到连续的帧流，无 counter 跳变
+  3. 激活/停用时只改变帧内容，不改变帧的有无
+
+CAN message schedule (匹配原厂 MPC 频率):
+- 790 (ACC_MPC_STATE) on Bus 0 @ 50Hz — steering control
 - 792 (ACC_EPS_STATE) on Bus 2 @ 50Hz — fake EPS feedback to MPC
 - 813 (ACC_HUD_ADAS) on Bus 0 @ 50Hz — HUD display
 - 814 (ACC_CMD) on Bus 0 @ 50Hz — ACC accel command
@@ -54,9 +60,10 @@ class CarController(CarControllerBase):
             apply_steer = 0
         self.apply_steer_last = apply_steer
 
-        # === 2. 790 ACC_MPC_STATE — 转向控制 @ 100Hz ===
-        # latActive 或 longActive 时发送（EPS 需要看到完整 ACC 报文组）
-        if lat_active or long_active:
+        # === 2. 790 ACC_MPC_STATE — 转向控制 @ 50Hz ===
+        # 始终发送，匹配原厂 MPC 50Hz 频率
+        # 未激活时发送空闲帧（LKAS_Active=0, LKAS_Output=0）
+        if self.frame % 2 == 0:
             can_sends.append(create_steering_control(
                 self.packer, self.CP,
                 apply_steer if lat_active else 0,
@@ -68,64 +75,58 @@ class CarController(CarControllerBase):
             ))
             self.lkas_counter = (self.lkas_counter + 1) & 0xF
 
-        # === 3. 813/814/815 纵向控制 @ 50Hz ===
-        # EPS 需要完整的 ACC 报文组才会回复 LKAS_Prepared=1
-        if lat_active or long_active:
-            if self.frame % 2 == 0:
-                # 813 ACC_HUD_ADAS
-                if long_active and CC.hudControl.setSpeed > 0:
-                    hud_set_speed = CC.hudControl.setSpeed * 3.6  # m/s → km/h
-                else:
-                    hud_set_speed = CS.out.vEgoCluster * 3.6
+        # === 3. 813/814/815 @ 50Hz ===
+        # 始终发送，未激活时发送原厂空闲值
+        if self.frame % 2 == 0:
+            # 813 ACC_HUD_ADAS
+            if long_active and CC.hudControl.setSpeed > 0:
+                hud_set_speed = CC.hudControl.setSpeed * 3.6  # m/s → km/h
+            else:
+                hud_set_speed = CS.out.vEgoCluster * 3.6
 
-                can_sends.append(create_acc_hud(
-                    self.packer, self.CP, CS,
-                    set_speed=hud_set_speed,
-                    has_lead=False,
-                    set_distance=4,
-                    acc_state=7,       # 原厂 ACC 激活 = 7
-                    enabled=True,
-                    counter=self.acc_counter,
-                ))
+            can_sends.append(create_acc_hud(
+                self.packer, self.CP, CS,
+                set_speed=hud_set_speed,
+                has_lead=False,
+                set_distance=4,
+                acc_state=7,
+                enabled=(lat_active or long_active),
+                counter=self.acc_counter,
+            ))
 
-                # 814 ACC_CMD
-                can_sends.append(create_acc_cmd(
-                    self.packer, self.CP, CS,
-                    mrr_lead_dist=100.0,
-                    accel=actuators.accel if long_active else 0.0,
-                    resume_from_standstill=True,
-                    standstill_state=(CS.out.vEgo < 0.1),
-                    long_active=long_active,
-                    counter=self.acc_counter,
-                ))
+            # 814 ACC_CMD
+            can_sends.append(create_acc_cmd(
+                self.packer, self.CP, CS,
+                mrr_lead_dist=100.0,
+                accel=actuators.accel if long_active else 0.0,
+                resume_from_standstill=True,
+                standstill_state=(CS.out.vEgo < 0.1),
+                long_active=long_active,
+                counter=self.acc_counter,
+            ))
 
-                # 815 ACC_AEB (空闲值)
-                can_sends.append(self._create_acc_aeb(self.acc_counter))
-                self.acc_counter = (self.acc_counter + 1) & 0xF
+            # 815 ACC_AEB (空闲值)
+            can_sends.append(self._create_acc_aeb(self.acc_counter))
+            self.acc_counter = (self.acc_counter + 1) & 0xF
 
         # === 4. 792 ACC_EPS_STATE 假反馈到 Bus 2 @ 50Hz ===
-        # 拦截真实 EPS 的 792（防止 MPC 看到 CruiseActivated=1 而自己没发 LKAS_Active=1）
-        # 发送假 792 到 Bus 2，匹配原厂 EPS 空闲状态
-        # 关键修复: TorqueFailed=1, SteerWarning=1, SteerErrorCode=7（原厂正常值）
-        # 关键修复: 手动填充 counter 和 checksum（DBC 未定义）
-        if lat_active or long_active:
-            if self.frame % 2 == 0:
-                can_sends.append(create_fake_eps_feedback(
-                    self.packer,
-                    fake_torque=apply_steer if lat_active else 0,
-                    driver_torque=int(CS.out.steeringTorque),
-                    lkas_req_prepare=False,
-                    lkas_active=lat_active,
-                    enabled=True,
-                    counter=self.eps_counter,
-                ))
-                self.eps_counter = (self.eps_counter + 1) & 0xF
+        # 始终发送，未激活时发送原厂 EPS 空闲状态
+        if self.frame % 2 == 0:
+            can_sends.append(create_fake_eps_feedback(
+                self.packer,
+                fake_torque=apply_steer if lat_active else 0,
+                driver_torque=int(CS.out.steeringTorque),
+                lkas_req_prepare=False,
+                lkas_active=lat_active,
+                enabled=(lat_active or long_active),
+                counter=self.eps_counter,
+            ))
+            self.eps_counter = (self.eps_counter + 1) & 0xF
 
         # === 5. 944 PCM_BUTTONS 转发到 Bus 2 @ 20Hz ===
-        if lat_active or long_active:
-            if self.frame % 5 == 0:
-                can_sends.append(self._forward_pcm_buttons(True))
-                self.btn_counter = (self.btn_counter + 1) & 0xF
+        if self.frame % 5 == 0:
+            can_sends.append(self._forward_pcm_buttons(lat_active or long_active))
+            self.btn_counter = (self.btn_counter + 1) & 0xF
 
         # === 6. 更新执行器实际值 ===
         new_actuators = actuators.as_builder()
@@ -138,13 +139,7 @@ class CarController(CarControllerBase):
         return new_actuators, can_sends
 
     def _create_acc_aeb(self, counter: int):
-        """生成 ACC_AEB (815) — 严格匹配原厂 MPC 空闲帧
-        原厂实测数据: 05 80 02 0f ff ff Fx xx
-          byte[0]=0x05, byte[1]=0x80, byte[2]=0x02, byte[3]=0x0F
-          byte[4]=0xFF, byte[5]=0xFF
-          byte[6]= SETME_0xF(高4位) | COUNTER(低4位)
-          byte[7]= CHECKSUM
-        """
+        """生成 ACC_AEB (815) — 严格匹配原厂 MPC 空闲帧"""
         dat = bytearray([0x05, 0x80, 0x02, 0x0f, 0xff, 0xff, 0x00, 0x00])
         dat[6] = (0xF << 4) | (counter & 0xF)
         dat[7] = byd_checksum(dat)

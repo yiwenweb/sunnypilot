@@ -29,20 +29,15 @@
 // BYD safety param flags
 #define BYD_PARAM_STOCK_LONGITUDINAL (1U << 0)
 
-// Counter extraction
-// EPS (287): 5-byte message, no counter in DBC signal definitions
-// Most other messages: no reliable counter confirmed on real vehicle
-// For safety, we ignore counters on all messages until validated
+// Counter extraction — disabled (unverified on real vehicle)
 static uint8_t byd_get_counter(const CANPacket_t *msg) {
   UNUSED(msg);
   return 0U;
 }
 
-// Checksum: verified via real vehicle sniff data (sniff_mpc_frames.py)
+// Checksum: verified via real vehicle sniff data
 // Algorithm: CHECKSUM = (0xFF - sum(bytes[0:7])) & 0xFF
-// Verification: sum(all 8 bytes) & 0xFF == 0xFF
-// All 790/792/813/814/815 frames confirmed to use this algorithm
-// We ignore checksums on RX messages (safety layer doesn't need to validate them)
+// Disabled in safety layer (RX validation not needed)
 static uint32_t byd_get_checksum(const CANPacket_t *msg) {
   UNUSED(msg);
   return 0U;
@@ -54,12 +49,11 @@ static uint32_t byd_compute_checksum(const CANPacket_t *msg) {
 }
 
 // LKAS steering limits for BYD
-// LKAS_Output is 11-bit signed, range [-1024, 1023]
 static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
-  .max_torque = 1023,             // 11-bit signed max (matches STEER_MAX in values.py)
-  .max_rate_up = 10,              // torque increase per cycle
-  .max_rate_down = 25,            // torque decrease per cycle
-  .max_rt_delta = 375,            // 10 rate_up * 100Hz * 250ms = 250, * 1.5 safety = 375
+  .max_torque = 1023,
+  .max_rate_up = 10,
+  .max_rate_down = 25,
+  .max_rt_delta = 375,
   .type = TorqueDriverLimited,
 
   .driver_torque_allowance = 80,
@@ -75,90 +69,56 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
 
 static bool byd_stock_longitudinal = false;
 
-// openpilot 是否正在发送控制消息的标志位
-// 由 tx_hook 在成功发送 790 时设置为 true
-// 由 safety_tick (1Hz) 超时重置为 false
-// fwd_hook 用此标志位决定是否拦截 MPC 消息
-// 这保证"拦截"和"替代消息发送"严格同步，没有时间差
-static bool byd_op_tx_active = false;
-static uint32_t byd_op_tx_last_ts = 0U;
-
 static void byd_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == BYD_MAIN_BUS) {
     // Update vehicle speed from CARSPEED (289)
-    // Signal: CarDisplaySpeed - 12-bit unsigned, scale 0.0735 km/h (per DBC)
     if (msg->addr == BYD_CARSPEED) {
       int speed_raw = (msg->data[0] | ((msg->data[1] & 0x0FU) << 8));
-      // scale 0.0735 km/h -> multiply by 0.0735 then convert to m/s
-      // 0.0735 * KPH_TO_MS = 0.0735 / 3.6 ≈ 0.020417
-      // Use integer math: speed_raw * 20417 / 1000000 gives m/s * VEHICLE_SPEED_FACTOR
       UPDATE_VEHICLE_SPEED((float)speed_raw * 0.0735f * KPH_TO_MS);
     }
 
     // Update steering angle from EPS (287)
-    // Signal: SteeringAngle - 16-bit signed, scale 0.1 deg
     if (msg->addr == BYD_EPS) {
       int angle_raw = (msg->data[0] | (msg->data[1] << 8));
       if (angle_raw > 32767) {
-        angle_raw -= 65536;  // convert to signed
+        angle_raw -= 65536;
       }
-      update_sample(&angle_meas, angle_raw);  // in 0.1 deg units
+      update_sample(&angle_meas, angle_raw);
     }
 
     // Update driver torque from ACC_EPS_STATE (792)
-    // Signal: SteerDriverTorque - 12-bit signed at bits 24-35
     if (msg->addr == BYD_ACC_EPS_STATE) {
       int torque_driver_raw = ((msg->data[3] | (msg->data[4] << 8)) & 0xFFFU);
       if (torque_driver_raw > 2047) {
-        torque_driver_raw -= 4096;  // convert to signed
+        torque_driver_raw -= 4096;
       }
       update_sample(&torque_driver, torque_driver_raw);
     }
 
     // Update brake pedal from DRIVE_STATE (578)
-    // Signal: BrakePressed - 1 bit at bit 37
     if (msg->addr == BYD_DRIVE_STATE) {
       brake_pressed = GET_BIT(msg, 37U);
     }
 
     // Update gas pedal from PEDAL (834)
-    // Signal: AcceleratorPedal - 8-bit, scale 0.01
     if (msg->addr == BYD_PEDAL) {
       gas_pressed = msg->data[0] > 0U;
     }
 
     // Update vehicle moving state from DRIVE_STATE (578)
-    // Signal: Gear - 3 bits at bits 40-42
-    // 1=P, 2=R, 3=N, 4=D
     if (msg->addr == BYD_DRIVE_STATE) {
       unsigned int gear = (msg->data[5] & 0x7U);
-      vehicle_moving = (gear != 1U);  // moving if not in Park
+      vehicle_moving = (gear != 1U);
     }
 
     // Update acc_main_on from PCM_BUTTONS (944)
-    // BTN_TOGGLE_ACC_OnOff at bit 8 — 状态信号（车辆内部做 toggle）
-    // 1=ACC ON, 0=ACC OFF，直接读取即可，不需要在 panda 层再做 toggle
-    // 这和 carstate.py 中的逻辑一致
     if (msg->addr == BYD_PCM_BUTTONS) {
       acc_main_on = GET_BIT(msg, 8U);
       mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
     }
 
-    // 关键修复: 手动调用 mads_state_update
-    // BYD 所有 TX 消息都设置了 check_relay=false（因为原厂 MPC 在 Bus 2 上发送
-    // 790/813/814/815，如果 check_relay=true 会触发 relay_malfunction）。
-    // 但 safety.h 中的 mads_state_update 只在 stock_ecu_check() 中被调用，
-    // 而 stock_ecu_check() 只在 check_relay=true 的消息匹配时才执行。
-    // 因此 mads_state_update 永远不会被调用 → controls_allowed_lat 永远为 false
-    // → is_lat_active() 永远为 false → 所有 790 消息被 panda 拒绝。
-    //
-    // 修复: 在收到 DRIVE_STATE (578, 20Hz) 时手动调用 mads_state_update，
-    // 确保 MADS 状态机正常运行。
+    // 手动调用 mads_state_update (see previous comments for explanation)
     if (msg->addr == BYD_DRIVE_STATE) {
-      // 额外修复: mads_set_alternative_experience() 调用 m_mads_state_init()
-      // 重置 system_enabled=false。C++ pandad 可能在 set_safety_mode 之后
-      // 调用 set_alternative_experience，导致 system_enabled 被重置。
-      // 直接恢复 system_enabled 而不重置其他 MADS 状态。
       if ((alternative_experience & ALT_EXP_ENABLE_MADS) && !m_mads_state.system_enabled) {
         m_mads_state.system_enabled = true;
       }
@@ -173,60 +133,43 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 
   // Safety check for ACC_MPC_STATE (790) - LKAS control on Bus 0
   if ((msg->addr == BYD_ACC_MPC_STATE) && (msg->bus == BYD_MAIN_BUS)) {
-    // Signal: LKAS_Output - 11-bit signed at bits 16-26
     int lkas_output = ((msg->data[2] | (msg->data[3] << 8)) & 0x7FFU);
     if (lkas_output > 1023) {
-      lkas_output -= 2048;  // convert to signed
+      lkas_output -= 2048;
     }
-
-    // Signal: LKAS_Active - 1 bit at bit 28
     bool steer_req = GET_BIT(msg, 28U);
 
-    // Check torque limits
     if (steer_torque_cmd_checks(lkas_output, steer_req, BYD_STEERING_LIMITS)) {
       tx = false;
-    }
-
-    // 标记 openpilot 正在发送控制消息
-    if (tx) {
-      byd_op_tx_active = true;
-      byd_op_tx_last_ts = microsecond_timer_get();
     }
   }
 
   // Safety check for ACC_CMD (814) - Longitudinal control on Bus 0
+  // 关键改动: 始终允许空闲帧 (AccelCmd=0, raw=100)
+  // openpilot 始终发送 814，未激活时发送空闲值
   if ((msg->addr == BYD_ACC_CMD) && (msg->bus == BYD_MAIN_BUS)) {
-    // When using stock longitudinal, block all ACC_CMD messages from openpilot
     if (byd_stock_longitudinal) {
       tx = false;
     } else {
-      // Signal: AccelCmd - 8-bit unsigned, scale 0.05, offset -5
-      // Raw value 100 = 0 m/s^2
       unsigned int accel_raw = msg->data[0];
 
-      // Limits: -3.5 m/s^2 (raw 30) to +2.0 m/s^2 (raw 140)
-      bool violation = (accel_raw > 140U) || (accel_raw < 30U);
-
       if (get_longitudinal_allowed()) {
-        // 纵向控制激活: 允许完整加速度范围
-      } else if (is_lat_active()) {
-        // 横向-only 模式: 只允许 accel=0 (raw=100) 的空闲消息
-        // EPS 需要看到完整的 ACC 消息组才会回复 LKAS_Prepared=1
-        violation |= (accel_raw != 100U);
+        // 纵向控制激活: 允许完整加速度范围 (raw 30-140)
+        bool violation = (accel_raw > 140U) || (accel_raw < 30U);
+        if (violation) {
+          tx = false;
+        }
       } else {
-        // 既没有横向也没有纵向: 不允许发送
-        violation = true;
-      }
-
-      if (violation) {
-        tx = false;
+        // 未激活: 只允许 accel=0 (raw=100) 的空闲帧
+        if (accel_raw != 100U) {
+          tx = false;
+        }
       }
     }
   }
 
   // Safety check for ACC_HUD_ADAS (813) on Bus 0
   if ((msg->addr == BYD_ACC_HUD_ADAS) && (msg->bus == BYD_MAIN_BUS)) {
-    // When using stock longitudinal, block HUD messages from openpilot
     if (byd_stock_longitudinal) {
       tx = false;
     }
@@ -234,7 +177,6 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 
   // Safety check for ACC_AEB (815) on Bus 0
   if ((msg->addr == BYD_ACC_AEB) && (msg->bus == BYD_MAIN_BUS)) {
-    // When using stock longitudinal, block AEB messages from openpilot
     if (byd_stock_longitudinal) {
       tx = false;
     }
@@ -247,51 +189,36 @@ static bool byd_fwd_hook(int bus_num, int addr) {
   // BYD CAN 架构 (panda 中间人):
   //   Bus 0 = 车辆主总线 (EPS, ESP, VCU 等所有 ECU)
   //   Bus 2 = 原厂 MPC (前摄像头)
-  //   panda 默认双向转发 Bus 0 <-> Bus 2 (get_fwd_bus)
   //
-  // 拦截策略: 只在 openpilot 实际发送控制消息时才拦截
-  // byd_op_tx_active 由 tx_hook 在成功发送 790 时设置
-  // 这保证拦截和替代消息严格同步，不会出现：
-  //   "MPC 消息被拦截了但 openpilot 还没发替代消息" 的间隙
-
-  // 超时检测: 如果 100ms 没有新的 TX，认为 openpilot 停止发送
-  if (byd_op_tx_active) {
-    uint32_t now = microsecond_timer_get();
-    if ((now - byd_op_tx_last_ts) > 100000U) {  // 100ms
-      byd_op_tx_active = false;
-    }
-  }
+  // 关键设计: openpilot 始终发送 790/813/814/815 替代帧
+  // 因此 fwd_hook 始终拦截 MPC 的这些帧，不存在切换间隙
+  // 这避免了:
+  //   1. 切换瞬间 ECU 同时收到 MPC 和 openpilot 的帧
+  //   2. 切换瞬间帧丢失（MPC 被拦截但 openpilot 还没发）
+  //   3. counter 跳变（openpilot counter 从 0 开始 vs MPC counter 在某个值）
 
   if (bus_num == 2) {
-    // Bus 2 → Bus 0: 拦截原厂 MPC 的控制消息
-    // 仅在 openpilot 正在发送替代消息时拦截
-    if (byd_op_tx_active) {
-      if ((addr == BYD_ACC_MPC_STATE) ||   // 790
-          (addr == BYD_ACC_HUD_ADAS) ||    // 813
-          (addr == BYD_ACC_CMD) ||          // 814
-          (addr == BYD_ACC_AEB)) {          // 815
-        return true;
-      }
+    // Bus 2 → Bus 0: 始终拦截 MPC 的控制帧
+    if ((addr == BYD_ACC_MPC_STATE) ||   // 790
+        (addr == BYD_ACC_HUD_ADAS) ||    // 813
+        (addr == BYD_ACC_CMD) ||          // 814
+        (addr == BYD_ACC_AEB)) {          // 815
+      return true;
     }
   }
 
   if (bus_num == 0) {
-    // Bus 0 → Bus 2: 拦截 openpilot 发的控制消息（防止回传给 MPC）
-    // 原厂 Bus 0 上没有 790/813/814/815，只可能是 openpilot 发的
+    // Bus 0 → Bus 2: 拦截 openpilot 发的控制帧（防止回传给 MPC）
     if ((addr == BYD_ACC_MPC_STATE) ||
         (addr == BYD_ACC_HUD_ADAS) ||
         (addr == BYD_ACC_CMD) ||
         (addr == BYD_ACC_AEB)) {
       return true;
     }
-    // 792: openpilot 激活时拦截真实 EPS 的 792，防止 MPC 看到
-    // CruiseActivated=1（EPS 响应 openpilot 的 790），而 MPC 自己没发
-    // LKAS_Active=1，导致 MPC 检测到不一致
-    // openpilot 发送假 792 到 Bus 2 替代真实 792
-    if (byd_op_tx_active) {
-      if (addr == BYD_ACC_EPS_STATE) {
-        return true;
-      }
+    // 792: 始终拦截真实 EPS 的 792，openpilot 始终发送假 792 到 Bus 2
+    // 防止 MPC 看到真实 EPS 状态（可能包含 CruiseActivated=1 等）
+    if (addr == BYD_ACC_EPS_STATE) {
+      return true;
     }
   }
 
@@ -301,49 +228,25 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
 static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
-  byd_op_tx_active = false;
-  byd_op_tx_last_ts = 0U;
 
-  // RX checks: messages we monitor from vehicle ECUs on Bus 0
-  // All checksums and counters are UNVERIFIED, so ignore them all.
-  // This is safe because we still validate message presence (timeout check).
   static RxCheck byd_rx_checks[] = {
-    // 实车嗅探数据 (sniff_all_buses.py, 22.9秒采样):
-    //   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/YAW_RATE/AXAY: 50Hz
-    //   PCM_BUTTONS/BELT: 20Hz, BCM/STALKS: ~1.5-2Hz, EPB: 1Hz
-    //   BCM/STALKS/EPB 频率太低，不加入 RxCheck（非安全关键信号）
-    //
-    // 频率设为实际值的 50%，safety_tick 超时 = MAX(10/freq, 1s)
-    // EPS (287) - 5 bytes, 实际 100Hz
     {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // CARSPEED (289) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_CARSPEED, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // YAW_RATE (546) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_YAW_RATE, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // AXAY (547) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_AXAY, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // DRIVE_STATE (578) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_DRIVE_STATE, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // ACC_EPS_STATE (792) - 8 bytes, 实际 50Hz（但可能在某些状态下不发送，设低频）
     {.msg = {{BYD_ACC_EPS_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // PEDAL (834) - 8 bytes, 实际 50Hz
     {.msg = {{BYD_PEDAL, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // PCM_BUTTONS (944) - 8 bytes, 实际 20Hz
     {.msg = {{BYD_PCM_BUTTONS, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
-  // TX whitelist: messages openpilot is allowed to send
-  // check_relay=false for all: BYD 的原厂 MPC 在 Bus 2 上发送 790/813/814/815，
-  // panda 默认转发到 Bus 0。如果 check_relay=true，static blocking 会始终阻止
-  // Bus 2→Bus 0 方向的转发，导致 EPS/ESP 收不到原厂 MPC 消息 → 车辆报 AEB 错误。
-  // 改为 check_relay=false，由 byd_fwd_hook 根据 controls_allowed 动态控制转发。
   static const CanMsg BYD_TX_MSGS[] = {
-    {BYD_ACC_MPC_STATE, BYD_MAIN_BUS, 8, .check_relay = false},  // 790 - LKAS control
-    {BYD_ACC_HUD_ADAS,  BYD_MAIN_BUS, 8, .check_relay = false},  // 813 - ACC HUD
-    {BYD_ACC_CMD,        BYD_MAIN_BUS, 8, .check_relay = false},  // 814 - ACC command
-    {BYD_ACC_AEB,        BYD_MAIN_BUS, 8, .check_relay = false},  // 815 - AEB
-    {BYD_ACC_EPS_STATE,  BYD_CAM_BUS,  8, .check_relay = false},  // 792 - Fake EPS feedback to MPC
-    {BYD_PCM_BUTTONS_FWD, BYD_CAM_BUS, 8, .check_relay = false},  // 944 - Button forward to Bus 2
+    {BYD_ACC_MPC_STATE, BYD_MAIN_BUS, 8, .check_relay = false},  // 790
+    {BYD_ACC_HUD_ADAS,  BYD_MAIN_BUS, 8, .check_relay = false},  // 813
+    {BYD_ACC_CMD,        BYD_MAIN_BUS, 8, .check_relay = false},  // 814
+    {BYD_ACC_AEB,        BYD_MAIN_BUS, 8, .check_relay = false},  // 815
+    {BYD_ACC_EPS_STATE,  BYD_CAM_BUS,  8, .check_relay = false},  // 792 fake
+    {BYD_PCM_BUTTONS_FWD, BYD_CAM_BUS, 8, .check_relay = false},  // 944
   };
 
   return BUILD_SAFETY_CFG(byd_rx_checks, BYD_TX_MSGS);
