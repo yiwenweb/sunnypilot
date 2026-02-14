@@ -188,13 +188,17 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
     jerk_lower = max(-16.0, min(12.7, jerk_lower)) # 原厂下限-16
 
     # 原厂ACC_CMD基准值
+    # 注意: AccelCmd 的 DBC 定义是 scale=0.05, offset=-5
+    # 所以物理值 0 m/s² = raw 100, 物理值 -5 m/s² = raw 0
+    # 空闲时必须发送 AccelCmd=0 (物理值，packer 会自动转换为 raw=100)
+    # ComfortBand 同理: 物理值 0 = raw 100
     values = {
-        "AccelCmd": 0,
-        "ComfortBandUpper": 0,
-        "ComfortBandLower": 0,
+        "AccelCmd": 0,                  # 物理值 0 m/s² (packer 转为 raw=100)
+        "ComfortBandUpper": 0,          # 物理值 0 m/s²
+        "ComfortBandLower": 0,          # 物理值 0 m/s²
         "JerkUpperLimit": 0,
         "SETME1_0x1": 1,
-        "JerkLowerLimit": 0,
+        "JerkLowerLimit": 0,            # 物理值 0-16=-16 m/s³ (packer 转为 raw=80)
         "ResumeFromStandstill": 0,
         "StandstillState": 0,
         "BrakeBehaviour": 0,
@@ -204,7 +208,7 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
         "EspBehaviour": 0,
         "COUNTER": counter,
         "SETME2_0xF": 0xF,
-        "CHECKSUM": 0,  # 预留校验和位
+        "CHECKSUM": 0,
     }
 
     if long_active:

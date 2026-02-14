@@ -132,9 +132,23 @@ class CarController(CarControllerBase):
         return new_actuators, can_sends
 
     def _create_acc_aeb(self, counter: int):
-        """生成 ACC_AEB (815) 空闲报文"""
-        dat = bytearray([0x05, 0x80, 0x02, 0x0f, 0xff, 0xff, 0x00, 0x00])
-        dat[6] = (0xF << 4) | (counter & 0xF)
+        """生成 ACC_AEB (815) 空闲报文
+        DBC 信号:
+          AEB_Active: bit 0, 1=AEB激活, 0=空闲
+          AEB_Decel: byte[1], scale 0.05, 0=无减速
+          byte[2]-byte[5]: 未定义信号，原厂空闲值待确认
+          COUNTER: bits 48-51
+          SETME_0xF: bits 52-55
+          CHECKSUM: byte[7]
+        """
+        dat = bytearray(8)
+        dat[0] = 0x00  # AEB_Active=0 (空闲，不触发AEB)
+        dat[1] = 0x00  # AEB_Decel=0 (无减速)
+        dat[2] = 0x00
+        dat[3] = 0x00
+        dat[4] = 0x00
+        dat[5] = 0x00
+        dat[6] = (0xF << 4) | (counter & 0xF)  # SETME_0xF | COUNTER
         dat[7] = byd_checksum(dat)
         return (815, bytes(dat), CanBus.PT)
 
