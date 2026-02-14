@@ -145,10 +145,11 @@ class CarState(CarStateBase):
         ret.steeringPressed = self.update_steering_pressed(abs(self.steer_torque_driver) > STEER_THRESHOLD, 5)
 
         # ===================== 转向故障检测（匹配EPS保护机制） =====================
-        # 核心修正：补充steerFault检测（TorqueFailed/SteerWarning触发）
+        # 注意：SteerErrorCode/TorqueFailed/SteerWarning 均为 [UNVERIFIED] 信号
+        # 在实车验证这些信号含义之前，不能用于触发 steerFaultPermanent
+        # 否则 EPS 正常报文中的非零 bit 会被误判为故障 → "LKAS Fault: Restart the car"
         torque_failed = cp.vl["ACC_EPS_STATE"]["TorqueFailed"] == 1
         steer_warning = cp.vl["ACC_EPS_STATE"]["SteerWarning"] == 1
-        steer_error_code = cp.vl["ACC_EPS_STATE"]["SteerErrorCode"]
 
         # 临时故障：连续5帧TorqueFailed/SteerWarning
         if torque_failed or steer_warning:
@@ -158,8 +159,9 @@ class CarState(CarStateBase):
             self.steer_fault_count = 0
             ret.steerFaultTemporary = False
 
-        # 永久故障：SteerErrorCode非0 或 临时故障持续1秒
-        ret.steerFaultPermanent = (steer_error_code != 0) or (self.steer_fault_count >= self.STEER_FAULT_PERMANENT_THRESHOLD)
+        # 永久故障：暂时禁用，等实车验证 SteerErrorCode 信号含义后再启用
+        # 原来的逻辑会把 EPS 正常报文中 bits 5-7 的非零值误判为故障
+        ret.steerFaultPermanent = False
 
         # ===================== 档位解析 =====================
         # Gear parsing (Requirement 3.4)
@@ -329,22 +331,26 @@ class CarState(CarStateBase):
         #   0:  自动学习频率（初始超时10秒，收到3条后自动计算）
         #   float('nan'): 跳过存活检查（ignore_alive=True）
         messages_bus0 = [
-            # Basic messages - 20Hz
+            # 核心消息 - 使用频率0自动学习，避免因频率不匹配导致 canValid=false
+            # 实车 CAN 总线频率可能与 DBC 标注不完全一致
             ("EPS", 0),
-            ("CARSPEED", 0),          # 车速报文（核心修正scale=0.0735）
-            ("DRIVE_STATE", 20),
-            ("PEDAL", 20),
-            ("YAW_RATE", 20),
-            ("AXAY", 20),
+            ("CARSPEED", 0),
+            ("DRIVE_STATE", 0),
+            ("PEDAL", 0),
+            ("YAW_RATE", 0),
+            ("AXAY", 0),
 
-            # Body messages
-            ("BCM", 1),
-            ("STALKS", 1),
+            # 车身消息 - 低频，自动学习
+            ("BCM", 0),
+            ("STALKS", 0),
             ("EPB", 0),
 
-            # PCM buttons on Bus 0 - frequency 0 to auto-learn
+            # PCM buttons - 自动学习
             ("PCM_BUTTONS", 0),
             # ACC_EPS_STATE: 跳过存活检查，避免影响canValid
+            # 原因：openpilot 激活后会发送假的 792 到 Bus 2，
+            # 但真实 EPS 的 792 仍在 Bus 0 上。如果 EPS 在某些状态下
+            # 不发送 792（如未收到 790），固定频率检查会导致 canValid=false
             ("ACC_EPS_STATE", float('nan')),
         ]
 
