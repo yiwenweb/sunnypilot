@@ -244,15 +244,51 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 }
 
 static bool byd_fwd_hook(int bus_num, int addr) {
-  // ============================================================
-  // 测试模式：纯透传，不拦截任何消息
-  // 目的：验证 panda 双向转发本身是否会导致车辆报错
-  // 如果纯透传不报错，说明问题出在拦截逻辑
-  // 如果纯透传也报错，说明问题出在 panda 转发延迟或硬件
-  // ============================================================
-  UNUSED(bus_num);
-  UNUSED(addr);
-  return false;  // 不拦截任何消息，全部透传
+  // BYD CAN 架构 (panda 中间人):
+  //   Bus 0 = 车辆主总线 (EPS, ESP, VCU 等所有 ECU)
+  //   Bus 2 = 原厂 MPC (前摄像头)
+  //   panda 默认双向转发 Bus 0 <-> Bus 2 (get_fwd_bus)
+  //
+  // 原厂 MPC 在 Bus 2 上发送: 790/813/814/815 → 转发到 Bus 0 给 EPS/ESP
+  // openpilot 在 Bus 0 上发送: 790/813/814/815 → 替代 MPC 控制 EPS/ESP
+  //
+  // 横向控制激活时:
+  //   必须拦截 Bus 2→Bus 0 的 790/813/814/815，防止 EPS/ESP 收到两套冲突指令
+  //   Bus 0→Bus 2 方向不拦截（MPC 需要收到 ECU 数据才能正常工作）
+  //
+  // 横向控制未激活时:
+  //   全部透传，保持原厂 MPC 正常工作
+
+  if (bus_num == 2) {
+    // Bus 2 → Bus 0: 原厂 MPC 的控制消息
+    // 仅在 openpilot 横向激活时拦截，避免与 openpilot 指令冲突
+    if (is_lat_active()) {
+      if ((addr == BYD_ACC_MPC_STATE) ||   // 790 - 转向控制
+          (addr == BYD_ACC_HUD_ADAS) ||    // 813 - HUD
+          (addr == BYD_ACC_CMD) ||          // 814 - ACC 加速度
+          (addr == BYD_ACC_AEB)) {          // 815 - AEB
+        return true;  // 拦截: openpilot 已在 Bus 0 上发送替代消息
+      }
+    }
+  }
+
+  // Bus 0 → Bus 2: 不拦截任何消息（除了 792）
+  // MPC 需要收到所有 ECU 数据 (EPS/车速/档位等) 才能正常工作
+  // 注意: openpilot 发到 Bus 0 的 790/813/814/815 也会被转发到 Bus 2，
+  // 这没问题 — MPC 收到这些消息不会报错，它只是一个接收方
+  //
+  // 例外: 792 (ACC_EPS_STATE) — 真实 EPS 反馈
+  // 当 openpilot 激活时，carcontroller 发送假的 792 到 Bus 2 欺骗 MPC
+  // 必须拦截真实 792 从 Bus 0→Bus 2 的转发，否则 MPC 收到两个 792 会混乱
+  if (bus_num == 0) {
+    if (is_lat_active()) {
+      if (addr == BYD_ACC_EPS_STATE) {  // 792 - 真实 EPS 反馈
+        return true;  // 拦截: openpilot 已发送假 792 到 Bus 2
+      }
+    }
+  }
+
+  return false;
 }
 
 
