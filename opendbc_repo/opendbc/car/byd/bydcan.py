@@ -127,11 +127,11 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
         enabled: openpilot是否启用
         counter: 报文计数器 (0-15)
     """
-    # 严格匹配原厂 EPS 的 792 帧格式 (基于 diag_mpc_decode.py 实车数据)
+    # 严格匹配原厂 EPS 的 792 帧格式 (基于实车诊断数据)
     values = {
         "LKAS_Prepared": 0,
         "CruiseActivated": 0,
-        "TorqueFailed": 0,             # 原厂实测 = 0 (byte0=0xF8, bit2=0)
+        "TorqueFailed": 1,             # 原厂实测 = 1 (byte0=0xFC, bit2=1)
         "SETME1_0x1": 1,
         "SteerWarning": 1,             # 原厂 EPS 正常状态 = 1
         "SteerErrorCode": 7,           # 原厂 EPS 正常状态 = 7
