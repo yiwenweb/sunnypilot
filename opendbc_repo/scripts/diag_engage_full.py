@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-BYD 完整 Engage 链路诊断
+BYD 完整 Engage 链路诊断 v3
 
 同时监控:
 1. panda 安全层: controlsAllowed (来自 pandaStates)
-2. carState: buttonEnable, cruiseState
+2. carState: buttonEnable, cruiseState, parkingBrake, steeringPressed
 3. selfdriveState: enabled, state
 4. MADS 参数
+5. selfdriveStateSP: MADS state
 
 用法: python3 /data/openpilot/opendbc_repo/scripts/diag_engage_full.py
 """
@@ -19,7 +20,7 @@ def main():
     params = Params()
 
     print("=" * 78)
-    print("BYD 完整 Engage 链路诊断")
+    print("BYD 完整 Engage 链路诊断 v3")
     print("=" * 78)
 
     # 读取 MADS 参数
@@ -28,14 +29,11 @@ def main():
     mads_uem = params.get_bool("MadsUnifiedEngagementMode")
     op_enabled = params.get_bool("OpenpilotEnabledToggle")
     print(f"MADS参数: Mads={mads} MainCruise={mads_main} UEM={mads_uem} OpEnabled={op_enabled}")
-
-    if not mads_uem:
-        print("*** 警告: MadsUnifiedEngagementMode=False → buttonEnable 事件会被 MADS 移除! ***")
-
     print("-" * 78)
 
     sm = messaging.SubMaster([
-        'carState', 'carControl', 'selfdriveState', 'pandaStates', 'onroadEvents',
+        'carState', 'carControl', 'selfdriveState', 'pandaStates',
+        'onroadEvents', 'selfdriveStateSP', 'onroadEventsSP',
     ])
 
     start = time.monotonic()
@@ -57,6 +55,16 @@ def main():
                 # buttonEnable 是瞬时值，必须每帧检查
                 if cs.buttonEnable:
                     print(f"  >>> [BTN {now:.1f}s] buttonEnable=TRUE <<<")
+                    # 显示此刻所有可能阻止 engage 的状态
+                    print(f"      parkBrake={cs.parkingBrake} steeringPressed={cs.steeringPressed}"
+                          f" doorOpen={cs.doorOpen} seatbelt={cs.seatbeltUnlatched}"
+                          f" espDisabled={cs.espDisabled}")
+                    print(f"      gear={cs.gearShifter} standstill={cs.standstill}"
+                          f" brakePressed={cs.brakePressed} gasPressed={cs.gasPressed}"
+                          f" vEgo={cs.vEgo:.2f}")
+                    print(f"      cruiseAvail={cs.cruiseState.available}"
+                          f" steerFaultT={cs.steerFaultTemporary}"
+                          f" steerFaultP={cs.steerFaultPermanent}")
 
             # 每秒报告
             if now - last_report < 1.0:
@@ -78,7 +86,8 @@ def main():
                 cs = sm['carState']
                 acc = "ON" if cs.cruiseState.available else "OFF"
                 print(f"\n[{now:.0f}s] ACC={acc} gear={cs.gearShifter} brake={cs.brakePressed}"
-                      f" standstill={cs.standstill} vEgo={cs.vEgo:.2f}")
+                      f" standstill={cs.standstill} vEgo={cs.vEgo:.2f}"
+                      f" parkBrake={cs.parkingBrake} steerPressed={cs.steeringPressed}")
                 print(f"  PANDA: controlsAllowed={panda_ca} safety={panda_safety}"
                       f" altExp={panda_alt} MADS={bool(panda_alt & 1024)}")
                 print(f"  CS: buttonEnable={cs.buttonEnable}"
@@ -94,11 +103,17 @@ def main():
             if sm.valid['selfdriveState']:
                 sds = sm['selfdriveState']
                 print(f"  SDS: enabled={sds.enabled} active={sds.active}"
-                      f" state={sds.state}")
+                      f" state={sds.state} engageable={sds.engageable}")
                 if sds.alertText1:
                     print(f"  ALERT: {sds.alertText1}")
                     if sds.alertText2:
                         print(f"         {sds.alertText2}")
+
+            # MADS state
+            if sm.valid['selfdriveStateSP']:
+                mads_sp = sm['selfdriveStateSP'].mads
+                print(f"  MADS: state={mads_sp.state} enabled={mads_sp.enabled}"
+                      f" active={mads_sp.active}")
 
             # onroadEvents - 显示所有活跃事件
             if sm.valid['onroadEvents']:
@@ -106,6 +121,13 @@ def main():
                 if len(events) > 0:
                     evt_names = [str(e.name) for e in events]
                     print(f"  EVENTS: {', '.join(evt_names)}")
+
+            # onroadEventsSP
+            if sm.valid['onroadEventsSP']:
+                events_sp = sm['onroadEventsSP'].events
+                if len(events_sp) > 0:
+                    evt_sp_names = [str(e.name) for e in events_sp]
+                    print(f"  EVENTS_SP: {', '.join(evt_sp_names)}")
 
     except KeyboardInterrupt:
         print("\n\n=== 按钮事件历史 ===")

@@ -228,5 +228,7 @@ FW_QUERY_CONFIG = FwQueryConfig(
     ],
 )
 
-# 方向盘扭矩阈值（脱手检测）- 18款唐DM原厂值
-STEER_THRESHOLD = 50  # 驾驶员扭矩超过50时判定为主动接管
+# 方向盘扭矩阈值（脱手检测）- 18款唐DM
+# 实车诊断发现 EPS 在非激活状态下扭矩信号有偏移，50 太低导致 steeringPressed 持续为 True
+# 提高到 100 避免误触发 steerOverride 事件
+STEER_THRESHOLD = 100

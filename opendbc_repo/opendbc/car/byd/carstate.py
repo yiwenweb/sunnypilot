@@ -149,7 +149,9 @@ class CarState(CarStateBase):
         ret.steeringTorqueEps = self.steer_torque_motor
 
         # 方向盘脱手检测：使用 STEER_THRESHOLD（values.py 中定义为 50）
-        ret.steeringPressed = self.update_steering_pressed(abs(self.steer_torque_driver) > STEER_THRESHOLD, 5)
+        # BYD 唐DM EPS 在非激活状态下扭矩信号可能有偏移
+        # 使用 update_steering_pressed 的滤波功能（连续 N 帧超阈值才判定）
+        ret.steeringPressed = self.update_steering_pressed(abs(self.steer_torque_driver) > STEER_THRESHOLD, 20)
 
         # ===================== 转向故障检测（匹配EPS保护机制） =====================
         # 注意：SteerErrorCode/TorqueFailed/SteerWarning 均为 [UNVERIFIED] 信号
@@ -228,7 +230,11 @@ class CarState(CarStateBase):
         # ===================== 手刹状态解析 =====================
         # Parking brake status parsing (Requirement 4.4)
         # EPB_ActiveFlag : 40|1@1+ (1,0) [0|1]
-        ret.parkingBrake = cp.vl["EPB"]["EPB_ActiveFlag"] == 1
+        # BYD 唐DM EPB 是自动管理的（autohold），停车时自动激活，起步时自动释放
+        # 如果报告 parkingBrake=True，会产生 parkBrake 事件（有 NO_ENTRY），
+        # 而 selfdrived state machine 在 MADS 清理之前运行，导致 engage 被阻止
+        # 禁用此信号，让 EPB 由车辆自行管理
+        ret.parkingBrake = False
 
         return ret, ret_sp
 
