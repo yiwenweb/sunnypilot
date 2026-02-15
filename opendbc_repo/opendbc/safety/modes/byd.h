@@ -129,11 +129,6 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
     if (steer_torque_cmd_checks(lkas_output, steer_req, BYD_STEERING_LIMITS)) {
       tx = false;
     }
-    // 标记 OP 正在发送
-    if (tx) {
-      byd_op_tx_active = true;
-      byd_op_tx_last_ts = microsecond_timer_get();
-    }
   }
 
   if ((msg->addr == BYD_ACC_CMD) && (msg->bus == BYD_MAIN_BUS)) {
@@ -159,6 +154,18 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
 
   if ((msg->addr == BYD_ACC_AEB) && (msg->bus == BYD_MAIN_BUS)) {
     if (byd_stock_longitudinal) { tx = false; }
+  }
+
+  // 标记 OP 正在发送: 任何 OP 帧成功发送到 Bus 0 都设置此标志
+  // 这确保 fwd_hook 在 OP 开始发送时立即拦截 MPC 帧，避免 Bus 0 上帧冲突
+  if (tx && (msg->bus == BYD_MAIN_BUS)) {
+    if ((msg->addr == BYD_ACC_MPC_STATE) ||
+        (msg->addr == BYD_ACC_HUD_ADAS) ||
+        (msg->addr == BYD_ACC_CMD) ||
+        (msg->addr == BYD_ACC_AEB)) {
+      byd_op_tx_active = true;
+      byd_op_tx_last_ts = microsecond_timer_get();
+    }
   }
 
   return tx;
