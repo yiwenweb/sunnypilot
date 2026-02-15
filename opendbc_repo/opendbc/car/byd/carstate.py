@@ -36,6 +36,12 @@ CRUISE_BUTTONS_DICT = {
     3: ButtonType.accelCruise,  # RES - increase speed
 }
 
+# Activate button mapping (BTN_AccActivate, byte0 bit1)
+# 前推激活按钮 → setCruise (首次设定速度，不受 resumeBlocked 限制)
+ACTIVATE_BUTTON_DICT = {
+    1: ButtonType.setCruise,  # 激活巡航
+}
+
 
 class CarState(CarStateBase):
     """BYD vehicle state parsing class.
@@ -75,6 +81,7 @@ class CarState(CarStateBase):
         self.cancel_button_prev = 0
         self.distance_decrease_prev = 0
         self.distance_increase_prev = 0
+        self.activate_button_prev = 0
 
         # LKAS status
         self.lkas_active = False
@@ -286,6 +293,12 @@ class CarState(CarStateBase):
                                            {1: ButtonType.cancel}, unpressed_btn=0))
         self.cancel_button_prev = cancel_button
 
+        # Activate button (前推激活巡航)
+        activate_button = int(cp.vl["PCM_BUTTONS"]["BTN_AccActivate"])
+        events.extend(create_button_events(activate_button, self.activate_button_prev,
+                                           ACTIVATE_BUTTON_DICT, unpressed_btn=0))
+        self.activate_button_prev = activate_button
+
         # Distance adjustment buttons
         distance_decrease = int(cp.vl["PCM_BUTTONS"]["BTN_AccDistanceDecrease"])
         events.extend(create_button_events(distance_decrease, self.distance_decrease_prev,
@@ -298,6 +311,14 @@ class CarState(CarStateBase):
         self.distance_increase_prev = distance_increase
 
         return events
+
+    def update_button_enable(self, buttonEvents: list) -> bool:
+        """Override: 加入 setCruise (激活按钮) 支持"""
+        if not self.CP.pcmCruise:
+            for b in buttonEvents:
+                if b.type in (ButtonType.accelCruise, ButtonType.decelCruise, ButtonType.setCruise) and not b.pressed:
+                    return True
+        return False
 
     @staticmethod
     def get_can_parsers(CP, CP_SP) -> dict[StrEnum, CANParser]:

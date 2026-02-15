@@ -247,6 +247,7 @@ BO_ 884 RADAR_MRR: 8 EPS
 // ====== RADAR_MRR替换完成 ======
 
 BO_ 944 PCM_BUTTONS: 8 BCM
+ SG_ BTN_AccActivate : 1|1@0+ (1,0) [0|1] "" VCU,MPC
  SG_ SETME_1 : 2|1@0+ (1,0) [0|1] "" VCU [RESERVED - NO FUNCTION]
  SG_ BTN_AccUpDown_Cmd : 4|2@0+ (1,0) [0|3] "" VCU,MPC
  SG_ BTN_AccCancel : 6|1@0+ (1,0) [0|1] "" VCU,MPC
