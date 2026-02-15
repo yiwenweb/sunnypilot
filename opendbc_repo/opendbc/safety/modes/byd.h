@@ -167,16 +167,18 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
   }
 
   if ((msg->addr == BYD_ACC_AEB) && (msg->bus == BYD_MAIN_BUS)) {
-    if (byd_stock_longitudinal) { tx = false; }
+    // 815 AEB: OP 不再发送此帧，MPC 原厂帧双向透传
+    // 保留此检查以防万一，始终阻止 OP 发 815
+    tx = false;
   }
 
   // 标记 OP 正在发送: 任何 OP 帧成功发送到 Bus 0 都设置此标志
   // 这确保 fwd_hook 在 OP 开始发送时立即拦截 MPC 帧，避免 Bus 0 上帧冲突
+  // 注意: 815 AEB 不参与标记，因为 OP 不发 815
   if (tx && (msg->bus == BYD_MAIN_BUS)) {
     if ((msg->addr == BYD_ACC_MPC_STATE) ||
         (msg->addr == BYD_ACC_HUD_ADAS) ||
-        (msg->addr == BYD_ACC_CMD) ||
-        (msg->addr == BYD_ACC_AEB)) {
+        (msg->addr == BYD_ACC_CMD)) {
       byd_op_tx_active = true;
       byd_op_tx_last_ts = microsecond_timer_get();
     }
@@ -199,11 +201,11 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == 2) {
     // Bus 2→Bus 0: 仅 OP 激活时拦截 MPC 帧
+    // 注意: 815 AEB 始终透传，保留原厂 AEB 紧急制动功能
     if (byd_op_tx_active) {
       if ((addr == BYD_ACC_MPC_STATE) ||
           (addr == BYD_ACC_HUD_ADAS) ||
-          (addr == BYD_ACC_CMD) ||
-          (addr == BYD_ACC_AEB)) {
+          (addr == BYD_ACC_CMD)) {
         return true;
       }
     }
@@ -211,10 +213,10 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
   if (bus_num == 0) {
     // Bus 0→Bus 2: 拦截 OP 发的帧 (防止回传给 MPC)
+    // 注意: 815 AEB 不拦截，保持双向透传
     if ((addr == BYD_ACC_MPC_STATE) ||
         (addr == BYD_ACC_HUD_ADAS) ||
-        (addr == BYD_ACC_CMD) ||
-        (addr == BYD_ACC_AEB)) {
+        (addr == BYD_ACC_CMD)) {
       return true;
     }
     // 792: 仅 OP 激活时拦截真实 EPS 的 792

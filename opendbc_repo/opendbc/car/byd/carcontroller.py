@@ -126,7 +126,7 @@ class CarController(CarControllerBase):
                 counter=self.acc_counter,
             ))
 
-            can_sends.append(self._create_acc_aeb(self.acc_counter))
+            # 815 ACC_AEB — 不发送，MPC 原厂 815 双向透传，保留 AEB 紧急制动功能
             self.acc_counter = (self.acc_counter + 1) & 0xF
 
         # 792 ACC_EPS_STATE 假反馈到 Bus 2 @ 50Hz
