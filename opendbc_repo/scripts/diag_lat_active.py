@@ -22,21 +22,28 @@ import time
 import cereal.messaging as messaging
 
 def decode_790(data):
-    """解码 790 (ACC_MPC_STATE) 帧"""
+    """解码 790 (ACC_MPC_STATE) 帧
+    DBC定义 (little-endian @1):
+      MPC_State      : 11|4@1+  → byte1 bits 3-6
+      LKAS_Output    : 16|11@1- → byte2 全部 + byte3 bits 0-2 (signed)
+      LKAS_ReqPrepare: 27|1@1+  → byte3 bit3
+      LKAS_Active    : 28|1@1+  → byte3 bit4
+      COUNTER        : 52|4@1+  → byte6 bits 4-7
+    """
     if len(data) < 8:
         return {}
     b = data
-    # LKAS_Output: bits 16-26 (11-bit signed), byte2 low 8 + byte3 low 3
+    # LKAS_Output: bits 16-26 (11-bit signed)
     lkas_raw = (b[2] | ((b[3] & 0x07) << 8))
     if lkas_raw > 1023:
         lkas_raw -= 2048
     # LKAS_Active: bit 28 = byte3 bit4
     lkas_active = (b[3] >> 4) & 1
-    # LKAS_ReqPrepare: bit 29 = byte3 bit5
-    lkas_req_prepare = (b[3] >> 5) & 1
-    # MPC_State: bits 12-13 = byte1 bits 4-5
-    mpc_state = (b[1] >> 4) & 0x3
-    # COUNTER: byte6 high nibble
+    # LKAS_ReqPrepare: bit 27 = byte3 bit3
+    lkas_req_prepare = (b[3] >> 3) & 1
+    # MPC_State: bits 11-14 = byte1 bits 3-6 (4-bit)
+    mpc_state = (b[1] >> 3) & 0xF
+    # COUNTER: byte6 bits 4-7
     counter = (b[6] >> 4) & 0xF
     return {
         'LKAS_Output': lkas_raw,
