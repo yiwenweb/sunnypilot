@@ -100,6 +100,13 @@ def main():
                     if sds.alertText2:
                         print(f"         {sds.alertText2}")
 
+            # onroadEvents - 显示所有活跃事件
+            if sm.valid['onroadEvents']:
+                events = sm['onroadEvents']
+                if len(events) > 0:
+                    evt_names = [str(e.name) for e in events]
+                    print(f"  EVENTS: {', '.join(evt_names)}")
+
     except KeyboardInterrupt:
         print("\n\n=== 按钮事件历史 ===")
         for t, typ, pressed in btn_log:
