@@ -66,10 +66,15 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
 static bool byd_stock_longitudinal = false;
 
 // TX-synced 拦截标志: tx_hook 发送 790 成功时设 true, 100ms 超时重置
-// fwd_hook 仅在此标志为 true 时拦截 MPC 帧
-// 这保证: 非激活时 100% 透传原厂帧, 激活时拦截+替代严格同步
+// fwd_hook 仅在此标志为 true 时拦截 MPC 帧 (790/813/814)
 static bool byd_op_tx_active = false;
 static uint32_t byd_op_tx_last_ts = 0U;
+
+// 792 拦截标志: 仅当 OP 发送 fake 792 到 Bus 2 时设 true
+// 非激活时 fake 792 不发送 → 此标志为 false → 真实 EPS 792 透传给 MPC
+// 激活时 fake 792 发送 → 此标志为 true → 真实 EPS 792 被拦截，MPC 看到 fake
+static bool byd_fake_eps_active = false;
+static uint32_t byd_fake_eps_last_ts = 0U;
 
 static void byd_rx_hook(const CANPacket_t *msg) {
   if (msg->bus == BYD_MAIN_BUS) {
@@ -184,6 +189,13 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
     }
   }
 
+  // 标记 fake 792 正在发送: OP 发 792 到 Bus 2 时设置
+  // 仅此时才拦截真实 EPS 792，非激活时真实 792 透传给 MPC
+  if (tx && (msg->bus == BYD_CAM_BUS) && (msg->addr == BYD_ACC_EPS_STATE)) {
+    byd_fake_eps_active = true;
+    byd_fake_eps_last_ts = microsecond_timer_get();
+  }
+
   return tx;
 }
 
@@ -196,6 +208,12 @@ static bool byd_fwd_hook(int bus_num, int addr) {
     uint32_t now = microsecond_timer_get();
     if ((now - byd_op_tx_last_ts) > 100000U) {
       byd_op_tx_active = false;
+    }
+  }
+  if (byd_fake_eps_active) {
+    uint32_t now = microsecond_timer_get();
+    if ((now - byd_fake_eps_last_ts) > 100000U) {
+      byd_fake_eps_active = false;
     }
   }
 
@@ -219,8 +237,9 @@ static bool byd_fwd_hook(int bus_num, int addr) {
         (addr == BYD_ACC_CMD)) {
       return true;
     }
-    // 792: 仅 OP 激活时拦截真实 EPS 的 792
-    if (byd_op_tx_active && (addr == BYD_ACC_EPS_STATE)) {
+    // 792: 仅 fake 792 激活时拦截真实 EPS 的 792
+    // 非激活时真实 792 透传给 MPC，避免 MPC 检测到异常报错
+    if (byd_fake_eps_active && (addr == BYD_ACC_EPS_STATE)) {
       return true;
     }
   }
@@ -232,6 +251,8 @@ static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
   byd_op_tx_active = false;
   byd_op_tx_last_ts = 0U;
+  byd_fake_eps_active = false;
+  byd_fake_eps_last_ts = 0U;
 
   static RxCheck byd_rx_checks[] = {
     {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},

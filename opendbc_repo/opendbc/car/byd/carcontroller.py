@@ -130,14 +130,15 @@ class CarController(CarControllerBase):
             self.acc_counter = (self.acc_counter + 1) & 0xF
 
         # 792 ACC_EPS_STATE 假反馈到 Bus 2 @ 50Hz
-        if self.frame % 2 == 0:
+        # 仅横向/纵向激活时发送，非激活时真实 EPS 792 透传给 MPC
+        if self.frame % 2 == 0 and (lat_active or long_active):
             can_sends.append(create_fake_eps_feedback(
                 self.packer,
                 fake_torque=apply_steer if lkas_ready else 0,
                 driver_torque=int(CS.out.steeringTorque),
                 lkas_req_prepare=lkas_preparing,
                 lkas_active=lkas_ready,
-                enabled=(lat_active or long_active),
+                enabled=True,
                 counter=self.eps_counter,
             ))
             self.eps_counter = (self.eps_counter + 1) & 0xF
