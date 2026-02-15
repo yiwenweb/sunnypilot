@@ -154,11 +154,10 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
       if (get_longitudinal_allowed()) {
         bool violation = (accel_raw > 140U) || (accel_raw < 30U);
         if (violation) { tx = false; }
-      } else if (is_lat_active()) {
-        // 横向-only: 只允许空闲帧 (raw=100)
-        if (accel_raw != 100U) { tx = false; }
       } else {
-        tx = false;
+        // 非纵向激活时: 只允许空闲帧 (raw=100, 即 0.0 m/s²)
+        // 始终发送空闲帧保持 counter 连续，避免 ECU 因帧消失而报错
+        if (accel_raw != 100U) { tx = false; }
       }
     }
   }
