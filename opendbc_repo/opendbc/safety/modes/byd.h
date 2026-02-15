@@ -58,10 +58,6 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
   .has_steer_req_tolerance = true,
 };
 
-// Button state tracking for controls_allowed (pcmCruise=False)
-static int byd_cruise_button_prev = 0;
-static bool byd_activate_button_prev = false;
-
 // BYD PCM_BUTTONS button values (BTN_AccUpDown_Cmd)
 #define BYD_BTN_NONE    0
 #define BYD_BTN_SET     1
@@ -115,32 +111,15 @@ static void byd_rx_hook(const CANPacket_t *msg) {
       acc_main_on = GET_BIT(msg, 8U);
       mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
 
-      // Button enable logic for pcmCruise=False mode
-      // BTN_AccUpDown_Cmd : 4|2@0+ (Motorola) = byte[0] bits 4-3
-      int cruise_button = (msg->data[0] >> 3) & 0x3U;
-      bool cancel = GET_BIT(msg, 6U);  // BTN_AccCancel : 6|1@0+
-      bool activate = GET_BIT(msg, 1U);  // BTN_AccActivate : 1|1@0+ (byte0 bit1)
-
-      // enter controls on falling edge of SET, RES, or Activate (button release)
-      bool set = (cruise_button != BYD_BTN_SET) && (byd_cruise_button_prev == BYD_BTN_SET);
-      bool res = (cruise_button != BYD_BTN_RES) && (byd_cruise_button_prev == BYD_BTN_RES);
-      bool act = !activate && byd_activate_button_prev;  // falling edge of activate
-      if (acc_main_on && (set || res || act)) {
+      // 简化策略: ACC 开启时始终允许控制
+      // selfdrived 通过 buttonEnable 事件管理 engage/disengage 状态
+      // panda 只需要在 ACC ON 时允许 TX，不需要精确的按钮落边沿检测
+      // cancel 和 ACC OFF 由 selfdrived 处理（buttonCancel 事件）
+      if (acc_main_on) {
         controls_allowed = true;
-      }
-
-      // exit controls on cancel
-      if (cancel) {
+      } else {
         controls_allowed = false;
       }
-
-      // exit controls when ACC main turned off
-      if (!acc_main_on) {
-        controls_allowed = false;
-      }
-
-      byd_cruise_button_prev = cruise_button;
-      byd_activate_button_prev = activate;
     }
 
     if (msg->addr == BYD_DRIVE_STATE) {
@@ -252,8 +231,6 @@ static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
   byd_op_tx_active = false;
   byd_op_tx_last_ts = 0U;
-  byd_cruise_button_prev = 0;
-  byd_activate_button_prev = false;
 
   static RxCheck byd_rx_checks[] = {
     {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
