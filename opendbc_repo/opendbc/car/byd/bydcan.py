@@ -34,7 +34,7 @@ def byd_checksum(dat: bytes) -> int:
 
 
 def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
-                            active: bool, brake_pressed: bool, hud_control, counter: int):
+                            active: bool, hud_control, counter: int):
     """
     生成转向控制报文 (ACC_MPC_STATE - 0x316 / 790)
 
@@ -44,7 +44,6 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
         apply_torque: 请求的转向扭矩（原始值，11-bit signed [-1024, 1023]）
         req_prepare: 是否请求准备状态
         active: LKAS是否激活
-        brake_pressed: 刹车是否踩下（制动优先级）
         hud_control: HUD控制信息（车道线可见性）
         counter: 报文计数器 (0-15)
     """
@@ -74,13 +73,10 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
 
     values["LKAS_ReqPrepare"] = 1 if req_prepare else 0
 
-    # 制动优先级：踩刹车立即关闭LKAS
-    if brake_pressed:
-        active = False
-        values["LKAS_Active"] = 0
-        values["LKAS_Output"] = 0
-        values["MPC_State"] = 0
-    elif req_prepare:
+    # 根据状态设置信号值
+    # 注意: 不再因为 brake_pressed 而清零所有信号
+    # 原厂 MPC 在刹车时保持 MPC_State，只是扭矩为 0
+    if req_prepare:
         # 准备阶段: LKAS_ReqPrepare=1, LKAS_Active=0, MPC_State=2
         values["MPC_State"] = 2  # LKA_ACTIVE — 告知 EPS 即将激活 LKAS
         values["LKAS_Active"] = 0
@@ -88,6 +84,7 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
     elif active:
         # LKAS_Output 是 11-bit signed，DBC scale=1，原始值直接映射到EPS扭矩
         # apply_torque 已经被 apply_driver_steer_torque_limits 限制在 ±STEER_MAX(1023)
+        # 刹车时 apply_torque 已经是 0（carcontroller 在 brake 时不请求扭矩）
         values.update({
             "LKAS_Output": apply_torque,
             "LKAS_Active": 1,

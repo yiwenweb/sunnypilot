@@ -68,13 +68,15 @@ class CarController(CarControllerBase):
         if lat_active or long_active:
 
             # LKAS 准备阶段状态机
-            # EPS 可能需要先看到 LKAS_ReqPrepare=1 若干帧才接受 LKAS_Active=1
+            # EPS 需要先看到 LKAS_ReqPrepare=1 若干帧才接受 LKAS_Active=1
+            # 关键: 只有在非刹车状态下实际发出 ReqPrepare 的帧才计数
             if lat_active and not self.lkas_was_active:
                 # 刚激活: 开始准备阶段
                 self.lkas_prepare_count = 0
-            if lat_active:
+            if lat_active and not CS.out.brakePressed:
+                # 只有非刹车时才递增准备计数（刹车时发的是空帧，EPS 看不到准备信号）
                 self.lkas_prepare_count += 1
-            else:
+            if not lat_active:
                 self.lkas_prepare_count = 0
             self.lkas_was_active = lat_active
 
@@ -92,7 +94,6 @@ class CarController(CarControllerBase):
                     apply_steer if lkas_ready else 0,
                     lkas_preparing,  # req_prepare: 准备阶段发 True
                     lkas_ready,      # active: 准备完成后才激活
-                    CS.out.brakePressed,
                     CC.hudControl,
                     self.lkas_counter,
                 ))
