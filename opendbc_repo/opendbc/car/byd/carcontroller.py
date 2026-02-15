@@ -1,17 +1,18 @@
 """
 BYD CarController - Vehicle control implementation.
 
-策略: 始终发送 790/813/814/815/792 帧，保持与原厂 MPC 相同的帧频率。
-非激活时发送空闲值（匹配原厂 MPC 空闲帧），激活时发送控制值。
-这确保 EPS 看到连续的 counter 序列，避免帧切换时的 counter 跳变。
+核心改动 (参考涛哥 carrotpilot):
+1. counter 从原厂 MPC 接续 (首帧读取原厂 counter +1)
+2. 等待 EPS 确认 Prepared 才发扭矩 (不再盲等固定帧数)
+3. 透传原厂 MPC 信号值 (cam_lkas/cam_acc/cam_adas/esc_eps)
+4. 始终发送 790/813/814 保持 counter 连续
+5. fake 792 仅激活时发送
 
-CAN message schedule (匹配原厂 MPC 频率):
-- 790 (ACC_MPC_STATE) on Bus 0 @ 50Hz — steering control
-- 792 (ACC_EPS_STATE) on Bus 2 @ 50Hz — fake EPS feedback to MPC
-- 813 (ACC_HUD_ADAS) on Bus 0 @ 50Hz — HUD display
-- 814 (ACC_CMD) on Bus 0 @ 50Hz — ACC accel command
-- 815 (ACC_AEB) on Bus 0 @ 50Hz — AEB control
-- 944 (PCM_BUTTONS) on Bus 2 @ 20Hz — button forwarding
+CAN message schedule:
+- 790 (ACC_MPC_STATE) on Bus 0 @ 50Hz
+- 792 (ACC_EPS_STATE) on Bus 2 @ 50Hz (仅激活时)
+- 813 (ACC_HUD_ADAS) on Bus 0 @ 50Hz
+- 814 (ACC_CMD) on Bus 0 @ 50Hz
 """
 
 from enum import StrEnum
@@ -34,16 +35,21 @@ class CarController(CarControllerBase):
         self.params = CarControllerParams(CP)
 
         self.apply_steer_last = 0
-        self.lkas_counter = 0        # 790 counter (0-15)
-        self.acc_counter = 0         # 813/814/815 counter (0-15)
-        self.eps_counter = 0         # 792 counter (0-15)
-        self.btn_counter = 0         # 944 counter (0-15)
+        self.lkas_counter = 0
+        self.acc_counter = 0
+        self.eps_counter = 0
+        self.btn_counter = 0
         self.frame = 0
 
-        # LKAS 准备阶段状态机
-        self.lkas_prepare_count = 0
-        self.LKAS_PREPARE_FRAMES = 100  # 准备阶段帧数 (100帧 @ 50Hz = 2秒)
+        # counter 接续: 首帧从原厂 MPC counter +1 开始
+        self.first_start = True
+
+        # LKAS 准备阶段状态机 (等 EPS 确认)
+        self.lkas_req_prepare = False
+        self.lkas_active = False
         self.lkas_was_active = False
+        self.lat_safeoff = False  # 安全退出: 扭矩归零后才完全退出
+
 
     def update(self, CC, CC_SP, CS, now_nanos) -> tuple[structs.CarControl.Actuators, list]:
         actuators = CC.actuators
@@ -52,51 +58,70 @@ class CarController(CarControllerBase):
         lat_active = CC.latActive
         long_active = CC.longActive
 
-        # === 1. 横向控制扭矩计算 ===
+        # === 0. 首帧: 从原厂 MPC counter 接续 ===
+        if self.first_start:
+            self.lkas_counter = (CS.acc_mpc_state_counter + 1) & 0xF
+            self.acc_counter = (CS.acc_cmd_counter + 1) & 0xF
+            self.eps_counter = (CS.eps_state_counter + 1) & 0xF
+            self.first_start = False
+
+        # === 1. LKAS 状态机 (等 EPS 确认 Prepared) ===
+        apply_torque = 0
+
         if lat_active:
-            new_steer = int(round(actuators.torque * self.params.STEER_MAX))
-            apply_steer = apply_driver_steer_torque_limits(
-                new_steer, self.apply_steer_last,
+            if self.lkas_active:
+                # EPS 已确认 Prepared → 可以发扭矩
+                new_steer = int(round(actuators.torque * self.params.STEER_MAX))
+                apply_torque = apply_driver_steer_torque_limits(
+                    new_steer, self.apply_steer_last,
+                    CS.out.steeringTorque, self.params,
+                )
+            else:
+                # 等待 EPS 确认
+                if CS.lkas_prepared:
+                    # EPS 回复 LKAS_Prepared=1 → 切换到 active
+                    self.lkas_active = True
+                    self.lkas_req_prepare = False
+                    self.lat_safeoff = True
+                else:
+                    # 发送 ReqPrepare=1，等待 EPS 确认
+                    self.lkas_req_prepare = True
+
+        elif self.lat_safeoff:
+            # 安全退出: 扭矩归零后才完全退出
+            if self.apply_steer_last == 0:
+                self.lat_safeoff = False
+            apply_torque = apply_driver_steer_torque_limits(
+                0, self.apply_steer_last,
                 CS.out.steeringTorque, self.params,
             )
         else:
-            apply_steer = 0
-        self.apply_steer_last = apply_steer
+            # 完全非激活
+            self.lkas_req_prepare = False
+            self.lkas_active = False
 
-        # === 2. LKAS 准备阶段状态机 ===
-        if lat_active and not self.lkas_was_active:
-            self.lkas_prepare_count = 0
-        if lat_active and not CS.out.brakePressed:
-            self.lkas_prepare_count += 1
-        if not lat_active:
-            self.lkas_prepare_count = 0
-        self.lkas_was_active = lat_active
-
-        lkas_preparing = lat_active and (self.lkas_prepare_count <= self.LKAS_PREPARE_FRAMES)
-        lkas_ready = lat_active and not lkas_preparing
+        self.apply_steer_last = apply_torque
 
         # ACC 主开关状态
         acc_on = CS.out.cruiseState.available
 
-        # === 3. 始终发送控制帧 (保持 counter 连续) ===
-        # 关键改动: 不再仅在 lat_active/long_active 时发帧
-        # 原厂 MPC 始终发送 790/813/814/815，OP 也必须始终发送
-        # 非激活时发送空闲值，激活时发送控制值
-        # 这确保 EPS 看到连续的 counter 序列，不会因 counter 跳变而拒绝帧
+        # === 2. 始终发送 790/813/814 (保持 counter 连续) ===
+        # 非激活时透传原厂 MPC 值 (只改 counter/checksum)
+        # 激活时修改控制字段
 
         # 790 ACC_MPC_STATE @ 50Hz
         if self.frame % 2 == 0:
             can_sends.append(create_steering_control(
-                self.packer, self.CP,
-                apply_steer if lkas_ready else 0,
-                lkas_preparing,
-                lkas_ready,
+                self.packer, self.CP, CS.cam_lkas,
+                apply_torque if self.lkas_active else 0,
+                self.lkas_req_prepare,
+                self.lkas_active,
                 CC.hudControl,
                 self.lkas_counter,
             ))
             self.lkas_counter = (self.lkas_counter + 1) & 0xF
 
-        # 813/814/815 @ 50Hz
+        # 813/814 @ 50Hz
         if self.frame % 2 == 0:
             if long_active and CC.hudControl.setSpeed > 0:
                 hud_set_speed = CC.hudControl.setSpeed * 3.6
@@ -104,7 +129,7 @@ class CarController(CarControllerBase):
                 hud_set_speed = CS.out.vEgoCluster * 3.6
 
             can_sends.append(create_acc_hud(
-                self.packer, self.CP, CS,
+                self.packer, self.CP, CS, CS.cam_adas,
                 set_speed=hud_set_speed,
                 has_lead=False,
                 set_distance=4,
@@ -115,7 +140,7 @@ class CarController(CarControllerBase):
             ))
 
             can_sends.append(create_acc_cmd(
-                self.packer, self.CP, CS,
+                self.packer, self.CP, CS, CS.cam_acc,
                 mrr_lead_dist=100.0,
                 accel=actuators.accel if long_active else 0.0,
                 resume_from_standstill=True,
@@ -126,31 +151,28 @@ class CarController(CarControllerBase):
                 counter=self.acc_counter,
             ))
 
-            # 815 ACC_AEB — 不发送，MPC 原厂 815 双向透传，保留 AEB 紧急制动功能
             self.acc_counter = (self.acc_counter + 1) & 0xF
 
-        # 792 ACC_EPS_STATE 假反馈到 Bus 2 @ 50Hz
-        # 仅横向/纵向激活时发送，非激活时真实 EPS 792 透传给 MPC
+        # === 3. fake 792 仅激活时发送 ===
         if self.frame % 2 == 0 and (lat_active or long_active):
             can_sends.append(create_fake_eps_feedback(
-                self.packer,
-                fake_torque=apply_steer if lkas_ready else 0,
-                driver_torque=int(CS.out.steeringTorque),
-                lkas_req_prepare=lkas_preparing,
-                lkas_active=lkas_ready,
+                self.packer, CS.esc_eps,
+                fake_torque=apply_torque if self.lkas_active else 0,
+                lkas_req_prepare=self.lkas_req_prepare,
+                lkas_active=self.lkas_active,
                 enabled=True,
                 counter=self.eps_counter,
             ))
             self.eps_counter = (self.eps_counter + 1) & 0xF
 
-        # 944 PCM_BUTTONS 转发到 Bus 2 @ 20Hz
+        # === 4. 944 PCM_BUTTONS 转发到 Bus 2 @ 20Hz ===
         if self.frame % 5 == 0:
             can_sends.append(self._forward_pcm_buttons(True))
             self.btn_counter = (self.btn_counter + 1) & 0xF
 
-        # === 4. 更新执行器实际值 ===
+        # === 5. 更新执行器实际值 ===
         new_actuators = actuators.as_builder()
-        actual_steer = self.apply_steer_last if (lat_active and self.lkas_prepare_count > self.LKAS_PREPARE_FRAMES) else 0
+        actual_steer = self.apply_steer_last if self.lkas_active else 0
         new_actuators.torque = float(actual_steer / self.params.STEER_MAX) if self.params.STEER_MAX else 0.0
         new_actuators.torqueOutputCan = int(actual_steer)
         if long_active:
@@ -158,13 +180,6 @@ class CarController(CarControllerBase):
 
         self.frame += 1
         return new_actuators, can_sends
-
-    def _create_acc_aeb(self, counter: int):
-        """815 ACC_AEB — 原厂空闲帧"""
-        dat = bytearray([0x05, 0x80, 0x02, 0x0f, 0xff, 0xff, 0x00, 0x00])
-        dat[6] = (0xF << 4) | (counter & 0xF)
-        dat[7] = byd_checksum(dat)
-        return (815, bytes(dat), CanBus.PT)
 
     def _forward_pcm_buttons(self, enabled):
         """944 PCM_BUTTONS → Bus 2"""

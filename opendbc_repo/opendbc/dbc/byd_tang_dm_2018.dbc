@@ -180,6 +180,7 @@ BO_ 792 ACC_EPS_STATE: 8 EPS
  SG_ SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU  // 驾驶员扭矩（脱手判断核心）
  SG_ SETME5_0xFF : 36|4@1+ (1,0) [0|15] "" MPC [RESERVED - NO FUNCTION]
  SG_ SETME6_0xFFF : 40|12@1+ (1,0) [0|4095] "" MPC [RESERVED - NO FUNCTION]
+ SG_ COUNTER_792 : 52|4@1+ (1,0) [0|15] "" MPC
 
 BO_ 813 ACC_HUD_ADAS: 8 MPC
  SG_ SetSpeed : 0|9@1+ (0.5,0) [0|255.5] "km/h" VCU  // 标注0km/h激活适配

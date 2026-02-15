@@ -1,89 +1,50 @@
 """
 BYD CarState - Vehicle state parsing implementation.
 
-This module implements the CarState class for BYD vehicles, responsible for
-parsing CAN messages and populating the CarState structure with vehicle data.
-
-=== （五）重要安全提醒 ===
-1. 仅辅助，不可脱手，随时接管
-2. 弯道、雨雪、标线模糊、施工路段慎用/关闭
-3. 不识别行人、非机动车、静止障碍物
-4. 升级后功能以4S店开通版本为准
-
-核心修正说明：
-1. 修复CarDisplaySpeed解析：scale从1 km/h改为原厂0.0735 km/h（关键修正）
-2. 补充steerFault检测逻辑（匹配EPS保护机制）
-3. 修正CAN总线注释错误（Bus2的813是回声，无需解析）
-4. 优化方向盘扭矩阈值（匹配原厂脱手检测规则）
+核心改动 (参考涛哥 carrotpilot):
+1. 增加 Bus 2 (MPC) 帧解析 — 读取原厂 MPC 的 790/813/814 信号值
+2. 缓存原厂帧数据 (cam_lkas, cam_acc, esc_eps) 供 carcontroller 透传
+3. 读取原厂 counter 值供 carcontroller 接续
+4. 读取 EPS 的 LKAS_Prepared 状态供 carcontroller 判断准备完成
 """
 
+import copy
 from enum import StrEnum
 
 from opendbc.can import CANParser
 from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.byd.values import DBC, STEER_THRESHOLD
+from opendbc.car.byd.values import DBC, STEER_THRESHOLD, CanBus
 
 ButtonType = structs.CarState.ButtonEvent.Type
 GearShifter = structs.CarState.GearShifter
 
-# Button mapping for BTN_AccUpDown_Cmd signal
-# DBC: VAL_ 944 BTN_AccUpDown_Cmd 0 "NOTPRESSED" 1 "DOWN_SETSPEED" 3 "UP_RESETSPEED"
-# 1 = SET (decrease speed), 3 = RES (increase speed)
 CRUISE_BUTTONS_DICT = {
-    1: ButtonType.decelCruise,  # SET - decrease speed
-    3: ButtonType.accelCruise,  # RES - increase speed
+    1: ButtonType.decelCruise,
+    3: ButtonType.accelCruise,
 }
 
-# Activate button mapping (BTN_AccActivate, byte0 bit1)
-# 前推激活按钮 → setCruise (首次设定速度，不受 resumeBlocked 限制)
 ACTIVATE_BUTTON_DICT = {
-    1: ButtonType.setCruise,  # 激活巡航
+    1: ButtonType.setCruise,
 }
 
 
 class CarState(CarStateBase):
-    """BYD vehicle state parsing class.
-
-    Parses CAN messages and populates the CarState structure with vehicle data.
-    Inherits from CarStateBase and implements required methods.
-
-    Attributes:
-        frame: Frame counter
-        cruise_buttons_prev: Previous cruise button state
-        main_on_prev: Previous main switch state
-        cancel_button_prev: Previous cancel button state
-        distance_decrease_prev: Previous distance decrease button state
-        distance_increase_prev: Previous distance increase button state
-        lkas_active: LKAS active status
-        lkas_prepared: LKAS prepared status
-        steer_torque_driver: Driver steering torque
-        steer_torque_motor: EPS motor torque
-        ax_sensor: Longitudinal acceleration from sensor
-    """
-
     def __init__(self, CP, CP_SP):
-        """Initialize CarState.
-
-        Args:
-            CP: CarParams structure
-            CP_SP: CarParams sunnypilot extension
-        """
         super().__init__(CP, CP_SP)
         self.frame = 0
 
-        # Button states for change detection
+        # Button states
         self.cruise_buttons_prev = 0
         self.main_on_prev = False
         self.main_on = False
-        self.acc_toggle_pressed_prev = False
         self.cancel_button_prev = 0
         self.distance_decrease_prev = 0
         self.distance_increase_prev = 0
         self.activate_button_prev = 0
 
-        # LKAS status
+        # LKAS status from EPS 792
         self.lkas_active = False
         self.lkas_prepared = False
 
@@ -91,235 +52,150 @@ class CarState(CarStateBase):
         self.steer_torque_driver = 0
         self.steer_torque_motor = 0
 
-        # Dynamic signals (Requirement 6.2)
+        # Dynamic signals
         self.ax_sensor = 0.0
 
-        # Steer fault detection
-        self.steer_fault_count = 0  # Counter for persistent fault detection
-        self.STEER_FAULT_PERMANENT_THRESHOLD = 100  # ~1 second at 100Hz
-        self.TORQUE_FAILED_THRESHOLD = 5  # 连续5帧TorqueFailed判定为临时故障
+        # === 原厂帧缓存 (供 carcontroller 透传) ===
+        # Bus 2 上 MPC 原厂帧的信号值字典
+        self.cam_lkas = {}    # ACC_MPC_STATE (790) 原厂信号
+        self.cam_acc = {}     # ACC_CMD (814) 原厂信号
+        self.cam_adas = {}    # ACC_HUD_ADAS (813) 原厂信号
+        # Bus 0 上 EPS 真实帧的信号值字典
+        self.esc_eps = {}     # ACC_EPS_STATE (792) 真实信号
+
+        # === 原厂 counter 值 (供 carcontroller 接续) ===
+        self.acc_mpc_state_counter = 0   # 790 counter
+        self.acc_cmd_counter = 0         # 814 counter
+        self.acc_hud_adas_counter = 0    # 813 counter
+        self.eps_state_counter = 0       # 792 counter
+
+        # === MPC 原厂 LKAS 状态 (供 fake 792 透传) ===
+        self.mpc_laks_output = 0
+        self.mpc_laks_active = False
+        self.mpc_laks_reqprepare = False
 
     def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
-        """Parse CAN messages and return vehicle state.
-
-        Args:
-            can_parsers: Dictionary containing CANParser instances
-
-        Returns:
-            tuple: (CarState, CarStateSP) containing parsed vehicle state
-        """
-        cp = can_parsers[Bus.pt]      # Bus 0 - Powertrain
+        cp = can_parsers[Bus.pt]       # Bus 0 - Powertrain / ESC
+        cp_cam = can_parsers[Bus.cam]  # Bus 2 - MPC 原厂帧
 
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
 
         self.frame += 1
 
-        # ===================== 车速解析 (CarDisplaySpeed) =====================
-        # DBC 定义: CarDisplaySpeed : 0|12@1+ (0.0735,0) [0|255] "km/h"
-        # CANParser 自动应用 scale=0.0735，返回值已经是物理车速 km/h
+        # ===================== 车速解析 =====================
         v_ego_kmh = cp.vl["CARSPEED"]["CarDisplaySpeed"]
         ret.vEgoRaw = v_ego_kmh * CV.KPH_TO_MS
-
-        # Apply Kalman filtering for smooth velocity estimation (Requirement 6.3)
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
-
-        # Set standstill when vehicle speed is below 0.1 m/s (Requirement 6.5)
         ret.standstill = ret.vEgo < 0.1
-
-        # Cluster speed for UI display（和仪表显示一致）
         ret.vEgoCluster = ret.vEgoRaw
 
-        # ===================== 方向盘角度/速率解析 =====================
-        # Steering angle parsing (Requirements 3.2, 3.3)
-        # DBC signal: SteeringAngle : 0|16@1- (0.1,0) [-450|450] "deg"
+        # ===================== 方向盘角度/速率 =====================
         ret.steeringAngleDeg = cp.vl["EPS"]["SteeringAngle"]
-        # DBC signal: SteeringAngleRate : 16|8@1+ (4,0) [0|1020] "deg/s"
         ret.steeringRateDeg = cp.vl["EPS"]["SteeringAngleRate"]
 
-        # ===================== 方向盘扭矩解析（原厂脱手检测） =====================
-        # Steering torque parsing (Requirements 5.7, 5.8)
-        # DBC signal: SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] ""
+        # ===================== 方向盘扭矩 =====================
         self.steer_torque_driver = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
-        # DBC signal: MainTorque : 8|12@1- (1,0) [-2048|2047] ""
         self.steer_torque_motor = cp.vl["ACC_EPS_STATE"]["MainTorque"]
-
-        # Store torque values in CarState
         ret.steeringTorque = self.steer_torque_driver
         ret.steeringTorqueEps = self.steer_torque_motor
-
-        # 方向盘脱手检测：使用 STEER_THRESHOLD（values.py 中定义为 150）
-        # BYD 唐DM EPS 在非激活状态下扭矩信号可能有偏移
-        # 使用 update_steering_pressed 的滤波功能（连续 N 帧超阈值才判定）
         ret.steeringPressed = self.update_steering_pressed(abs(self.steer_torque_driver) > STEER_THRESHOLD, 50)
 
-        # ===================== 转向故障检测（匹配EPS保护机制） =====================
-        # 注意：SteerErrorCode/TorqueFailed/SteerWarning 均为 [UNVERIFIED] 信号
-        # 实车诊断确认：TorqueFailed/SteerWarning 在 EPS 正常工作时持续为 1
-        # 这些 bit 在 BYD 唐DM 上不代表真正的故障，启用会导致：
-        #   steerFaultTemporary=True → "Steering Temporarily Unavailable" 持续告警
-        #   steerFaultPermanent=True → "LKAS Fault: Restart the car"
-        # 全部禁用，等实车验证信号真实含义后再启用
+        # ===================== 转向故障 =====================
         ret.steerFaultTemporary = False
         ret.steerFaultPermanent = False
 
-        # ===================== 档位解析 =====================
-        # Gear parsing (Requirement 3.4)
-        # DBC signal: Gear : 40|3@1+ (1,0) [0|7] "" 
-        # VAL_ 578 Gear 1 "P" 2 "R" 3 "N" 4 "D"
+        # ===================== 档位 =====================
         gear = cp.vl["DRIVE_STATE"]["Gear"]
         ret.gearShifter = self._parse_gear(gear)
 
-        # ===================== 踏板状态解析 =====================
-        # Pedal status (Requirements 3.5, 3.6)
-        # AcceleratorPedal : 0|8@1+ (0.01,0) [0|2.55] ""
+        # ===================== 踏板 =====================
         accelerator_pedal = cp.vl["PEDAL"]["AcceleratorPedal"]
-        ret.gasPressed = accelerator_pedal > 0.01  # Pressed when > 1%
-
-        # BrakePressed : 37|1@0+ (1,0) [0|1] ""
+        ret.gasPressed = accelerator_pedal > 0.01
         ret.brakePressed = cp.vl["DRIVE_STATE"]["BrakePressed"] == 1
 
-        # ===================== 转向灯/车门/安全带解析 =====================
-        # 全总线嗅探确认: BCM (301) 1.5Hz, STALKS (307) 1.9Hz 均在 Bus 0 上
-        # 转向灯: STALKS (307) LeftIndicator/RightIndicator
+        # ===================== 转向灯/车门/安全带 =====================
         ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_stalk(
-            100,  # blinker_time: 保持亮 100 帧（~1秒 at 100Hz update rate）
-            cp.vl["STALKS"]["LeftIndicator"] == 1,
-            cp.vl["STALKS"]["RightIndicator"] == 1,
-        )
-
-        # 车门: BCM (301) — 任一车门打开即为 True
+            100, cp.vl["STALKS"]["LeftIndicator"] == 1, cp.vl["STALKS"]["RightIndicator"] == 1)
         ret.doorOpen = any([
-            cp.vl["BCM"]["FrontLeftDoor"],
-            cp.vl["BCM"]["FrontRightDoor"],
-            cp.vl["BCM"]["RearLeftDoor"],
-            cp.vl["BCM"]["RearRightDoor"],
+            cp.vl["BCM"]["FrontLeftDoor"], cp.vl["BCM"]["FrontRightDoor"],
+            cp.vl["BCM"]["RearLeftDoor"], cp.vl["BCM"]["RearRightDoor"],
             cp.vl["BCM"]["BootDoor"],
         ])
-
-        # 安全带: BCM (301) DriverSeatBeltFasten — 1=已系, 0=未系
         ret.seatbeltUnlatched = cp.vl["BCM"]["DriverSeatBeltFasten"] == 0
 
-        # ===================== 巡航控制状态解析 =====================
-        # Cruise control status (Requirements 5.1, 5.2, 5.3)
-        # BTN_TOGGLE_ACC_OnOff 是状态信号（车辆内部做 toggle，输出 1=ACC ON, 0=ACC OFF）
-        # 不需要在 carstate 里再做 toggle 逻辑
+        # ===================== 巡航控制 =====================
         main_on = cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"] == 1
-
         ret.cruiseState.available = main_on
-        ret.cruiseState.enabled = False  # pcmCruise=False模式，由buttonEnable管理
+        ret.cruiseState.enabled = False
         ret.cruiseState.standstill = ret.standstill
-        ret.cruiseState.speed = 0  # 使用openpilot内部set speed
-
-        # Button events
+        ret.cruiseState.speed = 0
         ret.buttonEvents = self._parse_button_events(cp, main_on)
 
-        # ===================== LKAS状态解析 =====================
-        # LKAS status (Requirements 5.5, 5.6)
-        self.lkas_active = False  # 由CarController跟踪发送状态
-        # LKAS_Prepared : 0|1@1+ (1,0) [0|1] ""
+        # ===================== EPS 792 状态 (Bus 0) =====================
         self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
+        self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["COUNTER_792"])
 
-        # ===================== 横摆率/纵向加速度解析 =====================
-        # 全总线嗅探确认: YAW_RATE (546) 50Hz, AXAY (547) 50Hz 均在 Bus 0 上
-        # YawRate: 12-bit, scale 0.002133, offset -2.094, 单位 rad/s
+        # ===================== 横摆率/加速度 =====================
         ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
-        # Ax: 12-bit, scale 0.027167, offset -21.593, 单位 m/s²
         self.ax_sensor = cp.vl["AXAY"]["Ax"]
 
-        # ===================== 手刹状态解析 =====================
-        # Parking brake status parsing (Requirement 4.4)
-        # EPB_ActiveFlag : 40|1@1+ (1,0) [0|1]
-        # BYD 唐DM EPB 是自动管理的（autohold），停车时自动激活，起步时自动释放
-        # 如果报告 parkingBrake=True，会产生 parkBrake 事件（有 NO_ENTRY），
-        # 而 selfdrived state machine 在 MADS 清理之前运行，导致 engage 被阻止
-        # 禁用此信号，让 EPB 由车辆自行管理
+        # ===================== 手刹 =====================
         ret.parkingBrake = False
+
+        # ===================== Bus 2 原厂 MPC 帧缓存 =====================
+        # 关键: 复制原厂 MPC 的完整信号值，供 carcontroller 透传
+        self.cam_lkas = copy.copy(cp_cam.vl["ACC_MPC_STATE"])
+        self.cam_acc = copy.copy(cp_cam.vl["ACC_CMD"])
+        self.cam_adas = copy.copy(cp_cam.vl["ACC_HUD_ADAS"])
+        self.esc_eps = copy.copy(cp.vl["ACC_EPS_STATE"])
+
+        # 原厂 counter 值 (供 carcontroller 首帧接续)
+        self.acc_mpc_state_counter = int(cp_cam.vl["ACC_MPC_STATE"]["COUNTER"])
+        self.acc_cmd_counter = int(cp_cam.vl["ACC_CMD"]["COUNTER"])
+        self.acc_hud_adas_counter = int(cp_cam.vl["ACC_HUD_ADAS"]["COUNTER"])
+
+        # MPC 原厂 LKAS 状态 (供 fake 792 透传给 MPC)
+        self.mpc_laks_output = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Output"]
+        self.mpc_laks_reqprepare = cp_cam.vl["ACC_MPC_STATE"]["LKAS_ReqPrepare"] != 0
+        self.mpc_laks_active = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Active"] != 0
 
         return ret, ret_sp
 
     def _parse_gear(self, gear: int) -> GearShifter:
-        """Parse gear position (Requirement 3.4).
-
-        Maps BYD gear values to sunnypilot GearShifter enum.
-        DBC definition: Gear : 40|3@1+ (1,0) [0|7]
-        VAL_ 578 Gear 1 "P" 2 "R" 3 "N" 4 "D"
-
-        Args:
-            gear: Raw gear value from CAN (1=P, 2=R, 3=N, 4=D)
-
-        Returns:
-            GearShifter enum value (park, reverse, neutral, drive, or unknown)
-        """
-        gear_map = {
-            1: GearShifter.park,      # P - Park
-            2: GearShifter.reverse,   # R - Reverse
-            3: GearShifter.neutral,   # N - Neutral
-            4: GearShifter.drive,     # D - Drive
-        }
+        gear_map = {1: GearShifter.park, 2: GearShifter.reverse, 3: GearShifter.neutral, 4: GearShifter.drive}
         return gear_map.get(gear, GearShifter.unknown)
 
     def _parse_button_events(self, cp, main_on: bool) -> list:
-        """Parse button events (Requirement 5.4).
-
-        Generates ButtonEvent objects for cruise control button state changes.
-
-        DBC signals from PCM_BUTTONS (944):
-        - BTN_AccUpDown_Cmd: 0=NOTPRESSED, 1=SET, 3=RES
-        - BTN_AccCancel: 0=not pressed, 1=cancel pressed
-        - BTN_AccDistanceDecrease/Increase: 0=not pressed, 1=pressed
-        - BTN_TOGGLE_ACC_OnOff: 0=not pressed, 1=pressed
-
-        Args:
-            cp: CAN parser with PCM_BUTTONS message data
-            main_on: Current state of ACC main switch
-
-        Returns:
-            List of ButtonEvent objects for any button state changes
-        """
         events = []
 
-        # Main switch toggle (ACC On/Off)
         if main_on != self.main_on_prev:
-            events.append(structs.CarState.ButtonEvent(
-                type=ButtonType.mainCruise,
-                pressed=main_on,
-            ))
+            events.append(structs.CarState.ButtonEvent(type=ButtonType.mainCruise, pressed=main_on))
         self.main_on_prev = main_on
 
-        # Cruise speed buttons (SET/RES)
         cruise_buttons = int(cp.vl["PCM_BUTTONS"]["BTN_AccUpDown_Cmd"])
-        events.extend(create_button_events(cruise_buttons, self.cruise_buttons_prev,
-                                           CRUISE_BUTTONS_DICT, unpressed_btn=0))
+        events.extend(create_button_events(cruise_buttons, self.cruise_buttons_prev, CRUISE_BUTTONS_DICT, unpressed_btn=0))
         self.cruise_buttons_prev = cruise_buttons
 
-        # Cancel button
         cancel_button = int(cp.vl["PCM_BUTTONS"]["BTN_AccCancel"])
-        events.extend(create_button_events(cancel_button, self.cancel_button_prev,
-                                           {1: ButtonType.cancel}, unpressed_btn=0))
+        events.extend(create_button_events(cancel_button, self.cancel_button_prev, {1: ButtonType.cancel}, unpressed_btn=0))
         self.cancel_button_prev = cancel_button
 
-        # Activate button (前推激活巡航)
         activate_button = int(cp.vl["PCM_BUTTONS"]["BTN_AccActivate"])
-        events.extend(create_button_events(activate_button, self.activate_button_prev,
-                                           ACTIVATE_BUTTON_DICT, unpressed_btn=0))
+        events.extend(create_button_events(activate_button, self.activate_button_prev, ACTIVATE_BUTTON_DICT, unpressed_btn=0))
         self.activate_button_prev = activate_button
 
-        # Distance adjustment buttons
         distance_decrease = int(cp.vl["PCM_BUTTONS"]["BTN_AccDistanceDecrease"])
-        events.extend(create_button_events(distance_decrease, self.distance_decrease_prev,
-                                           {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
+        events.extend(create_button_events(distance_decrease, self.distance_decrease_prev, {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
         self.distance_decrease_prev = distance_decrease
 
         distance_increase = int(cp.vl["PCM_BUTTONS"]["BTN_AccDistanceIncrease"])
-        events.extend(create_button_events(distance_increase, self.distance_increase_prev,
-                                           {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
+        events.extend(create_button_events(distance_increase, self.distance_increase_prev, {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
         self.distance_increase_prev = distance_increase
 
         return events
 
     def update_button_enable(self, buttonEvents: list) -> bool:
-        """Override: 加入 setCruise (激活按钮) 支持"""
         if not self.CP.pcmCruise:
             for b in buttonEvents:
                 if b.type in (ButtonType.accelCruise, ButtonType.decelCruise, ButtonType.setCruise) and not b.pressed:
@@ -328,43 +204,30 @@ class CarState(CarStateBase):
 
     @staticmethod
     def get_can_parsers(CP, CP_SP) -> dict[StrEnum, CANParser]:
-        """Get CAN parsers for vehicle state parsing.
-
-        Configures CANParser with required messages and frequencies.
-
-        BYD CAN Bus Layout:
-        - Bus 0: Powertrain messages (EPS, speed, pedals, buttons, etc.)
-        - Bus 2: ACC/LKAS RX messages (ACC_EPS_STATE, ACC_HUD_ADAS) → 均为openpilot回声，无需解析
-
-        Args:
-            CP: CarParams structure
-            CP_SP: CarParams sunnypilot extension
-
-        Returns:
-            Dictionary mapping bus types to CANParser instances
-        """
-        # Bus 0 messages - Powertrain
-        # 全总线嗅探数据 (sniff_all_buses.py, 22.9秒采样):
-        #   EPS: 100Hz, CARSPEED/DRIVE_STATE/PEDAL/ACC_EPS_STATE/YAW_RATE/AXAY: 50Hz
-        #   PCM_BUTTONS/BELT: 20Hz, BCM/STALKS: ~1.5-2Hz, EPB: 1Hz
-        #
-        # 频率设置策略: 实际频率的 40%，给予充足容忍度
-        # BCM/STALKS: 低频消息用 float('nan') 跳过存活检查
-        # ACC_EPS_STATE: 用 float('nan') 因为 openpilot 未激活时 EPS 可能不发 792
+        # Bus 0 messages
         messages_bus0 = [
-            ("EPS", 40),              # 实际 100Hz，设 40Hz（超时 250ms）
-            ("CARSPEED", 20),         # 实际 50Hz，设 20Hz（超时 500ms）
-            ("DRIVE_STATE", 20),      # 实际 50Hz，设 20Hz
-            ("PEDAL", 20),            # 实际 50Hz，设 20Hz
-            ("EPB", float('nan')),    # 实际 1Hz，低频消息跳过存活检查
-            ("PCM_BUTTONS", 8),       # 实际 20Hz，设 8Hz（超时 1.25s）
-            ("ACC_EPS_STATE", float('nan')),  # 50Hz 但可能在某些状态下不发送
-            ("YAW_RATE", 20),         # 实际 50Hz，设 20Hz
-            ("AXAY", 20),             # 实际 50Hz，设 20Hz
-            ("BCM", float('nan')),    # 实际 ~1.5Hz，低频消息跳过存活检查
-            ("STALKS", float('nan')), # 实际 ~2Hz，低频消息跳过存活检查
+            ("EPS", 40),
+            ("CARSPEED", 20),
+            ("DRIVE_STATE", 20),
+            ("PEDAL", 20),
+            ("EPB", float('nan')),
+            ("PCM_BUTTONS", 8),
+            ("ACC_EPS_STATE", float('nan')),
+            ("YAW_RATE", 20),
+            ("AXAY", 20),
+            ("BCM", float('nan')),
+            ("STALKS", float('nan')),
+        ]
+
+        # Bus 2 messages — 原厂 MPC 帧 (关键新增!)
+        # 读取 MPC 原厂信号值，供 carcontroller 透传
+        messages_bus2 = [
+            ("ACC_MPC_STATE", 20),   # 790 原厂 LKAS 控制
+            ("ACC_HUD_ADAS", 20),    # 813 原厂 HUD
+            ("ACC_CMD", 20),         # 814 原厂 ACC 指令
         ]
 
         return {
-            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus0, 0),
+            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus0, CanBus.MAIN),
+            Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus2, CanBus.CAM),
         }
