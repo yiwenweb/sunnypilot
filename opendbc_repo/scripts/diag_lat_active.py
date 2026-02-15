@@ -116,12 +116,15 @@ def main():
             print(f"\n[{now:.3f}s] === latActive OFF === (was active {duration:.1f}s, sent {tx_790_count} x 790)")
         prev_lat_active = lat_active
 
-        # 解析 sendcan 中的 790 帧
-        if sm.updated['sendcan'] and lat_active:
+        # 解析 sendcan 中的 790 帧（不管 lat_active，都记录）
+        if sm.updated['sendcan']:
             for msg in sm['sendcan']:
-                if msg.address == 790 and msg.busTime == 0:  # Bus 0
+                if msg.address == 790 and msg.src == 0:  # Bus 0
                     tx_790_count += 1
                     last_790_data = bytes(msg.dat)
+                # 也记录 814 帧看纵向
+                if msg.address == 814 and msg.src == 0:
+                    pass  # 只关注横向
 
         # 解析 can 中的 792 帧 (Bus 0, 来自真实 EPS)
         if sm.updated['can']:
@@ -129,8 +132,8 @@ def main():
                 if msg.address == 792 and msg.src == 0:
                     last_792_data = bytes(msg.dat)
 
-        # latActive 时每 0.5 秒打印一次详细状态
-        if lat_active and (now - last_print) >= 0.5:
+        # latActive 时每 0.2 秒打印一次详细状态（看准备阶段变化）
+        if lat_active and (now - last_print) >= 0.2:
             last_print = now
             elapsed = now - lat_active_start if lat_active_start else 0
 
