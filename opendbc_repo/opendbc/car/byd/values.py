@@ -230,5 +230,5 @@ FW_QUERY_CONFIG = FwQueryConfig(
 
 # 方向盘扭矩阈值（脱手检测）- 18款唐DM
 # 实车诊断发现 EPS 在非激活状态下扭矩信号有偏移，50 太低导致 steeringPressed 持续为 True
-# 提高到 100 避免误触发 steerOverride 事件
-STEER_THRESHOLD = 100
+# v4 诊断确认: 低速行驶时手握方向盘扭矩经常超过 100，提高到 150
+STEER_THRESHOLD = 150
