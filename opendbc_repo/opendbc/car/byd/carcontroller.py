@@ -61,6 +61,9 @@ class CarController(CarControllerBase):
         # 非激活时完全不发帧, fwd_hook 100% 透传原厂 MPC 帧
         if lat_active or long_active:
 
+            # ACC 主开关状态 (用于区分 ACC OFF / ACC ON 待机 / ACC ON 激活)
+            acc_on = CS.out.cruiseState.available
+
             # 790 ACC_MPC_STATE @ 50Hz (匹配原厂 MPC 频率)
             if self.frame % 2 == 0:
                 can_sends.append(create_steering_control(
@@ -87,8 +90,9 @@ class CarController(CarControllerBase):
                     set_speed=hud_set_speed,
                     has_lead=False,
                     set_distance=4,
-                    acc_state=7,
-                    enabled=True,
+                    acc_on=acc_on,
+                    lat_active=lat_active,
+                    long_active=long_active,
                     counter=self.acc_counter,
                 ))
 
@@ -100,6 +104,8 @@ class CarController(CarControllerBase):
                     resume_from_standstill=True,
                     standstill_state=(CS.out.vEgo < 0.1),
                     long_active=long_active,
+                    acc_on=acc_on,
+                    lat_active=lat_active,
                     counter=self.acc_counter,
                 ))
 

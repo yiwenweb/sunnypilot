@@ -102,21 +102,21 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
     生成EPS反馈欺骗报文 (ACC_EPS_STATE - 0x318 / 792)
     发送到Bus 2，欺骗原厂MPC，防止DTC故障码，保持AEB等安全功能正常工作
 
-    原厂 EPS 实测数据 (sniff_mpc_frames.py, 39.5秒):
-      fc 00 f0 XX ff ff Cx xx
-      byte[0]=0xFC: LKAS_Prepared=0, CruiseActivated=0, TorqueFailed=1,
+    原厂 EPS 实测数据 (diag_mpc_decode.py 实时解码):
+      f8 00 f0 XX f0 ff Cx xx
+      byte[0]=0xF8: LKAS_Prepared=0, CruiseActivated=0, TorqueFailed=0,
                     SETME1_0x1=1, SteerWarning=1, SteerErrorCode=7
       byte[2]=0xF0: MainTorque=0, SETME3_0x1=1, ReportHandsNotOnSteeringWheel=1, SETME4_0x3=3
-      byte[4]=0xFF: SETME5_0xFF=0xF
-      byte[5]=0xFF: SETME6_0xFFF=0xFFF
+      byte[4]=0xF0: SETME5_0xFF=0xF (4-bit at bits 36-39, 高4位 of byte[4])
+      byte[5]=0xFF: SETME6_0xFFF=0xFFF (12-bit at bits 40-51)
       byte[6]: 高4位=COUNTER(0-F), 低4位=0xF (SETME)
-      byte[7]: CHECKSUM (sum(all 8 bytes) & 0xFF == 0xFF)
+      byte[7]: CHECKSUM
 
-    关键发现:
-      - TorqueFailed=1, SteerWarning=1, SteerErrorCode=7 是 EPS 正常状态
-      - 如果发送 0 会导致 MPC 检测到异常
-      - 792 也有 counter 和 checksum，但 DBC 未定义这两个信号
-      - 必须手动填充 byte[6] 和 byte[7]
+    关键修正 (基于 diag_mpc_decode.py 实车数据):
+      - TorqueFailed=0 (NOT 1!) — 之前的值是错误的
+      - byte[0]=0xF8 (NOT 0xFC!) — TorqueFailed=0 使 bit2=0
+      - byte[4]=0xF0 (NOT 0xFF!) — SETME5 是 4-bit 0xF 在高4位
+      - SteerWarning=1, SteerErrorCode=7 是 EPS 正常状态
 
     参数:
         packer: CAN打包器
@@ -127,20 +127,20 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
         enabled: openpilot是否启用
         counter: 报文计数器 (0-15)
     """
-    # 严格匹配原厂 EPS 的 792 帧格式
+    # 严格匹配原厂 EPS 的 792 帧格式 (基于 diag_mpc_decode.py 实车数据)
     values = {
         "LKAS_Prepared": 0,
         "CruiseActivated": 0,
-        "TorqueFailed": 1,             # 原厂 EPS 正常状态 = 1（非故障）
+        "TorqueFailed": 0,             # 原厂实测 = 0 (byte0=0xF8, bit2=0)
         "SETME1_0x1": 1,
-        "SteerWarning": 1,             # 原厂 EPS 正常状态 = 1（非故障）
+        "SteerWarning": 1,             # 原厂 EPS 正常状态 = 1
         "SteerErrorCode": 7,           # 原厂 EPS 正常状态 = 7
         "MainTorque": 0,
         "SETME3_0x1": 1,
-        "ReportHandsNotOnSteeringWheel": 1, # 原厂 EPS 正常状态 = 1 (sniff确认: f0→bit5=1)
+        "ReportHandsNotOnSteeringWheel": 1, # 原厂 EPS 正常状态 = 1
         "SETME4_0x3": 3,
         "SteerDriverTorque": int(driver_torque),
-        "SETME5_0xFF": 0xF,
+        "SETME5_0xFF": 0xF,            # 4-bit 0xF at bits 36-39
         "SETME6_0xFFF": 0xFFF,
     }
 
@@ -169,88 +169,86 @@ def create_fake_eps_feedback(packer, fake_torque: int, driver_torque: int,
 
 def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
                    resume_from_standstill: bool, standstill_state: bool, long_active: bool,
+                   acc_on: bool = False, lat_active: bool = False,
                    counter: int = 0):
     """
     生成ACC控制指令报文 (ACC_CMD - 0x32E / 814)
     用于openpilot纵向控制（加速/减速/跟车）
-    
-    核心修正：
-    1. 限制AccelCmd在原厂范围(-5 ~ 7.75 m/s²)，避免ECU忽略指令
-    2. 修复校验和计算（使用原厂补码算法）
-    3. 优化Jerk限制参数（贴近原厂默认值）
-    
+
+    原厂 MPC 实测数据 (diag_mpc_decode.py 实时解码):
+      ACC OFF:        64 64 64 80 50 00 Fx xx → EspBehaviour=0, AccReqNotStandstill=0, AccControlActive=0
+      ACC ON standby: 64 64 64 80 50 48 Fx xx → EspBehaviour=1, AccReqNotStandstill=1, AccControlActive=0, byte5=0x48
+      ACC ON active:  64 64 64 80 50 50 Fx xx → EspBehaviour=1, AccReqNotStandstill=0, AccControlActive=1, byte5=0x50
+
     参数:
         packer: CAN打包器
         CP: 车辆参数
         CS: 车辆状态
         mrr_lead_dist: 前车距离 (米)
         accel: 目标加速度 (m/s²)
-        resume_from_standstill: 是否从停车状态恢复（适配0km/h激活）
+        resume_from_standstill: 是否从停车状态恢复
         standstill_state: 是否处于停车状态
         long_active: 纵向控制是否激活
+        acc_on: ACC主开关是否开启 (cruiseState.available)
+        lat_active: 横向控制是否激活
+        counter: 报文计数器 (0-15)
     """
-    # Jerk限制参数（修正为原厂默认值，提升兼容性）
-    K_jerk_xp = [10, 30, 50, 100]  # 距离点 (米)
-    K_jerk_base_upper_fp = [2.0, 1.5, 1.0, 0.8]  # 上限jerk（原厂默认≤12.7）
-    K_jerk_base_lower_fp = [3.0, 2.5, 2.0, 1.5]  # 下限jerk（原厂默认≥-16）
-    K_accel_jerk_upper = 0.3  # 加速度对jerk上限的影响系数
-    K_accel_jerk_lower = 0.5  # 加速度对jerk下限的影响系数
+    # Jerk限制参数
+    K_jerk_xp = [10, 30, 50, 100]
+    K_jerk_base_upper_fp = [2.0, 1.5, 1.0, 0.8]
+    K_jerk_base_lower_fp = [3.0, 2.5, 2.0, 1.5]
+    K_accel_jerk_upper = 0.3
+    K_accel_jerk_lower = 0.5
 
-    # 计算jerk限制（基于前车距离动态调整）
     jerk_base_upper = np.interp(mrr_lead_dist, K_jerk_xp, K_jerk_base_upper_fp)
     jerk_base_lower = np.interp(mrr_lead_dist, K_jerk_xp, K_jerk_base_lower_fp)
 
-    if accel < 0:  # 减速时使用下限系数
+    if accel < 0:
         jerk_upper = jerk_base_upper
         jerk_lower = jerk_base_lower + accel * K_accel_jerk_lower
-    else:  # 加速时使用上限系数
+    else:
         jerk_upper = jerk_base_upper + accel * K_accel_jerk_upper
         jerk_lower = jerk_base_lower
 
-    # 限制jerk在原厂允许范围
-    jerk_upper = max(0.2, min(12.7, jerk_upper))  # 原厂上限12.7
-    jerk_lower = max(-16.0, min(12.7, jerk_lower)) # 原厂下限-16
+    jerk_upper = max(0.2, min(12.7, jerk_upper))
+    jerk_lower = max(-16.0, min(12.7, jerk_lower))
 
-    # 原厂ACC_CMD基准值
-    # 注意: AccelCmd 的 DBC 定义是 scale=0.05, offset=-5
-    # 所以物理值 0 m/s² = raw 100, 物理值 -5 m/s² = raw 0
-    # 空闲时必须发送 AccelCmd=0 (物理值，packer 会自动转换为 raw=100)
-    # ComfortBand 同理: 物理值 0 = raw 100
+    # 根据 ACC 状态设置信号值 (匹配原厂 MPC 实测数据)
+    # ACC OFF:    EspBehaviour=0, AccReqNotStandstill=0, AccControlActive=0
+    # ACC ON 待机: EspBehaviour=1, AccReqNotStandstill=1, AccControlActive=0
+    # ACC ON 激活: EspBehaviour=1, AccReqNotStandstill=0, AccControlActive=1
+    active = lat_active or long_active
     values = {
-        "AccelCmd": 0,                  # 物理值 0 m/s² (packer 转为 raw=100)
-        "ComfortBandUpper": 0,          # 物理值 0 m/s²
-        "ComfortBandLower": 0,          # 物理值 0 m/s²
+        "AccelCmd": 0,
+        "ComfortBandUpper": 0,
+        "ComfortBandLower": 0,
         "JerkUpperLimit": 0,
         "SETME1_0x1": 1,
-        "JerkLowerLimit": 0,            # 物理值 0-16=-16 m/s³ (packer 转为 raw=80)
+        "JerkLowerLimit": 0,
         "ResumeFromStandstill": 0,
         "StandstillState": 0,
         "BrakeBehaviour": 0,
-        "AccReqNotStandstill": 0,
-        "AccControlActive": 0,
+        "AccReqNotStandstill": 1 if (acc_on and not active) else 0,  # 待机=1, 激活=0
+        "AccControlActive": 1 if active else 0,                       # 激活=1
         "AccOverrideOrStandstill": 0,
-        "EspBehaviour": 1,             # 原厂实测值=1 (sniff确认: byte[5]=0x40→bit6-7=01)
+        "EspBehaviour": 1 if acc_on else 0,                           # ACC ON=1, OFF=0
         "COUNTER": counter,
         "SETME2_0xF": 0xF,
         "CHECKSUM": 0,
     }
 
     if long_active:
-        # 核心修正：限制加速度指令在原厂范围(-5 ~ 7.75 m/s²)
         limited_accel = max(-5.0, min(7.75, accel))
         values.update({
-            "AccelCmd": limited_accel,               # 限制后加速度
+            "AccelCmd": limited_accel,
             "ComfortBandUpper": 0.05,
             "ComfortBandLower": 0.05,
             "JerkUpperLimit": jerk_upper,
             "JerkLowerLimit": jerk_lower,
             "ResumeFromStandstill": 1 if resume_from_standstill else 0,
             "StandstillState": 1 if standstill_state else 0,
-            "AccControlActive": 0,                   # 原厂激活时固定为0
-            "AccReqNotStandstill": 0 if standstill_state else 1,
         })
 
-    # 计算原厂补码校验和
     data = packer.make_can_msg("ACC_CMD", CanBus.PT, values)[1]
     values["CHECKSUM"] = byd_checksum(data)
 
@@ -258,68 +256,68 @@ def create_acc_cmd(packer, CP, CS, mrr_lead_dist: float, accel: float,
 
 
 def create_acc_hud(packer, CP, CS, set_speed: float, has_lead: bool,
-                   set_distance: int, acc_state: int, enabled: bool,
-                   counter: int = 0):
+                   set_distance: int, acc_on: bool = False, lat_active: bool = False,
+                   long_active: bool = False, counter: int = 0):
     """
     生成ACC HUD显示报文 (ACC_HUD_ADAS - 0x32D / 813)
-    用于更新仪表盘ACC状态显示（适配0km/h激活）
+    用于更新仪表盘ACC状态显示
 
-    原厂 MPC 实测数据 (sniff_mpc_frames.py + diag_switch_moment.py):
-      空闲: 00 00 04 01 f4 ff Fx xx → AccState=0, AccOn1=?, Status=4, Notify=0
-      ACC激活: 00 00 7c 4d f7 ff Fx xx → AccState=7, AccOn1=1, Status=7, Notify=38
+    原厂 MPC 实测数据 (diag_mpc_decode.py 实时解码):
+      ACC OFF:        AccState=0, AccOn1=0, SetDistance=0, Notify=0, Status=4
+      ACC ON standby: AccState=1, AccOn1=1, SetDistance=1, Notify=28(brief)→0, Status=4
+      ACC ON active:  AccState=2, AccOn1=1, SetDistance=1→4, Notify=0, Status=4
+      ACC closing:    AccState=7(brief)→0, Notify=36, Status=4
 
-    关键发现:
-      - AccOn1 = 1（ACC 激活时，sniff 确认 byte[2]=0x7C → bit6=1）
-      - AccState=7 表示 ACC 激活（DBC VAL_ 标注为 ERROR 是错误的）
-      - Status=7 表示 ACC 激活
-      - Notify=38 表示 ACC 激活通知 (byte[3]=0x4D → (0x4D>>1)&0x7F=38)
+    关键修正 (基于 diag_mpc_decode.py 实车数据):
+      - AccState: 2=激活 (NOT 7!), 1=待机, 0=关闭
+      - Status: 始终=4 (NOT 7!)
+      - Notify: 稳态=0 (NOT 38!)
+      - AccOn1: ACC ON 时=1
 
     参数:
         packer: CAN打包器
         CP: 车辆参数
         CS: 车辆状态
-        set_speed: 设定速度 (km/h，支持0km/h)
+        set_speed: 设定速度 (km/h)
         has_lead: 是否检测到前车
         set_distance: 跟车距离档位 (1-4)
-        acc_state: ACC状态（由调用方传入，但会被覆盖为原厂值）
-        enabled: 是否启用
+        acc_on: ACC主开关是否开启 (cruiseState.available)
+        lat_active: 横向控制是否激活
+        long_active: 纵向控制是否激活
         counter: 报文计数器 (0-15)
     """
-    # 严格匹配原厂 MPC 帧格式
-    # 空闲: AccState=0, AccOn1=0, Status=4, Notify=0
-    # 激活: AccState=7, AccOn1=0, Status=7, Notify=38
-    # 原厂空闲帧: 00 00 04 01 f4 ff Fx xx
-    #   AccState=0, AccOn1=0, Status=4, Notify=0, SetDistance=0
-    # 原厂激活帧: 00 00 7c 4d f7 ff Fx xx
-    #   AccState=7, AccOn1=1, Status=7, Notify=38
+    active = lat_active or long_active
+
+    # 根据 ACC 状态设置信号值 (匹配原厂 MPC 实测数据)
+    # ACC OFF:    AccState=0, AccOn1=0, SetDistance=0, Status=4
+    # ACC ON 待机: AccState=1, AccOn1=1, SetDistance=1, Status=4
+    # ACC ON 激活: AccState=2, AccOn1=1, SetDistance=4, Status=4
+    if active:
+        acc_state = 2
+    elif acc_on:
+        acc_state = 1
+    else:
+        acc_state = 0
+
     values = {
-        "SetSpeed": set_speed if enabled else 0,
+        "SetSpeed": set_speed if acc_on else 0,
         "HasLead": 1 if has_lead else 0,
-        "SetDistance": max(1, min(4, set_distance)) if enabled else 0,
+        "SetDistance": max(1, min(4, set_distance)) if acc_on else 0,
         "LeadingDistance": 0,
         "AEB": 0,
         "FCW": 0,
         "SETME1_0x1": 1,
-        "AccState": 0,                 # 默认空闲
-        "AccOn1": 0,                   # 原厂空闲=0, 激活=1
+        "AccState": acc_state,
+        "AccOn1": 1 if acc_on else 0,
         "CloseWarning": 0,
         "SETME2_0x1": 1,
-        "Notify": 0,                   # 默认无通知
-        "Status": 4,                   # 默认空闲=4
+        "Notify": 0,                   # 稳态始终=0
+        "Status": 4,                   # 始终=4
         "SETME3_0xFFF": 0xFFF,
         "COUNTER": counter,
         "SETME4_0xF": 0xF,
         "CHECKSUM": 0,
     }
-
-    if enabled:
-        # 匹配原厂 ACC 激活状态
-        values.update({
-            "AccState": 7,
-            "AccOn1": 1,                # 原厂激活=1 (sniff确认: 7c→bit6=1)
-            "Status": 7,
-            "Notify": 38,
-        })
 
     data = packer.make_can_msg("ACC_HUD_ADAS", CanBus.PT, values)[1]
     values["CHECKSUM"] = byd_checksum(data)
