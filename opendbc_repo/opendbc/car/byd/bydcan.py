@@ -54,7 +54,7 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
         "LKAS_Config": 3,                 # 原厂实测值=3 (sniff确认: c2→高2位=3, ALARM_AND_LKA)
         "SETME2_0x1": 1,
         "ReqHandsOnSteeringWheel": 0,
-        "MPC_State": 0,
+        "MPC_State": 0,                   # 0=STANDBY, 2=LKA_ACTIVE, 3=ACC_LKA_ACTIVE
         "AutoFullBeam_OnOff": 1,
         "LKAS_Output": 0,
         "LKAS_ReqPrepare": 0,
@@ -79,12 +79,19 @@ def create_steering_control(packer, CP, apply_torque: int, req_prepare: bool,
         active = False
         values["LKAS_Active"] = 0
         values["LKAS_Output"] = 0
+        values["MPC_State"] = 0
+    elif req_prepare:
+        # 准备阶段: LKAS_ReqPrepare=1, LKAS_Active=0, MPC_State=2
+        values["MPC_State"] = 2  # LKA_ACTIVE — 告知 EPS 即将激活 LKAS
+        values["LKAS_Active"] = 0
+        values["LKAS_Output"] = 0
     elif active:
         # LKAS_Output 是 11-bit signed，DBC scale=1，原始值直接映射到EPS扭矩
         # apply_torque 已经被 apply_driver_steer_torque_limits 限制在 ±STEER_MAX(1023)
         values.update({
             "LKAS_Output": apply_torque,
             "LKAS_Active": 1,
+            "MPC_State": 3,  # ACC_LKA_ACTIVE — LKAS 激活状态
             "LeftLaneState": 2 if hud_control.leftLaneVisible else 0,
             "RightLaneState": 2 if hud_control.rightLaneVisible else 0,
         })

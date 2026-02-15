@@ -39,6 +39,12 @@ class CarController(CarControllerBase):
         self.btn_counter = 0         # 944 counter (0-15)
         self.frame = 0
 
+        # LKAS 准备阶段状态机
+        # EPS 可能需要先看到 LKAS_ReqPrepare=1 若干帧，然后才接受 LKAS_Active=1
+        self.lkas_prepare_count = 0
+        self.LKAS_PREPARE_FRAMES = 25  # 准备阶段帧数 (25帧 @ 50Hz = 0.5秒)
+        self.lkas_was_active = False
+
     def update(self, CC, CC_SP, CS, now_nanos) -> tuple[structs.CarControl.Actuators, list]:
         actuators = CC.actuators
         can_sends = []
@@ -61,6 +67,21 @@ class CarController(CarControllerBase):
         # 非激活时完全不发帧, fwd_hook 100% 透传原厂 MPC 帧
         if lat_active or long_active:
 
+            # LKAS 准备阶段状态机
+            # EPS 可能需要先看到 LKAS_ReqPrepare=1 若干帧才接受 LKAS_Active=1
+            if lat_active and not self.lkas_was_active:
+                # 刚激活: 开始准备阶段
+                self.lkas_prepare_count = 0
+            if lat_active:
+                self.lkas_prepare_count += 1
+            else:
+                self.lkas_prepare_count = 0
+            self.lkas_was_active = lat_active
+
+            # 准备阶段: 发 LKAS_ReqPrepare=1, LKAS_Active=0, LKAS_Output=0
+            lkas_preparing = lat_active and (self.lkas_prepare_count <= self.LKAS_PREPARE_FRAMES)
+            lkas_ready = lat_active and not lkas_preparing
+
             # ACC 主开关状态 (用于区分 ACC OFF / ACC ON 待机 / ACC ON 激活)
             acc_on = CS.out.cruiseState.available
 
@@ -68,9 +89,9 @@ class CarController(CarControllerBase):
             if self.frame % 2 == 0:
                 can_sends.append(create_steering_control(
                     self.packer, self.CP,
-                    apply_steer if lat_active else 0,
-                    False,
-                    lat_active,
+                    apply_steer if lkas_ready else 0,
+                    lkas_preparing,  # req_prepare: 准备阶段发 True
+                    lkas_ready,      # active: 准备完成后才激活
                     CS.out.brakePressed,
                     CC.hudControl,
                     self.lkas_counter,
@@ -117,10 +138,10 @@ class CarController(CarControllerBase):
             if self.frame % 2 == 0:
                 can_sends.append(create_fake_eps_feedback(
                     self.packer,
-                    fake_torque=apply_steer if lat_active else 0,
+                    fake_torque=apply_steer if lkas_ready else 0,
                     driver_torque=int(CS.out.steeringTorque),
-                    lkas_req_prepare=False,
-                    lkas_active=lat_active,
+                    lkas_req_prepare=lkas_preparing,
+                    lkas_active=lkas_ready,
                     enabled=True,
                     counter=self.eps_counter,
                 ))
@@ -133,8 +154,9 @@ class CarController(CarControllerBase):
 
         # === 3. 更新执行器实际值 ===
         new_actuators = actuators.as_builder()
-        new_actuators.torque = float(self.apply_steer_last / self.params.STEER_MAX) if self.params.STEER_MAX else 0.0
-        new_actuators.torqueOutputCan = int(self.apply_steer_last)
+        actual_steer = self.apply_steer_last if (lat_active and self.lkas_prepare_count > self.LKAS_PREPARE_FRAMES) else 0
+        new_actuators.torque = float(actual_steer / self.params.STEER_MAX) if self.params.STEER_MAX else 0.0
+        new_actuators.torqueOutputCan = int(actual_steer)
         if long_active:
             new_actuators.accel = float(actuators.accel)
 
