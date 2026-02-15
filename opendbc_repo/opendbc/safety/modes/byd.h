@@ -58,6 +58,14 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
   .has_steer_req_tolerance = true,
 };
 
+// Button state tracking for controls_allowed (pcmCruise=False)
+static int byd_cruise_button_prev = 0;
+
+// BYD PCM_BUTTONS button values (BTN_AccUpDown_Cmd)
+#define BYD_BTN_NONE    0
+#define BYD_BTN_SET     1
+#define BYD_BTN_RES     3
+
 static bool byd_stock_longitudinal = false;
 
 // TX-synced 拦截标志: tx_hook 发送 790 成功时设 true, 100ms 超时重置
@@ -105,6 +113,30 @@ static void byd_rx_hook(const CANPacket_t *msg) {
     if (msg->addr == BYD_PCM_BUTTONS) {
       acc_main_on = GET_BIT(msg, 8U);
       mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+
+      // Button enable logic for pcmCruise=False mode
+      // BTN_AccUpDown_Cmd : 4|2@0+ (Motorola) = byte[0] bits 4-3
+      int cruise_button = (msg->data[0] >> 3) & 0x3U;
+      bool cancel = GET_BIT(msg, 6U);  // BTN_AccCancel : 6|1@0+
+
+      // enter controls on falling edge of SET or RES (button release)
+      bool set = (cruise_button != BYD_BTN_SET) && (byd_cruise_button_prev == BYD_BTN_SET);
+      bool res = (cruise_button != BYD_BTN_RES) && (byd_cruise_button_prev == BYD_BTN_RES);
+      if (acc_main_on && (set || res)) {
+        controls_allowed = true;
+      }
+
+      // exit controls on cancel
+      if (cancel) {
+        controls_allowed = false;
+      }
+
+      // exit controls when ACC main turned off
+      if (!acc_main_on) {
+        controls_allowed = false;
+      }
+
+      byd_cruise_button_prev = cruise_button;
     }
 
     if (msg->addr == BYD_DRIVE_STATE) {
@@ -216,6 +248,7 @@ static safety_config byd_init(uint16_t param) {
   byd_stock_longitudinal = GET_FLAG(param, BYD_PARAM_STOCK_LONGITUDINAL);
   byd_op_tx_active = false;
   byd_op_tx_last_ts = 0U;
+  byd_cruise_button_prev = 0;
 
   static RxCheck byd_rx_checks[] = {
     {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
