@@ -2,7 +2,7 @@
 
 #include "opendbc/safety/safety_declarations.h"
 
-// === BYD Tang DM 2018 - Lateral only, stock longitudinal ===
+// === BYD Tang DM 2018 - Lateral + experimental longitudinal ===
 
 // RX messages (Bus 0)
 #define BYD_EPS              0x11FU  // 287
@@ -51,6 +51,10 @@ static uint32_t byd_op_steering_ts = 0U;
 // OP always sends fake 792 -> fwd_hook blocks real EPS 792 from Bus0->Bus2
 static bool byd_fake_eps_active = false;
 static uint32_t byd_fake_eps_ts = 0U;
+
+// OP sends 814 ACC_CMD -> fwd_hook blocks MPC's 814 from Bus2->Bus0
+static bool byd_op_acc_active = false;
+static uint32_t byd_op_acc_ts = 0U;
 
 
 static void byd_rx_hook(const CANPacket_t *msg) {
@@ -118,10 +122,15 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // 813/814/815 on Bus 0 - block (stock passthrough only)
+  // 814 ACC_CMD on Bus 0 - allow for experimental longitudinal control
+  // 813/815 on Bus 0 - block (stock passthrough only)
   if (msg->bus == BYD_MAIN_BUS) {
-    if ((msg->addr == BYD_ACC_HUD_ADAS) || (msg->addr == BYD_ACC_CMD) || (msg->addr == BYD_ACC_AEB)) {
+    if ((msg->addr == BYD_ACC_HUD_ADAS) || (msg->addr == BYD_ACC_AEB)) {
       tx = false;
+    }
+    if (msg->addr == BYD_ACC_CMD) {
+      byd_op_acc_active = true;
+      byd_op_acc_ts = microsecond_timer_get();
     }
   }
 
@@ -146,11 +155,20 @@ static bool byd_fwd_hook(int bus_num, int addr) {
       byd_fake_eps_active = false;
     }
   }
+  if (byd_op_acc_active) {
+    if ((microsecond_timer_get() - byd_op_acc_ts) > 100000U) {
+      byd_op_acc_active = false;
+    }
+  }
 
   // Bus 2 -> Bus 0: block MPC's 790 when OP is steering (OP replaces it)
-  // 813/814/815 always pass through (stock longitudinal)
+  // Block MPC's 814 when OP is sending ACC_CMD
+  // 813/815 always pass through (stock longitudinal)
   if (bus_num == 2) {
     if (byd_op_steering_active && (addr == BYD_ACC_MPC_STATE)) {
+      return true;
+    }
+    if (byd_op_acc_active && (addr == BYD_ACC_CMD)) {
       return true;
     }
   }
@@ -175,6 +193,8 @@ static safety_config byd_init(uint16_t param) {
   byd_op_steering_ts = 0U;
   byd_fake_eps_active = false;
   byd_fake_eps_ts = 0U;
+  byd_op_acc_active = false;
+  byd_op_acc_ts = 0U;
 
   static RxCheck byd_rx_checks[] = {
     {.msg = {{BYD_EPS, 0, 5, 50U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},

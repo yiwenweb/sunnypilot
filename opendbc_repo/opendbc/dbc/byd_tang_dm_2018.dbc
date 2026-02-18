@@ -91,7 +91,7 @@ BO_ 287 EPS: 5 EPS
  SG_ COUNTER_RAW : 32|8@1+ (1,0) [0|255] "" VCU  // 重命名避免CANParser自动counter检查（UNVERIFIED）
 
 BO_ 289 CARSPEED: 8 VCU
- SG_ CarDisplaySpeed : 0|12@1+ (0.0735,0) [0|255] "km/h" EPS,MPC  // 修正scale注释错误
+ SG_ CarDisplaySpeed : 0|12@1+ (1,0) [0|4095] "" EPS,MPC
 
 BO_ 301 BCM: 8 BCM
  SG_ FrontLeftDoor : 0|1@0+ (1,0) [0|1] "" VCU
@@ -163,8 +163,8 @@ BO_ 790 ACC_MPC_STATE: 8 MPC
  SG_ TrafficSignRecognition_Result : 40|8@1+ (5,-5) [-5|1270] "km/h" VCU
  SG_ LKAS_AlarmType : 49|2@0+ (1,0) [0|3] "" VCU
  SG_ SETME7_0x3 : 51|2@0+ (1,0) [0|3] "" VCU [RESERVED - NO FUNCTION]
- SG_ COUNTER : 52|4@1+ (1,0) [0|15] "" VCU
- SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" VCU
+ SG_ Counter : 52|4@1+ (1,0) [0|15] "" VCU
+ SG_ CheckSum : 56|8@1+ (1,0) [0|255] "" VCU
 
 BO_ 792 ACC_EPS_STATE: 8 EPS
  SG_ LKAS_Prepared : 0|1@1+ (1,0) [0|1] "" MPC
@@ -180,7 +180,8 @@ BO_ 792 ACC_EPS_STATE: 8 EPS
  SG_ SteerDriverTorque : 24|12@1- (1,0) [-2048|2047] "" MPC,VCU  // 驾驶员扭矩（脱手判断核心）
  SG_ SETME5_0xFF : 36|4@1+ (1,0) [0|15] "" MPC [RESERVED - NO FUNCTION]
  SG_ SETME6_0xFFF : 40|12@1+ (1,0) [0|4095] "" MPC [RESERVED - NO FUNCTION]
- SG_ COUNTER_792 : 52|4@1+ (1,0) [0|15] "" MPC
+ SG_ Counter : 52|4@1+ (1,0) [0|15] "" MPC
+ SG_ CheckSum : 56|8@1+ (1,0) [0|255] "" MPC
 
 BO_ 813 ACC_HUD_ADAS: 8 MPC
  SG_ SetSpeed : 0|9@1+ (0.5,0) [0|255.5] "km/h" VCU  // 标注0km/h激活适配
@@ -197,9 +198,9 @@ BO_ 813 ACC_HUD_ADAS: 8 MPC
  SG_ Notify : 25|7@1+ (1,0) [0|127] "" VCU
  SG_ Status : 32|4@1+ (1,0) [0|15] "" VCU
  SG_ SETME3_0xFFF : 36|12@1+ (1,0) [0|4095] "" VCU [RESERVED - NO FUNCTION]
- SG_ COUNTER : 48|4@1+ (1,0) [0|15] "" VCU
+ SG_ Counter : 48|4@1+ (1,0) [0|15] "" VCU
  SG_ SETME4_0xF : 55|4@0+ (1,0) [0|15] "" VCU [RESERVED - NO FUNCTION]
- SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" VCU
+ SG_ CheckSum : 56|8@1+ (1,0) [0|255] "" VCU
 
 BO_ 814 ACC_CMD: 8 MPC
  SG_ AccelCmd : 0|8@1+ (0.05,-5) [-5|7.75] "m/s^2" ESP
@@ -215,16 +216,16 @@ BO_ 814 ACC_CMD: 8 MPC
  SG_ AccControlActive : 44|1@0+ (1,0) [0|1] "" ESP
  SG_ AccOverrideOrStandstill : 45|1@0+ (1,0) [0|1] "" ESP
  SG_ EspBehaviour : 46|2@1+ (1,0) [0|3] "" ESP
- SG_ COUNTER : 48|4@1+ (1,0) [0|15] "" ESP
+ SG_ Counter : 48|4@1+ (1,0) [0|15] "" ESP
  SG_ SETME2_0xF : 55|4@0+ (1,0) [0|15] "" ESP [RESERVED - NO FUNCTION]
- SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" ESP
+ SG_ CheckSum : 56|8@1+ (1,0) [0|255] "" ESP
 
 BO_ 815 ACC_AEB: 8 MPC
  SG_ AEB_Active : 0|1@1+ (1,0) [0|1] "" ESP
  SG_ AEB_Decel : 8|8@1+ (0.05,0) [0|12.75] "m/s^2" ESP
- SG_ COUNTER : 48|4@1+ (1,0) [0|15] "" ESP
+ SG_ Counter : 48|4@1+ (1,0) [0|15] "" ESP
  SG_ SETME_0xF : 55|4@0+ (1,0) [0|15] "" ESP [RESERVED - NO FUNCTION]
- SG_ CHECKSUM : 56|8@1+ (1,0) [0|255] "" ESP
+ SG_ CheckSum : 56|8@1+ (1,0) [0|255] "" ESP
 
 BO_ 834 PEDAL: 8 VCU
  SG_ AcceleratorPedal : 0|8@1+ (0.01,0) [0|2.55] "" MPC

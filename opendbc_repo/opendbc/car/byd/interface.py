@@ -1,15 +1,19 @@
-"""
-BYD CarInterface - lateral only, stock longitudinal.
-Based on carrotpilot by yysnet.
-"""
-
-from opendbc.car import Bus, structs, get_safety_config
-from opendbc.car.byd.carstate import CarState
-from opendbc.car.byd.carcontroller import CarController
-from opendbc.car.byd.radar_interface import RadarInterface
+from opendbc.car import get_safety_config, structs
+from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.interfaces import CarInterfaceBase
+from opendbc.car.byd.values import CAR, CanBus, BydSafetyFlags, MPC_ACC_CAR, TORQUE_LAT_CAR, EXP_LONG_CAR, \
+                                PLATFORM_HANTANG_DMEV
+from opendbc.car.byd.carcontroller import CarController
+from opendbc.car.byd.carstate import CarState
+from opendbc.car.byd.radar_interface import RadarInterface
 
-SteerControlType = structs.CarParams.SteerControlType
+ButtonType = structs.CarState.ButtonEvent.Type
+GearShifter = structs.CarState.GearShifter
+TransmissionType = structs.CarParams.TransmissionType
+NetworkLocation = structs.CarParams.NetworkLocation
+
+import os
+BYD_RADAR = os.getenv("BYD_RADAR") is not None
 
 
 class CarInterface(CarInterfaceBase):
@@ -23,20 +27,56 @@ class CarInterface(CarInterfaceBase):
         ret.brand = "byd"
         ret.safetyConfigs = [get_safety_config(structs.CarParams.SafetyModel.byd)]
 
-        # Steering: torque control
-        ret.steerControlType = SteerControlType.torque
-        CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+        ret.dashcamOnly = False
+        if BYD_RADAR:
+            ret.radarUnavailable = False
+        else:
+            ret.radarUnavailable = True
+
+        ret.enableBsm = 0x418 in fingerprint[CanBus.ESC]
+        ret.transmissionType = TransmissionType.direct
+
+        ret.minEnableSpeed = -1.
+        ret.minSteerSpeed = 0.1 * CV.KPH_TO_MS
+
         ret.steerActuatorDelay = 0.05
         ret.steerLimitTimer = 0.4
-        ret.minSteerSpeed = 0.0
 
-        # Stock longitudinal - MPC handles ACC
-        ret.openpilotLongitudinalControl = False
-        ret.pcmCruise = True
-        ret.radarUnavailable = True
+        if candidate in PLATFORM_HANTANG_DMEV:
+            ret.safetyConfigs[0].safetyParam |= BydSafetyFlags.HAN_TANG_DMEV.value
 
-        ret.minEnableSpeed = -1.0
-        ret.centerToFront = ret.wheelbase * 0.44
+        if candidate in MPC_ACC_CAR:
+            ret.networkLocation = NetworkLocation.fwdCamera
+
+        use_torque_lat = candidate in TORQUE_LAT_CAR
+
+        if use_torque_lat:
+            CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+        else:
+            ret.lateralTuning.init('pid')
+            ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kiBP = [[8.3, 27.8], [8.3, 27.8]]
+            ret.lateralTuning.pid.kpV, ret.lateralTuning.pid.kiV = [[0.6, 0.3], [0.2, 0.1]]
+            ret.lateralTuning.pid.kf = 0.000072
+
+        use_experimental_long = candidate in EXP_LONG_CAR
+
+        ret.experimentalLongitudinalAvailable = use_experimental_long
+        ret.openpilotLongitudinalControl = alpha_long and ret.experimentalLongitudinalAvailable
+
+        ret.longitudinalTuning.kpBP, ret.longitudinalTuning.kiBP = [[0.], [0.]]
+        ret.longitudinalTuning.kpV, ret.longitudinalTuning.kiV = [[1.5], [0.3]]
+
+        if candidate == CAR.BYD_TANG_DM:
+            ret.minSteerSpeed = 0
+            ret.autoResumeSng = True
+            ret.startingState = True
+            ret.startAccel = 0.8
+            ret.stopAccel = -0.5
+            ret.vEgoStarting = 0.2 * CV.KPH_TO_MS
+            ret.vEgoStopping = 0.1 * CV.KPH_TO_MS
+            ret.longitudinalActuatorDelay = 0.5
+        else:
+            ret.dashcamOnly = True
 
         return ret
 

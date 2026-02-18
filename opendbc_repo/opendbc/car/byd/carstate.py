@@ -1,162 +1,195 @@
-"""
-BYD CarState - based on carrotpilot by yysnet.
-Parses Bus 0 (vehicle ECUs) and Bus 2 (MPC camera) signals.
-"""
-
 import copy
-from enum import StrEnum
+import numpy as np
 
-from opendbc.can import CANParser
-from opendbc.car import Bus, create_button_events, structs
+from opendbc.can.can_define import CANDefine
+from opendbc.can.parser import CANParser
+
 from opendbc.car.common.conversions import Conversions as CV
+from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.byd.values import DBC, CanBus
+from opendbc.car.byd.values import DBC, CanBus, LKASConfig, CarControllerParams
+
+import os
+BYD_RADAR = os.getenv("BYD_RADAR") is not None
 
 ButtonType = structs.CarState.ButtonEvent.Type
-GearShifter = structs.CarState.GearShifter
 
 
 class CarState(CarStateBase):
     def __init__(self, CP, CP_SP):
         super().__init__(CP, CP_SP)
 
-        # EPS LKAS status
-        self.lkas_prepared = False
-        self.eps_state_counter = 0
+        can_define = CANDefine(DBC[CP.carFingerprint][Bus.pt])
+        self.shifter_values = can_define.dv["DRIVE_STATE"]["Gear"]
 
-        # Stock MPC counters (for counter continuation)
+        self.speed_kph = 0
+
+        self.mpc_lkas_config = 0
+
+        self.acc_hud_adas_counter = 0
         self.acc_mpc_state_counter = 0
         self.acc_cmd_counter = 0
 
-        # Stock MPC LKAS state (for fake 792 passthrough)
-        self.mpc_lkas_output = 0
-        self.mpc_lkas_active = False
-        self.mpc_lkas_reqprepare = False
+        self.eps_warning = False
 
-        # Cached stock frames for passthrough
-        self.cam_lkas = {}   # ACC_MPC_STATE (790) from MPC
-        self.cam_adas = {}   # ACC_HUD_ADAS (813) from MPC
-        self.cam_acc = {}    # ACC_CMD (814) from MPC
-        self.esc_eps = {}    # ACC_EPS_STATE (792) from EPS
+        self.acc_active_last = False
+        self.low_speed_alert = False
+        self.lkas_allowed_speed = False
 
-        # Button prev states
-        self.cruise_buttons_prev = 0
-        self.cancel_button_prev = 0
-        self.activate_button_prev = 0
-        self.main_on_prev = False
-        self.distance_dec_prev = 0
-        self.distance_inc_prev = 0
+        self.lkas_prepared = False
+        self.acc_state = 0
+        self.adas_set_dist = 0
+
+        self.mpc_laks_output = 0
+        self.mpc_laks_active = False
+        self.mpc_laks_reqprepare = False
+
+        self.cam_lkas = {}
+        self.cam_acc = {}
+        self.cam_adas = {}
+        self.esc_eps = {}
+
+        self.setTimeDelay = 100
+
+        self.mrr_leading_dist = 0
+
+        self.btn_acc_cancel = 0
+        self.btn_acc_set_reset = 0
+        self.btn_acc_dist_inc = 0
+        self.btn_acc_dist_dec = 0
+
+        self.steeringRateDegAbs = 0
 
     def update(self, can_parsers) -> tuple[structs.CarState, structs.CarStateSP]:
-        cp = can_parsers[Bus.pt]       # Bus 0
-        cp_cam = can_parsers[Bus.cam]  # Bus 2
+        cp = can_parsers[Bus.pt]
+        cp_cam = can_parsers[Bus.cam]
 
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
 
-        # === Speed ===
-        ret.vEgoRaw = cp.vl["CARSPEED"]["CarDisplaySpeed"] * CV.KPH_TO_MS
+        self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"]
+
+        self.mpc_lkas_config = int(cp_cam.vl["ACC_MPC_STATE"]["LKAS_Config"])
+        lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
+        lkas_isMainSwOn = bool(cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"])
+
+        lkas_hud_AccOn1 = bool(cp_cam.vl["ACC_HUD_ADAS"]["AccOn1"])
+        self.acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
+        self.adas_set_dist = cp_cam.vl["ACC_HUD_ADAS"]["SetDistance"]
+
+        prev_btn_acc_cancel = self.btn_acc_cancel
+        prev_btn_acc_set_reset = self.btn_acc_set_reset
+        prev_btn_acc_dist_inc = self.btn_acc_dist_inc
+        prev_btn_acc_dist_dec = self.btn_acc_dist_dec
+
+        self.btn_acc_cancel = cp.vl["PCM_BUTTONS"]["BTN_AccCancel"]
+        self.btn_acc_set_reset = cp.vl["PCM_BUTTONS"]["BTN_AccCancel"]
+        self.btn_acc_dist_inc = cp.vl["PCM_BUTTONS"]["BTN_AccDistanceIncrease"]
+        self.btn_acc_dist_dec = cp.vl["PCM_BUTTONS"]["BTN_AccDistanceDecrease"]
+
+        # use dash speedo as speed reference
+        speed_raw = int(cp.vl["CARSPEED"]["CarDisplaySpeed"])
+        speed_raw_kph = speed_raw * CarControllerParams.K_DASHSPEED
+        correct_factor = np.interp(speed_raw_kph, [30, 60, 90, 120], [1., 1., 1., 1.])
+        self.speed_kph = speed_raw_kph * correct_factor
+
+        ret.vEgoRaw = float(self.speed_kph * CV.KPH_TO_MS)
         ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
-        ret.standstill = ret.vEgoRaw < 0.01
-        ret.vEgoCluster = ret.vEgoRaw
 
-        # === Steering ===
-        ret.steeringAngleDeg = cp.vl["EPS"]["SteeringAngle"]
-        ret.steeringRateDeg = cp.vl["EPS"]["SteeringAngleRate"]
-        ret.steeringTorque = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
-        ret.steeringTorqueEps = cp.vl["ACC_EPS_STATE"]["MainTorque"]
-        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 59, 5)
+        ret.yawRate = cp.vl["YAW_RATE"]["YawRate"] - cp.vl["YAW_RATE"]["YawRateOffset"]
 
-        # === Steering faults ===
-        eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
-        acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
-        ret.steerFaultTemporary = bool((acc_state == 7) or eps_warning)
-        ret.steerFaultPermanent = bool(cp.vl["ACC_EPS_STATE"]["TorqueFailed"])
+        ret.standstill = (speed_raw == 0)
 
-        # === Gear ===
-        gear_map = {1: GearShifter.park, 2: GearShifter.reverse, 3: GearShifter.neutral, 4: GearShifter.drive}
-        ret.gearShifter = gear_map.get(int(cp.vl["DRIVE_STATE"]["Gear"]), GearShifter.unknown)
+        if self.CP.minSteerSpeed > 0:
+            if self.speed_kph > 0.5:
+                self.lkas_allowed_speed = True
+            elif self.speed_kph < 0.1:
+                self.lkas_allowed_speed = False
+        else:
+            self.lkas_allowed_speed = True
 
-        # === Pedals ===
-        ret.gas = int(cp.vl["PEDAL"]["AcceleratorPedal"])
-        ret.gasPressed = ret.gas != 0
-        ret.brakePressed = cp.vl["DRIVE_STATE"]["BrakePressed"] == 1
+        can_gear = int(cp.vl["DRIVE_STATE"]["Gear"])
+        ret.gearShifter = self.parse_gear_shifter(self.shifter_values.get(can_gear, None))
 
-        # === Blinkers / doors / seatbelt ===
+        ret.genericToggle = bool(cp.vl["STALKS"]["HeadLight"])
+        if self.CP.enableBsm:
+            ret.leftBlindspot = bool(cp.vl["BSD_RADAR"]["LEFT_APPROACH"])
+            ret.rightBlindspot = bool(cp.vl["BSD_RADAR"]["RIGHT_APPROACH"])
+
         ret.leftBlinker = bool(cp.vl["STALKS"]["LeftIndicator"])
         ret.rightBlinker = bool(cp.vl["STALKS"]["RightIndicator"])
+
+        ret.steeringAngleOffsetDeg = 0
+        ret.steeringAngleDeg = cp.vl["EPS"]["SteeringAngle"]
+
+        self.steeringRateDegAbs = cp.vl["EPS"]["SteeringAngleRate"]
+        ret.steeringRateDeg = self.steeringRateDegAbs
+
+        ret.steeringTorque = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
+        ret.steeringTorqueEps = cp.vl["ACC_EPS_STATE"]["MainTorque"]
+        self.eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
+        self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["Counter"])
+
+        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 59, 5)
+
+        ret.parkingBrake = (cp.vl["EPB"]["EPB_ActiveFlag"] == 1)
+
+        ret.brake = int(cp.vl["PEDAL"]["BrakePedal"])
+        ret.brakePressed = (ret.brake != 0)
+
+        ret.seatbeltUnlatched = (cp.vl["BELT"]["SeatBeat"] != 2)
+
         ret.doorOpen = any([cp.vl["BCM"]["FrontLeftDoor"], cp.vl["BCM"]["FrontRightDoor"],
                             cp.vl["BCM"]["RearLeftDoor"], cp.vl["BCM"]["RearRightDoor"]])
-        ret.seatbeltUnlatched = cp.vl["BCM"]["DriverSeatBeltFasten"] == 0
 
-        # === Cruise state (stock longitudinal - read from MPC) ===
-        main_on = bool(cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"])
-        ret.cruiseState.available = main_on
-        ret.cruiseState.enabled = acc_state in (3, 5)
+        ret.gas = int(cp.vl["PEDAL"]["AcceleratorPedal"])
+        ret.gasPressed = (ret.gas != 0)
+
+        ret.cruiseState.available = lkas_isMainSwOn and lkas_config_isAccOn and lkas_hud_AccOn1
+        ret.cruiseState.enabled = self.acc_state in (3, 5)
         ret.cruiseState.standstill = ret.standstill
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
-        # === Yaw rate ===
-        ret.yawRate = cp.vl["YAW_RATE"]["YawRate"]
+        ret.steerFaultTemporary = bool((self.acc_state == 7) or self.eps_warning)
 
-        # === Parking brake ===
-        ret.parkingBrake = False
+        self.acc_active_last = ret.cruiseState.enabled
 
-        # === Buttons ===
-        ret.buttonEvents = self._parse_buttons(cp, main_on)
+        self.mpc_laks_output = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Output"]
+        self.mpc_laks_reqprepare = cp_cam.vl["ACC_MPC_STATE"]["LKAS_ReqPrepare"] != 0
+        self.mpc_laks_active = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Active"] != 0
 
-        # === EPS 792 status (Bus 0) ===
-        self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"] == 1
-        self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["COUNTER_792"])
+        self.acc_hud_adas_counter = cp_cam.vl["ACC_HUD_ADAS"]["Counter"]
+        self.acc_mpc_state_counter = cp_cam.vl["ACC_MPC_STATE"]["Counter"]
+        self.acc_cmd_counter = cp_cam.vl["ACC_CMD"]["Counter"]
 
-        # === Bus 2 MPC frame cache (for passthrough in carcontroller) ===
         self.cam_lkas = copy.copy(cp_cam.vl["ACC_MPC_STATE"])
         self.cam_adas = copy.copy(cp_cam.vl["ACC_HUD_ADAS"])
         self.cam_acc = copy.copy(cp_cam.vl["ACC_CMD"])
         self.esc_eps = copy.copy(cp.vl["ACC_EPS_STATE"])
 
-        self.acc_mpc_state_counter = int(cp_cam.vl["ACC_MPC_STATE"]["COUNTER"])
-        self.acc_cmd_counter = int(cp_cam.vl["ACC_CMD"]["COUNTER"])
+        if BYD_RADAR:
+            mrr_id = int(cp_cam.vl["RADAR_MRR"]["TargetID"])
+            if mrr_id == 2:
+                if bool(cp_cam.vl["RADAR_MRR"]["IsValid"]):
+                    self.mrr_leading_dist = int(cp_cam.vl["RADAR_MRR"]["LongDist"])
+                else:
+                    self.mrr_leading_dist = 199
 
-        self.mpc_lkas_output = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Output"]
-        self.mpc_lkas_reqprepare = cp_cam.vl["ACC_MPC_STATE"]["LKAS_ReqPrepare"] != 0
-        self.mpc_lkas_active = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Active"] != 0
+        ret.steerFaultPermanent = bool(cp.vl["ACC_EPS_STATE"]["TorqueFailed"])
+
+        ret.buttonEvents = [
+            *create_button_events(self.btn_acc_cancel, prev_btn_acc_cancel, {1: ButtonType.cancel}),
+            *create_button_events(self.btn_acc_set_reset, prev_btn_acc_set_reset, {1: ButtonType.decelCruise, 3: ButtonType.accelCruise}),
+            *create_button_events(self.btn_acc_dist_inc, prev_btn_acc_dist_inc, {1: ButtonType.gapAdjustCruise}),
+            *create_button_events(self.btn_acc_dist_dec, prev_btn_acc_dist_dec, {1: ButtonType.gapAdjustCruise}),
+        ]
 
         return ret, ret_sp
 
-    def _parse_buttons(self, cp, main_on):
-        events = []
-        if main_on != self.main_on_prev:
-            events.append(structs.CarState.ButtonEvent(type=ButtonType.mainCruise, pressed=main_on))
-        self.main_on_prev = main_on
-
-        cruise_buttons = int(cp.vl["PCM_BUTTONS"]["BTN_AccUpDown_Cmd"])
-        events.extend(create_button_events(cruise_buttons, self.cruise_buttons_prev,
-                       {1: ButtonType.decelCruise, 3: ButtonType.accelCruise}, unpressed_btn=0))
-        self.cruise_buttons_prev = cruise_buttons
-
-        cancel = int(cp.vl["PCM_BUTTONS"]["BTN_AccCancel"])
-        events.extend(create_button_events(cancel, self.cancel_button_prev, {1: ButtonType.cancel}, unpressed_btn=0))
-        self.cancel_button_prev = cancel
-
-        activate = int(cp.vl["PCM_BUTTONS"]["BTN_AccActivate"])
-        events.extend(create_button_events(activate, self.activate_button_prev, {1: ButtonType.setCruise}, unpressed_btn=0))
-        self.activate_button_prev = activate
-
-        dist_dec = int(cp.vl["PCM_BUTTONS"]["BTN_AccDistanceDecrease"])
-        events.extend(create_button_events(dist_dec, self.distance_dec_prev, {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
-        self.distance_dec_prev = dist_dec
-
-        dist_inc = int(cp.vl["PCM_BUTTONS"]["BTN_AccDistanceIncrease"])
-        events.extend(create_button_events(dist_inc, self.distance_inc_prev, {1: ButtonType.gapAdjustCruise}, unpressed_btn=0))
-        self.distance_inc_prev = dist_inc
-
-        return events
-
 
     @staticmethod
-    def get_can_parsers(CP, CP_SP) -> dict[StrEnum, CANParser]:
-        messages_bus0 = [
+    def get_can_parsers(CP, CP_SP):
+        pt_messages = [
             ("EPS", 100),
             ("CARSPEED", 50),
             ("PEDAL", 50),
@@ -166,17 +199,23 @@ class CarState(CarStateBase):
             ("STALKS", 1),
             ("BCM", 1),
             ("PCM_BUTTONS", 20),
+            ("DATETIME", 2),
             ("YAW_RATE", 50),
-            ("AXAY", 50),
+            ("BELT", 20),
         ]
 
-        messages_bus2 = [
-            ("ACC_MPC_STATE", 50),
+        if CP.enableBsm:
+            pt_messages.append(("BSD_RADAR", 20))
+
+        cam_messages = [
             ("ACC_HUD_ADAS", 50),
             ("ACC_CMD", 50),
+            ("ACC_MPC_STATE", 50),
         ]
+        if BYD_RADAR:
+            cam_messages.append(("RADAR_MRR", 60))
 
         return {
-            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus0, CanBus.MAIN),
-            Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], messages_bus2, CanBus.CAM),
+            Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], pt_messages, CanBus.ESC),
+            Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_messages, CanBus.MPC),
         }
