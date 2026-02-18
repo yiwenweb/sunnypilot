@@ -149,7 +149,9 @@ class CarState(CarStateBase):
         ret.cruiseState.standstill = ret.standstill
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
-        ret.steerFaultTemporary = bool((self.acc_state == 7) or self.eps_warning)
+        # Note: some firmware versions have SteerWarning always asserted, so we ignore it for now
+        # ret.steerFaultTemporary = bool((self.acc_state == 7) or self.eps_warning)
+        ret.steerFaultTemporary = bool(self.acc_state == 7)
 
         self.acc_active_last = ret.cruiseState.enabled
 
