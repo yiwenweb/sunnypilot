@@ -103,6 +103,10 @@ class CarController(CarControllerBase):
             self.lat_safeoff = 1
           else:
             self.lkas_req_prepare = 1
+            if self.frame % 50 == 0:
+              with open('/tmp/byd_dbg.log', 'a') as _dbg:
+                _dbg.write(f'prepared={CS.lkas_prepared} active={self.lkas_active} reqprepare={self.lkas_req_prepare} '
+                           f'mpc_reqprepare={CS.mpc_laks_reqprepare} mpc_active={CS.mpc_laks_active}\n')
 
       elif self.lat_safeoff:
         if self.apply_torque_last == 0:
