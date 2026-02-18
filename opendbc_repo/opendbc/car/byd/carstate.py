@@ -133,16 +133,16 @@ class CarState(CarStateBase):
 
         ret.parkingBrake = (cp.vl["EPB"]["EPB_ActiveFlag"] == 1)
 
-        ret.brake = int(cp.vl["PEDAL"]["BrakePedal"])
-        ret.brakePressed = (ret.brake != 0)
+        brake = int(cp.vl["PEDAL"]["BrakePedal"])
+        ret.brakePressed = (brake != 0)
 
         ret.seatbeltUnlatched = (cp.vl["BELT"]["SeatBeat"] != 2)
 
         ret.doorOpen = any([cp.vl["BCM"]["FrontLeftDoor"], cp.vl["BCM"]["FrontRightDoor"],
                             cp.vl["BCM"]["RearLeftDoor"], cp.vl["BCM"]["RearRightDoor"]])
 
-        ret.gas = int(cp.vl["PEDAL"]["AcceleratorPedal"])
-        ret.gasPressed = (ret.gas != 0)
+        gas = int(cp.vl["PEDAL"]["AcceleratorPedal"])
+        ret.gasPressed = (gas != 0)
 
         ret.cruiseState.available = lkas_isMainSwOn and lkas_config_isAccOn and lkas_hud_AccOn1
         ret.cruiseState.enabled = self.acc_state in (3, 5)
