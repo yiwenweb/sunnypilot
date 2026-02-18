@@ -52,7 +52,9 @@ class CarController(CarControllerBase):
         with open('/tmp/byd_dbg.log', 'a') as _dbg:
           _dbg.write(f'frame={self.frame} latActive={CC.latActive} lkas_active={self.lkas_active} '
                      f'prepared={CS.lkas_prepared} reqprepare={self.lkas_req_prepare} '
-                     f'mpc_reqprepare={CS.mpc_laks_reqprepare} mpc_active={CS.mpc_laks_active}\n')
+                     f'mpc_reqprepare={CS.mpc_laks_reqprepare} mpc_active={CS.mpc_laks_active} '
+                     f'torque_last={self.apply_torque_last} softstart={self.steer_softstart_limit} '
+                     f'desire={CC.actuators.torque:.3f}\n')
 
       # Resolve counter mismatch problem
       if self.first_start:
@@ -99,6 +101,10 @@ class CarController(CarControllerBase):
 
           apply_torque = apply_driver_steer_torque_limits(new_steer, self.apply_torque_last,
                                                           CS.out.steeringTorque, CarControllerParams)
+          if self.frame % 10 == 0:
+            with open('/tmp/byd_dbg.log', 'a') as _dbg:
+              _dbg.write(f'  STEER: desire_pu={CC.actuators.torque:.3f} new_steer={new_steer} softlim={self.steer_softstart_limit} '
+                         f'apply={apply_torque} last={self.apply_torque_last} driverTorque={CS.out.steeringTorque:.0f}\n')
 
         else:
           if CS.lkas_prepared:
