@@ -99,5 +99,5 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "HONDA_CLARITY" = "HONDA_CIVIC"
 "TOYOTA_WILDLANDER" = "TOYOTA_RAV4_TSS2"
 
-# BYD车型扭矩参数替代
-"BYD_TANG_DM" = "HYUNDAI_SANTA_FE"
+# BYD车型扭矩参数 - moved to override.toml for custom tuning
+# "BYD_TANG_DM" = "HYUNDAI_SANTA_FE"

@@ -54,7 +54,7 @@ class CarController(CarControllerBase):
                      f'prepared={CS.lkas_prepared} reqprepare={self.lkas_req_prepare} '
                      f'mpc_reqprepare={CS.mpc_laks_reqprepare} mpc_active={CS.mpc_laks_active} '
                      f'torque_last={self.apply_torque_last} softstart={self.steer_softstart_limit} '
-                     f'desire={CC.actuators.torque:.3f}\n')
+                     f'desire={CC.actuators.torque:.3f} drvTrq={CS.out.steeringTorque:.0f}\n')
 
       # Resolve counter mismatch problem
       if self.first_start:
