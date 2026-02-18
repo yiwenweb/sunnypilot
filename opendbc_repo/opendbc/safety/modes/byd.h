@@ -20,6 +20,7 @@
 #define BYD_ACC_CMD          0x32EU  // 814 - stock passthrough
 #define BYD_ACC_AEB          0x32FU  // 815 - stock passthrough
 #define BYD_ACC_EPS_FAKE     0x318U  // 792 - fake EPS (Bus 2)
+#define BYD_PCM_BUTTONS_FWD  0x3B0U  // 944 - buttons forward (Bus 2)
 
 #define BYD_MAIN_BUS 0U
 #define BYD_CAM_BUS  2U
@@ -187,11 +188,12 @@ static safety_config byd_init(uint16_t param) {
   };
 
   static const CanMsg BYD_TX_MSGS[] = {
-    {BYD_ACC_MPC_STATE, BYD_MAIN_BUS, 8, .check_relay = false},  // 790 steering
-    {BYD_ACC_HUD_ADAS,  BYD_MAIN_BUS, 8, .check_relay = false},  // 813 (blocked in tx_hook)
-    {BYD_ACC_CMD,       BYD_MAIN_BUS, 8, .check_relay = false},  // 814 (blocked in tx_hook)
-    {BYD_ACC_AEB,       BYD_MAIN_BUS, 8, .check_relay = false},  // 815 (blocked in tx_hook)
-    {BYD_ACC_EPS_FAKE,  BYD_CAM_BUS,  8, .check_relay = false},  // 792 fake EPS
+    {BYD_ACC_MPC_STATE,  BYD_MAIN_BUS, 8, .check_relay = false},  // 790 steering
+    {BYD_ACC_HUD_ADAS,   BYD_MAIN_BUS, 8, .check_relay = false},  // 813 (blocked in tx_hook)
+    {BYD_ACC_CMD,        BYD_MAIN_BUS, 8, .check_relay = false},  // 814 (blocked in tx_hook)
+    {BYD_ACC_AEB,        BYD_MAIN_BUS, 8, .check_relay = false},  // 815 (blocked in tx_hook)
+    {BYD_ACC_EPS_FAKE,   BYD_CAM_BUS,  8, .check_relay = false},  // 792 fake EPS
+    {BYD_PCM_BUTTONS_FWD, BYD_CAM_BUS, 8, .check_relay = false},  // 944 buttons -> MPC
   };
 
   return BUILD_SAFETY_CFG(byd_rx_checks, BYD_TX_MSGS);
