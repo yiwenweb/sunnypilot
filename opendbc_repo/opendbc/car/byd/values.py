@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import IntFlag
 from opendbc.car import Bus, DbcDict, PlatformConfig, Platforms, CarSpecs
 from opendbc.car.structs import CarParams
-from opendbc.car.docs_definitions import CarHarness, CarDocs, CarParts
+from opendbc.car.docs_definitions import CarHarness, CarDocs, CarParts, SupportType
 from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
 
 Ecu = CarParams.Ecu
@@ -49,6 +49,7 @@ class BydSafetyFlags(IntFlag):
 class BydCarDocs(CarDocs):
   package: str = "All"
   car_parts: CarParts = field(default_factory=CarParts.common([CarHarness.custom]))
+  support_type: SupportType = SupportType.COMMUNITY
 
 
 @dataclass

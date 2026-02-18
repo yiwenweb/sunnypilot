@@ -60,8 +60,9 @@ class CarInterface(CarInterfaceBase):
 
         use_experimental_long = candidate in EXP_LONG_CAR
 
-        ret.experimentalLongitudinalAvailable = use_experimental_long
-        ret.openpilotLongitudinalControl = alpha_long and ret.experimentalLongitudinalAvailable
+        ret.alphaLongitudinalAvailable = use_experimental_long
+        ret.openpilotLongitudinalControl = alpha_long and ret.alphaLongitudinalAvailable
+        ret.pcmCruise = not ret.openpilotLongitudinalControl
 
         ret.longitudinalTuning.kpBP, ret.longitudinalTuning.kiBP = [[0.], [0.]]
         ret.longitudinalTuning.kpV, ret.longitudinalTuning.kiV = [[1.5], [0.3]]
@@ -81,7 +82,9 @@ class CarInterface(CarInterfaceBase):
         return ret
 
     @staticmethod
-    def _get_params_sp(stock_cp, ret, candidate, fingerprint, car_fw, alpha_long, docs):
+    def _get_params_sp(stock_cp: structs.CarParams, ret: structs.CarParamsSP, candidate,
+                       fingerprint: dict[int, dict[int, int]], car_fw: list[structs.CarParams.CarFw],
+                       alpha_long: bool, docs: bool) -> structs.CarParamsSP:
         return ret
 
     @staticmethod
