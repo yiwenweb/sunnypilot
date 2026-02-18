@@ -35,6 +35,7 @@ class CarState(CarStateBase):
 
         # Cached stock frames for passthrough
         self.cam_lkas = {}   # ACC_MPC_STATE (790) from MPC
+        self.cam_adas = {}   # ACC_HUD_ADAS (813) from MPC
         self.cam_acc = {}    # ACC_CMD (814) from MPC
         self.esc_eps = {}    # ACC_EPS_STATE (792) from EPS
 
@@ -110,6 +111,7 @@ class CarState(CarStateBase):
 
         # === Bus 2 MPC frame cache (for passthrough in carcontroller) ===
         self.cam_lkas = copy.copy(cp_cam.vl["ACC_MPC_STATE"])
+        self.cam_adas = copy.copy(cp_cam.vl["ACC_HUD_ADAS"])
         self.cam_acc = copy.copy(cp_cam.vl["ACC_CMD"])
         self.esc_eps = copy.copy(cp.vl["ACC_EPS_STATE"])
 
