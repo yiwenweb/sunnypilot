@@ -9,9 +9,9 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
-  STEER_MAX = 300
-  STEER_DELTA_UP = 7
-  STEER_DELTA_DOWN = 10
+  STEER_MAX = 250
+  STEER_DELTA_UP = 6
+  STEER_DELTA_DOWN = 9
 
   STEER_DRIVER_ALLOWANCE = 68
   STEER_DRIVER_MULTIPLIER = 3
@@ -19,7 +19,7 @@ class CarControllerParams:
   STEER_ERROR_MAX = 50
 
   STEER_STEP = 2  # 100/2=50hz
-  STEER_SOFTSTART_STEP = 6  # 20ms(50Hz) * 300 / 6 = 1000ms
+  STEER_SOFTSTART_STEP = 5  # 20ms(50Hz) * 250 / 5 = 1000ms
 
   ACC_STEP = 2  # 50hz
 
