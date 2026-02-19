@@ -96,4 +96,4 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "HONDA_HRV_3G" = [2.5, 1.2, 0.2]
 
 # BYD - tuning: increased LAT_ACCEL_FACTOR for stronger steering response
-"BYD_TANG_DM" = [4.0, 2.5, 0.15]
+"BYD_TANG_DM" = [6.0, 2.5, 0.15]
