@@ -32,8 +32,11 @@ for i in range(30):
     
     if sm.updated['controlsState']:
         cs = sm['controlsState']
-        print(f"       controls: enabled={cs.enabled} latActive={cs.lateralActive} "
-              f"state={cs.state}")
+        try:
+            print(f"       controls: active={cs.active} latActive={cs.lateralActive} "
+                  f"state={cs.state}")
+        except Exception:
+            print(f"       controls: state={cs.state}")
     
     if sm.updated['carState']:
         car = sm['carState']
