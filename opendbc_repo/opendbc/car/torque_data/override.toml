@@ -95,5 +95,5 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "HONDA_CIVIC_2022" = [2.5, 1.2, 0.15]
 "HONDA_HRV_3G" = [2.5, 1.2, 0.2]
 
-# BYD - tuning from verified working version (门总) + increased gain
-"BYD_TANG_DM" = [3.5, 2.5, 0.12]
+# BYD - tuning from verified working version (门总)
+"BYD_TANG_DM" = [2.75, 2.5, 0.10]
