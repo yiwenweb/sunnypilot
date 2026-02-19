@@ -44,14 +44,13 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
     values["Counter"] = counter
 
     if active:
-        mpc_state = values["MPC_State"]
         values.update({
             "LKAS_Output": req_torque,
             "LKAS_Active": 1,
-            "LKAS_State": 4 if (mpc_state == 2) else 2,
             "LeftLaneState": 3 if hud_control.leftLaneDepart else int(hud_control.leftLaneVisible) + 1,
             "RightLaneState": 3 if hud_control.rightLaneDepart else int(hud_control.rightLaneVisible) + 1,
         })
+        # Keep MPC's original LKAS_State — EPS may reject torque if this value is wrong
     else:
         values.update({
             "LKAS_Output": 0,

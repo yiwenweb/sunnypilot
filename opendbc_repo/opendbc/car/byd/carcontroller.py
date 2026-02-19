@@ -49,12 +49,16 @@ class CarController(CarControllerBase):
 
       # Debug logging
       if self.frame % 50 == 0:
+        mpc_lkas_state = CS.cam_lkas.get("LKAS_State", -1) if isinstance(CS.cam_lkas, dict) else -1
+        mpc_mpc_state = CS.cam_lkas.get("MPC_State", -1) if isinstance(CS.cam_lkas, dict) else -1
         with open('/tmp/byd_dbg.log', 'a') as _dbg:
           _dbg.write(f'frame={self.frame} latActive={CC.latActive} lkas_active={self.lkas_active} '
                      f'prepared={CS.lkas_prepared} reqprepare={self.lkas_req_prepare} '
                      f'mpc_reqprepare={CS.mpc_laks_reqprepare} mpc_active={CS.mpc_laks_active} '
                      f'torque_last={self.apply_torque_last} softstart={self.steer_softstart_limit} '
-                     f'desire={CC.actuators.torque:.3f} drvTrq={CS.out.steeringTorque:.0f}\n')
+                     f'desire={CC.actuators.torque:.3f} drvTrq={CS.out.steeringTorque:.0f} '
+                     f'mpcLkasState={mpc_lkas_state} mpcState={mpc_mpc_state} '
+                     f'epsTorque={CS.out.steeringTorqueEps:.0f}\n')
 
       # Resolve counter mismatch problem
       if self.first_start:
@@ -151,10 +155,12 @@ class CarController(CarControllerBase):
       can_sends.append(bydcan.create_steering_control(self.packer, self.CP, CS.cam_lkas,
           self.apply_torque_last, self.lkas_req_prepare, self.lkas_active, CC.hudControl, self.mpc_lkas_counter))
 
-      # send fake 318 from op to mpc (pass MPC's own LKAS values to trick MPC)
+      # send fake 318 from op to mpc only when actively controlling or transitioning
+      # when fully inactive, let real EPS 792 pass through to avoid MPC confusion (LKAS Fault on curves)
+      send_fake_318 = CC.latActive or self.lat_safeoff or bool(self.lkas_req_prepare)
       can_sends.append(bydcan.create_fake_318(self.packer, self.CP, CS.esc_eps,
                                               CS.mpc_laks_output, CS.mpc_laks_reqprepare, CS.mpc_laks_active,
-                                              True, self.eps_fake318_counter))
+                                              send_fake_318, self.eps_fake318_counter))
 
     if (self.frame + 1 - self.last_acc_frame) >= CarControllerParams.ACC_STEP:
       accel = np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX)
