@@ -19,7 +19,7 @@ class CarControllerParams:
   STEER_ERROR_MAX = 50
 
   STEER_STEP = 2  # 100/2=50hz
-  STEER_SOFTSTART_STEP = 6  # 20ms(50Hz) * 300 / 6 = 1000ms
+  STEER_SOFTSTART_STEP = 10  # 20ms(50Hz) * 300 / 10 = 600ms to full torque
 
   ACC_STEP = 2  # 50hz
 
