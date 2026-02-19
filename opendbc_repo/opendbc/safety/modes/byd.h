@@ -74,6 +74,9 @@ static void byd_rx_hook(const CANPacket_t *msg) {
   if (msg->addr == BYD_ACC_EPS_STATE) {
     int torque_driver_raw = ((msg->data[3] | (msg->data[4] << 8)) & 0xFFFU);
     if (torque_driver_raw > 2047) torque_driver_raw -= 4096;
+    // Hardware offset compensation: SteerDriverTorque reads ~-65 at rest (no driver input).
+    // Must match the +65 offset applied in carstate.py so panda and Python agree.
+    torque_driver_raw += 65;
     update_sample(&torque_driver, torque_driver_raw);
   }
 

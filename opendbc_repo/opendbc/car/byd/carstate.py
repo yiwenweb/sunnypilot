@@ -124,7 +124,9 @@ class CarState(CarStateBase):
         self.steeringRateDegAbs = cp.vl["EPS"]["SteeringAngleRate"]
         ret.steeringRateDeg = self.steeringRateDegAbs
 
-        ret.steeringTorque = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
+        # Hardware offset compensation: SteerDriverTorque reads ~-65 at rest (no driver input).
+        # Must match the +65 offset applied in byd.h so panda and Python agree.
+        ret.steeringTorque = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"] + 65
         ret.steeringTorqueEps = cp.vl["ACC_EPS_STATE"]["MainTorque"]
         self.eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
         self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["Counter"])
