@@ -124,7 +124,7 @@ class CarState(CarStateBase):
         self.steeringRateDegAbs = cp.vl["EPS"]["SteeringAngleRate"]
         ret.steeringRateDeg = self.steeringRateDegAbs
 
-        ret.steeringTorque = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"] + 65  # compensate constant offset (~-65 at rest)
+        ret.steeringTorque = cp.vl["ACC_EPS_STATE"]["SteerDriverTorque"]
         ret.steeringTorqueEps = cp.vl["ACC_EPS_STATE"]["MainTorque"]
         self.eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
         self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["Counter"])
