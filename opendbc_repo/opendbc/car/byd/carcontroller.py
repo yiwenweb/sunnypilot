@@ -67,45 +67,55 @@ class CarController(CarControllerBase):
 
       if CC.latActive:
         if self.lkas_active:
-          steer_desire = CC.actuators.torque
-
-          if CarControllerParams.USE_STEERING_SPEED_LIMITER:
-            rate_limit = np.interp(CS.out.aEgo, [8.3, 27.8], [132, 64])
-            delta_rate = CS.steeringRateDegAbs - rate_limit
-
-            if delta_rate < 0:
-              self.steerRateLim -= 0.005 * delta_rate
-              if delta_rate < -0.05:
-                self.steerRateLimActive = False
-              if self.steerRateLim > 1.0:
-                self.steerRateLim = 1.0
-                self.steerRateLimActive = False
-            else:
-              if self.steerRateLimActive:
-                self.steerRateLim -= 0.005 * delta_rate
-              else:
-                self.steerRateLim = steer_desire
-                self.steerRateLimActive = True
-              if self.steerRateLim < 0:
-                self.steerRateLim = 0
-
-            new_steer_pu = np.clip(steer_desire, -self.steerRateLim, self.steerRateLim)
+          # If EPS revokes prepared (e.g. driver override), re-handshake
+          if not CS.lkas_prepared:
+            self.lkas_active = 0
+            self.lkas_req_prepare = 1
+            self.steer_softstart_limit = 0
+            apply_torque = 0
+            if self.frame % 10 == 0:
+              with open('/tmp/byd_dbg.log', 'a') as _dbg:
+                _dbg.write(f'  REHANDSHAKE: prepared lost, resetting lkas_active\n')
           else:
-            new_steer_pu = steer_desire
+            steer_desire = CC.actuators.torque
 
-          new_steer = int(round(new_steer_pu * CarControllerParams.STEER_MAX))
+            if CarControllerParams.USE_STEERING_SPEED_LIMITER:
+              rate_limit = np.interp(CS.out.aEgo, [8.3, 27.8], [132, 64])
+              delta_rate = CS.steeringRateDegAbs - rate_limit
 
-          if self.steer_softstart_limit < CarControllerParams.STEER_MAX:
-            self.steer_softstart_limit = self.steer_softstart_limit + CarControllerParams.STEER_SOFTSTART_STEP
-            new_steer = np.clip(new_steer, -self.steer_softstart_limit, self.steer_softstart_limit)
+              if delta_rate < 0:
+                self.steerRateLim -= 0.005 * delta_rate
+                if delta_rate < -0.05:
+                  self.steerRateLimActive = False
+                if self.steerRateLim > 1.0:
+                  self.steerRateLim = 1.0
+                  self.steerRateLimActive = False
+              else:
+                if self.steerRateLimActive:
+                  self.steerRateLim -= 0.005 * delta_rate
+                else:
+                  self.steerRateLim = steer_desire
+                  self.steerRateLimActive = True
+                if self.steerRateLim < 0:
+                  self.steerRateLim = 0
 
-          apply_torque = apply_driver_steer_torque_limits(new_steer, self.apply_torque_last,
-                                                          CS.out.steeringTorque, CarControllerParams)
+              new_steer_pu = np.clip(steer_desire, -self.steerRateLim, self.steerRateLim)
+            else:
+              new_steer_pu = steer_desire
 
-          if self.frame % 10 == 0:
-            with open('/tmp/byd_dbg.log', 'a') as _dbg:
-              _dbg.write(f'  STEER: desire_pu={CC.actuators.torque:.3f} new_steer={new_steer} softlim={self.steer_softstart_limit} '
-                         f'apply={apply_torque} last={self.apply_torque_last} driverTorque={CS.out.steeringTorque:.0f}\n')
+            new_steer = int(round(new_steer_pu * CarControllerParams.STEER_MAX))
+
+            if self.steer_softstart_limit < CarControllerParams.STEER_MAX:
+              self.steer_softstart_limit = self.steer_softstart_limit + CarControllerParams.STEER_SOFTSTART_STEP
+              new_steer = np.clip(new_steer, -self.steer_softstart_limit, self.steer_softstart_limit)
+
+            apply_torque = apply_driver_steer_torque_limits(new_steer, self.apply_torque_last,
+                                                            CS.out.steeringTorque, CarControllerParams)
+
+            if self.frame % 10 == 0:
+              with open('/tmp/byd_dbg.log', 'a') as _dbg:
+                _dbg.write(f'  STEER: desire_pu={CC.actuators.torque:.3f} new_steer={new_steer} softlim={self.steer_softstart_limit} '
+                           f'apply={apply_torque} last={self.apply_torque_last} driverTorque={CS.out.steeringTorque:.0f}\n')
 
         else:
           if CS.lkas_prepared:
