@@ -155,12 +155,11 @@ class CarController(CarControllerBase):
       can_sends.append(bydcan.create_steering_control(self.packer, self.CP, CS.cam_lkas,
           self.apply_torque_last, self.lkas_req_prepare, self.lkas_active, CC.hudControl, self.mpc_lkas_counter))
 
-      # send fake 318 from op to mpc only when actively controlling or transitioning
-      # when fully inactive, let real EPS 792 pass through to avoid MPC confusion (LKAS Fault on curves)
-      send_fake_318 = CC.latActive or self.lat_safeoff or bool(self.lkas_req_prepare)
+      # send fake 318 from op to mpc — ALWAYS enabled (same as taoge)
+      # MPC must always see fake 792, otherwise switching between fake/real causes LKAS fault
       can_sends.append(bydcan.create_fake_318(self.packer, self.CP, CS.esc_eps,
                                               CS.mpc_laks_output, CS.mpc_laks_reqprepare, CS.mpc_laks_active,
-                                              send_fake_318, self.eps_fake318_counter))
+                                              True, self.eps_fake318_counter))
 
     if (self.frame + 1 - self.last_acc_frame) >= CarControllerParams.ACC_STEP:
       accel = np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX)
