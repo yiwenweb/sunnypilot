@@ -48,7 +48,8 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
             "LKAS_Output": req_torque,
             "LKAS_Active": 1,
             "MPC_State": 3,       # ACC_LKA_ACTIVE — tell EPS that MPC is actively doing LKA
-            "LKAS_State": 7,      # keep MPC's native state (7) — don't override to 2/4
+            "LKAS_State": 2,      # taoge's original: 2=active (4 only when MPC cancelling)
+            "LKAS_Config": 3,     # ALARM_AND_LKA — enable LKA mode (MPC default is 1=ALARM only)
             "LeftLaneState": 3 if hud_control.leftLaneDepart else int(hud_control.leftLaneVisible) + 1,
             "RightLaneState": 3 if hud_control.rightLaneDepart else int(hud_control.rightLaneVisible) + 1,
         })
