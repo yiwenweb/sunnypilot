@@ -1,37 +1,46 @@
 #!/usr/bin/env python3
-"""在 openpilot 运行时检查 panda 状态和 CAN 转发情况（不杀进程）"""
-from cereal import messaging
+"""
+诊断脚本: 在 openpilot 运行时检查 pandaStates
+用法: python3 /data/openpilot/scripts/diag_panda_live.py
+
+检查项:
+1. safety_mode 是否为 35 (BYD)
+2. alternativeExperience 是否包含 1024 (ENABLE_MADS)
+3. controlsAllowed 是否为 1
+4. safetyTxBlocked 计数
+5. safetyRxChecksInvalid 是否为 0
+"""
 import time
+from cereal import messaging
 
-sm = messaging.SubMaster(['pandaStates', 'carState'])
-printed = set()
+sm = messaging.SubMaster(['pandaStates', 'carState', 'controlsState'])
 
-print("=== openpilot 运行时 panda 状态 ===")
+print("等待 openpilot 数据... (确保 openpilot 正在运行)")
+print("按 Ctrl+C 退出\n")
+
 for i in range(30):
-    sm.update(1000)
-    if sm.updated['pandaStates'] and 'ps' not in printed:
+    sm.update(2000)
+    
+    if sm.updated['pandaStates']:
         for j, ps in enumerate(sm['pandaStates']):
-            print(f"panda[{j}]:")
-            print(f"  safetyModel={ps.safetyModel}")
-            print(f"  safetyParam={ps.safetyParam}")
-            print(f"  controlsAllowed={ps.controlsAllowed}")
-            print(f"  ignitionLine={ps.ignitionLine}")
-            print(f"  ignitionCan={ps.ignitionCan}")
-            print(f"  faultStatus={ps.faultStatus}")
-            print(f"  harnessStatus={ps.harnessStatus}")
-            print(f"  heartbeatLost={ps.heartbeatLost}")
-            print(f"  canRxErrs={ps.canState0.busOff if hasattr(ps, 'canState0') else 'N/A'}")
-        printed.add('ps')
-    if sm.updated['carState'] and 'cs' not in printed:
-        cs = sm['carState']
-        print(f"\ncarState:")
-        print(f"  canValid={cs.canValid}")
-        print(f"  canTimeout={cs.canTimeout}")
-        print(f"  canErrorCounter={cs.canErrorCounter}")
-        printed.add('cs')
-    if len(printed) >= 2:
-        break
-    time.sleep(0.3)
-
-if not printed:
-    print("超时: 未收到消息")
+            alt_exp = ps.alternativeExperience
+            has_mads = bool(alt_exp & 1024)
+            print(f"[{i:2d}] panda{j}: safety={ps.safetyModel} param={ps.safetyParam} "
+                  f"altExp={alt_exp}(MADS={'YES' if has_mads else 'NO'}) "
+                  f"ctrl={ps.controlsAllowed} txBlk={ps.safetyTxBlocked} "
+                  f"rxInv={ps.safetyRxChecksInvalid}")
+    
+    if sm.updated['controlsState']:
+        cs = sm['controlsState']
+        print(f"       controls: enabled={cs.enabled} latActive={cs.lateralActive} "
+              f"state={cs.state}")
+    
+    if sm.updated['carState']:
+        car = sm['carState']
+        print(f"       car: steerTorqueEps={car.steeringTorqueEps:.0f} "
+              f"steerTorque={car.steeringTorque:.0f} "
+              f"cruiseAvail={car.cruiseState.available} "
+              f"cruiseEnabled={car.cruiseState.enabled}")
+    
+    print()
+    time.sleep(1)
