@@ -158,7 +158,8 @@ class CarController(CarControllerBase):
         self.sss = 0
         self.rfss = 0
 
-      can_sends.append(bydcan.acc_cmd(self.packer, self.CP, CS.cam_acc, CS.mrr_leading_dist, accel, self.rfss, self.sss, CC.longActive))
+      self.mpc_acc_counter = int(self.mpc_acc_counter + 1) & 0xF
+      can_sends.append(bydcan.acc_cmd(self.packer, self.CP, CS.cam_acc, CS.mrr_leading_dist, accel, self.rfss, self.sss, CC.longActive, self.mpc_acc_counter))
 
       self.apply_accel_last = accel
       self.last_acc_frame = self.frame + 1

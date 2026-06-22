@@ -64,7 +64,7 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
 
 
 # op long control
-def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActive):
+def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActive, counter):
     values = {s: cam_msg[s] for s in [
         "AccelCmd",
         "ComfortBandUpper",
@@ -79,7 +79,6 @@ def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActiv
         "AccControlActive",
         "AccOverrideOrStandstill",
         "EspBehaviour",
-        "Counter",
         "SETME2_0xF",
     ]}
 
@@ -93,6 +92,8 @@ def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActiv
         jerk_upper = jerk_base_upper + accel * CarControllerParams.K_accel_jerk_upper
         jerk_lower = jerk_base_lower
 
+    values["Counter"] = counter
+    
     if longActive:
         values.update({
             "AccelCmd": accel,

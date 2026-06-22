@@ -82,7 +82,7 @@ class CarState(CarStateBase):
         prev_btn_acc_dist_dec = self.btn_acc_dist_dec
 
         self.btn_acc_cancel = cp.vl["PCM_BUTTONS"]["BTN_AccCancel"]
-        self.btn_acc_set_reset = cp.vl["PCM_BUTTONS"]["BTN_AccCancel"]
+        self.btn_acc_set_reset = cp.vl["PCM_BUTTONS"]["BTN_AccUpDown_Cmd"]
         self.btn_acc_dist_inc = cp.vl["PCM_BUTTONS"]["BTN_AccDistanceIncrease"]
         self.btn_acc_dist_dec = cp.vl["PCM_BUTTONS"]["BTN_AccDistanceDecrease"]
 
