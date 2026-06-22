@@ -30,7 +30,7 @@ static uint32_t byd_get_checksum(const CANPacket_t *msg) { UNUSED(msg); return 0
 static uint32_t byd_compute_checksum(const CANPacket_t *msg) { UNUSED(msg); return 0U; }
 
 static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
-  .max_torque = 350,
+  .max_torque = 897,
   .max_rate_up = 18,
   .max_rate_down = 18,
   .max_rt_delta = 150,
