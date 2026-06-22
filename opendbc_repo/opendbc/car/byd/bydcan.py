@@ -101,8 +101,8 @@ def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActiv
     if longActive:
         values.update({
             "AccelCmd": accel,
-            "ComfortBandUpper": 0.05 if mrr_leaddist > 50 else 0.10,
-            "ComfortBandLower": 0.05 if mrr_leaddist > 50 else 0.10,
+            "ComfortBandUpper": 0,  # 物理值 0 对应的 raw 是 100 (0x64), 从闭源版抓包获得
+            "ComfortBandLower": 0,  # 物理值 0 对应的 raw 是 100 (0x64)
             "JerkUpperLimit": jerk_upper,
             "JerkLowerLimit": jerk_lower,
             "ResumeFromStandstill": rfss,

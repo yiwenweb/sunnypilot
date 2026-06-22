@@ -68,6 +68,7 @@ class CarInterface(CarInterfaceBase):
         ret.longitudinalTuning.kpV, ret.longitudinalTuning.kiV = [[1.5], [0.3]]
 
         if candidate == CAR.BYD_TANG_DM:
+            ret.steerRatio = 20.1478  # From closed-source LiveParameters
             ret.minSteerSpeed = 0
             ret.autoResumeSng = True
             ret.startingState = True
