@@ -127,11 +127,10 @@ class CarController(CarControllerBase):
       can_sends.append(bydcan.create_steering_control(self.packer, self.CP, CS.cam_lkas,
           self.apply_torque_last, self.lkas_req_prepare, self.lkas_active, CC.hudControl, self.mpc_lkas_counter))
 
-      # send fake 318 from op to mpc — ALWAYS enabled (same as taoge)
-      # MPC must always see fake 792, otherwise switching between fake/real causes LKAS fault
-      can_sends.append(bydcan.create_fake_318(self.packer, self.CP, CS.esc_eps,
-                                              CS.mpc_laks_output, CS.mpc_laks_reqprepare, CS.mpc_laks_active,
-                                              True, self.eps_fake318_counter))
+      # 闭源版本抓包未发现发送 0x318 报文，说明不需要 Fake EPS 欺骗，注释掉以防 CAN 冲突报错
+      # can_sends.append(bydcan.create_fake_318(self.packer, self.CP, CS.esc_eps,
+      #                                         CS.mpc_laks_output, CS.mpc_laks_reqprepare, CS.mpc_laks_active,
+      #                                         True, self.eps_fake318_counter))
 
     if (self.frame + 1 - self.last_acc_frame) >= CarControllerParams.ACC_STEP:
       accel = np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX)

@@ -129,7 +129,8 @@ class CarState(CarStateBase):
         self.eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
         self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["Counter"])
 
-        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 59, 5)
+        # 降低驾驶员接管阈值，解决手动打盘对抗报错的问题。原值为 59，过高。
+        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 15, 5)
 
         ret.parkingBrake = (cp.vl["EPB"]["EPB_ActiveFlag"] == 1)
 
