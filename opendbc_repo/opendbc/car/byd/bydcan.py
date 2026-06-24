@@ -6,19 +6,17 @@ GearShifter = structs.CarState.GearShifter
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
 
 
-# Original nibble-based checksum algorithm (kept for reference in case the simple sum fails on real car)
-# def byd_checksum_old(byte_key, dat):
-#     first_bytes_sum = sum(byte >> 4 for byte in dat)
-#     second_bytes_sum = sum(byte & 0xF for byte in dat)
-#     remainder = second_bytes_sum >> 4
-#     second_bytes_sum += byte_key >> 4
-#     first_bytes_sum += byte_key & 0xF
-#     first_part = ((-first_bytes_sum + 0x9) & 0xF)
-#     second_part = ((-second_bytes_sum + 0x9) & 0xF)
-#     return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF
-
 def byd_checksum(dat):
-    return (0xFF - sum(dat[:7])) & 0xFF
+    # Nibble-based algorithm verified from earlier BYD openpilot adaptations (byte_key=0xAF)
+    byte_key = 0xAF
+    first_bytes_sum = sum(byte >> 4 for byte in dat)
+    second_bytes_sum = sum(byte & 0xF for byte in dat)
+    remainder = second_bytes_sum >> 4
+    second_bytes_sum += byte_key >> 4
+    first_bytes_sum += byte_key & 0xF
+    first_part = ((-first_bytes_sum + 0x9) & 0xF)
+    second_part = ((-second_bytes_sum + 0x9) & 0xF)
+    return (((first_part + (-remainder + 5)) << 4) + second_part) & 0xFF
 
 
 # MPC -> Panda -> EPS
