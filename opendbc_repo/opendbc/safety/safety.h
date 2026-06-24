@@ -192,8 +192,10 @@ bool safety_rx_hook(const CANPacket_t *msg) {
   bool controls_allowed_prev = controls_allowed;
 
   bool valid = rx_msg_safety_check(msg, &current_safety_config, current_hooks);
-  bool whitelisted = get_addr_check_index(msg, current_safety_config.rx_checks, current_safety_config.rx_checks_len) != -1;
-  if (valid && whitelisted) {
+  // Call rx_hook for all valid messages. Non-whitelisted messages (not in rx_checks)
+  // are always considered valid, allowing safety modes to process informational
+  // messages without subjecting them to strict RxCheck frequency validation.
+  if (valid) {
     current_hooks->rx(msg);
   }
 
