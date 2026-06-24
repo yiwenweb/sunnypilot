@@ -30,6 +30,7 @@ class CarState(CarStateBase):
         self.acc_cmd_counter = 0
 
         self.eps_warning = False
+        self.torque_failed_counter = 0
 
         self.acc_active_last = False
         self.low_speed_alert = False
@@ -177,7 +178,11 @@ class CarState(CarStateBase):
                 else:
                     self.mrr_leading_dist = 199
 
-        ret.steerFaultPermanent = bool(cp.vl["ACC_EPS_STATE"]["TorqueFailed"])
+        if cp.vl["ACC_EPS_STATE"]["TorqueFailed"]:
+            self.torque_failed_counter = min(self.torque_failed_counter + 1, 50)
+        else:
+            self.torque_failed_counter = 0
+        ret.steerFaultPermanent = self.torque_failed_counter >= 50  # 50 frames @50Hz = 1 second and self.mpc_laks_active
 
         ret.buttonEvents = [
             *create_button_events(self.btn_acc_cancel, prev_btn_acc_cancel, {1: ButtonType.cancel}),
