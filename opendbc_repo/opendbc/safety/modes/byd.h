@@ -14,6 +14,9 @@
 #define BYD_PEDAL            0x342U  // 834
 #define BYD_PCM_BUTTONS      0x3B0U  // 944
 
+// RX messages (Bus 2 - from MPC)
+#define BYD_ACC_HUD_ADAS_RX  0x32DU  // 813 - ACC state from MPC
+
 // TX messages
 #define BYD_ACC_MPC_STATE    0x316U  // 790 - steering (Bus 0)
 #define BYD_ACC_HUD_ADAS     0x32DU  // 813 - stock passthrough
@@ -34,9 +37,7 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
   .max_rate_up = 18,
   .max_rate_down = 18,
   .max_rt_delta = 150,
-  .type = TorqueDriverLimited,
-  .driver_torque_allowance = 68,
-  .driver_torque_multiplier = 3,
+  .type = TorqueMotorLimited,       // FIXED: was TorqueDriverLimited
   .max_torque_error = 80,
   .min_valid_request_frames = 10,
   .max_invalid_request_frames = 5,
@@ -58,55 +59,76 @@ static uint32_t byd_op_acc_ts = 0U;
 
 
 static void byd_rx_hook(const CANPacket_t *msg) {
-  if (msg->bus != BYD_MAIN_BUS) return;
 
-  if (msg->addr == BYD_CARSPEED) {
-    int speed_raw = (msg->data[0] | ((msg->data[1] & 0x0FU) << 8));
-    UPDATE_VEHICLE_SPEED((float)speed_raw * 0.0735f * KPH_TO_MS);
-  }
+  // === Bus 0 messages ===
+  if (msg->bus == BYD_MAIN_BUS) {
 
-  if (msg->addr == BYD_EPS) {
-    int angle_raw = (msg->data[0] | (msg->data[1] << 8));
-    if (angle_raw > 32767) angle_raw -= 65536;
-    update_sample(&angle_meas, angle_raw);
-  }
-
-  if (msg->addr == BYD_ACC_EPS_STATE) {
-    // MainTorque (bits 8-19, 12-bit signed) -> torque_meas for safety torque error check
-    int torque_motor_raw = ((msg->data[1] | ((msg->data[2] & 0x0FU) << 8)));
-    if (torque_motor_raw > 2047) torque_motor_raw -= 4096;
-    update_sample(&torque_meas, torque_motor_raw);
-
-    // SteerDriverTorque (bits 24-35, 12-bit signed) -> torque_driver for driver override check
-    int torque_driver_raw = ((msg->data[3] | (msg->data[4] << 8)) & 0xFFFU);
-    if (torque_driver_raw > 2047) torque_driver_raw -= 4096;
-    update_sample(&torque_driver, torque_driver_raw);
-  }
-
-  if (msg->addr == BYD_DRIVE_STATE) {
-    brake_pressed = GET_BIT(msg, 37U);
-    unsigned int gear = (msg->data[5] & 0x7U);
-    vehicle_moving = (gear != 1U);
-  }
-
-  if (msg->addr == BYD_PEDAL) {
-    gas_pressed = msg->data[0] > 0U;
-  }
-
-  if (msg->addr == BYD_PCM_BUTTONS) {
-    acc_main_on = GET_BIT(msg, 8U);
-    controls_allowed = acc_main_on;
-
-    // MADS support
-    mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
-  }
-
-  if (msg->addr == BYD_DRIVE_STATE) {
-    if ((alternative_experience & ALT_EXP_ENABLE_MADS) && !m_mads_state.system_enabled) {
-      m_mads_state.system_enabled = true;
+    if (msg->addr == BYD_CARSPEED) {
+      int speed_raw = (msg->data[0] | ((msg->data[1] & 0x0FU) << 8));
+      UPDATE_VEHICLE_SPEED((float)speed_raw * 0.0735f * KPH_TO_MS);
     }
-    mads_state_update(vehicle_moving, acc_main_on, controls_allowed,
-                      brake_pressed || regen_braking, steering_disengage);
+
+    if (msg->addr == BYD_EPS) {
+      int angle_raw = (msg->data[0] | (msg->data[1] << 8));
+      if (angle_raw > 32767) angle_raw -= 65536;
+      update_sample(&angle_meas, angle_raw);
+    }
+
+    if (msg->addr == BYD_ACC_EPS_STATE) {
+      // MainTorque (bits 8-19, 12-bit signed) -> torque_meas for safety torque error check
+      int torque_motor_raw = ((msg->data[1] | ((msg->data[2] & 0x0FU) << 8)));
+      if (torque_motor_raw > 2047) torque_motor_raw -= 4096;
+      update_sample(&torque_meas, torque_motor_raw);
+
+      // SteerDriverTorque (bits 24-35, 12-bit signed) -> torque_driver for driver override check
+      int torque_driver_raw = ((msg->data[3] | (msg->data[4] << 8)) & 0xFFFU);
+      if (torque_driver_raw > 2047) torque_driver_raw -= 4096;
+      update_sample(&torque_driver, torque_driver_raw);
+    }
+
+    if (msg->addr == BYD_DRIVE_STATE) {
+      brake_pressed = GET_BIT(msg, 37U);
+      unsigned int gear = (msg->data[5] & 0x7U);
+      vehicle_moving = (gear != 1U);
+    }
+
+    if (msg->addr == BYD_PEDAL) {
+      gas_pressed = msg->data[0] > 0U;
+    }
+
+    if (msg->addr == BYD_PCM_BUTTONS) {
+      acc_main_on = GET_BIT(msg, 8U);
+      // FIXED: Do NOT set controls_allowed here - 944 bit 8 is a momentary button!
+      // controls_allowed is now driven by 813 AccState from MPC (Bus 2)
+
+      // MADS support - still use the button press event
+      mads_button_press = acc_main_on ? MADS_BUTTON_PRESSED : MADS_BUTTON_NOT_PRESSED;
+    }
+
+    if (msg->addr == BYD_DRIVE_STATE) {
+      if ((alternative_experience & ALT_EXP_ENABLE_MADS) && !m_mads_state.system_enabled) {
+        m_mads_state.system_enabled = true;
+      }
+      mads_state_update(vehicle_moving, acc_main_on, controls_allowed,
+                        brake_pressed || regen_braking, steering_disengage);
+    }
+  }
+
+  // === Bus 2 messages (from MPC) ===
+  if (msg->bus == BYD_CAM_BUS) {
+
+    // FIXED: Use 813 ACC_HUD_ADAS from MPC to determine cruise state
+    // AccState field: byte 2 bits [5:3] (3-bit field)
+    // Values: 0=OFF, 1=ACC_ON(standby), 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=FAULT
+    if (msg->addr == BYD_ACC_HUD_ADAS_RX) {
+      unsigned int acc_state = ((msg->data[2] >> 3) & 0x07U);
+      // controls_allowed when ACC is in standby(1), active(3), or force_accel(5)
+      bool cruise_engaged = (acc_state == 1U) || (acc_state == 3U) || (acc_state == 5U);
+      controls_allowed = cruise_engaged;
+
+      // Also update acc_main_on based on continuous state
+      acc_main_on = (acc_state != 0U) && (acc_state != 7U);
+    }
   }
 }
 
@@ -211,6 +233,8 @@ static safety_config byd_init(uint16_t param) {
     {.msg = {{BYD_ACC_EPS_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     {.msg = {{BYD_PEDAL, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     {.msg = {{BYD_PCM_BUTTONS, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // FIXED: Add 813 from Bus 2 to rx_checks so panda validates it
+    {.msg = {{BYD_ACC_HUD_ADAS_RX, BYD_CAM_BUS, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
   static const CanMsg BYD_TX_MSGS[] = {
