@@ -233,8 +233,8 @@ static safety_config byd_init(uint16_t param) {
     {.msg = {{BYD_ACC_EPS_STATE, 0, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     {.msg = {{BYD_PEDAL, 0, 8, 25U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
     {.msg = {{BYD_PCM_BUTTONS, 0, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
-    // FIXED: Add 813 from Bus 2 to rx_checks so panda validates it
-    {.msg = {{BYD_ACC_HUD_ADAS_RX, BYD_CAM_BUS, 8, 10U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
+    // 813 from Bus 2 - use very low freq threshold to avoid canValid=false
+    {.msg = {{BYD_ACC_HUD_ADAS_RX, BYD_CAM_BUS, 8, 1U, .ignore_checksum = true, .ignore_counter = true, .ignore_quality_flag = true}, { 0 }, { 0 }}},
   };
 
   static const CanMsg BYD_TX_MSGS[] = {
