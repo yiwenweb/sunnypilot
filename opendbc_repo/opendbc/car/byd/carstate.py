@@ -147,7 +147,7 @@ class CarState(CarStateBase):
         ret.gasPressed = (gas != 0)
 
         ret.cruiseState.available = lkas_isMainSwOn and lkas_config_isAccOn and lkas_hud_AccOn1
-        ret.cruiseState.enabled = self.acc_state in (3, 5)
+        ret.cruiseState.enabled = self.acc_state in (1, 3, 5)  # 1=ACC_ON(standby), 3=ACC_ACTIVE, 5=FORCE_ACCEL
         ret.cruiseState.standstill = ret.standstill
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
