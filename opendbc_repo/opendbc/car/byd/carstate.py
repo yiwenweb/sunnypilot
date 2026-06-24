@@ -178,13 +178,10 @@ class CarState(CarStateBase):
                 else:
                     self.mrr_leading_dist = 199
 
-        # TorqueFailed=1 during EPS standby is normal baseline, not a fault.
-        # Only count as fault when EPS has entered LKAS prepared state.
-        if cp.vl["ACC_EPS_STATE"]["TorqueFailed"] and self.lkas_prepared:
-            self.torque_failed_counter = min(self.torque_failed_counter + 1, 50)
-        else:
-            self.torque_failed_counter = 0
-        ret.steerFaultPermanent = self.torque_failed_counter >= 50  # 50 frames @50Hz = 1 second
+        # TorqueFailed signal is [PARTIAL/UNVERIFIED] - its meaning during active control is unknown.
+        # Disabling steerFaultPermanent until TorqueFailed semantics are validated on real vehicle.
+        self.torque_failed_counter = 0
+        ret.steerFaultPermanent = False
 
         ret.buttonEvents = [
             *create_button_events(self.btn_acc_cancel, prev_btn_acc_cancel, {1: ButtonType.cancel}),
