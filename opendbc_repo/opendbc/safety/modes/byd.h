@@ -72,6 +72,12 @@ static void byd_rx_hook(const CANPacket_t *msg) {
   }
 
   if (msg->addr == BYD_ACC_EPS_STATE) {
+    // MainTorque (bits 8-19, 12-bit signed) -> torque_meas for safety torque error check
+    int torque_motor_raw = ((msg->data[1] | ((msg->data[2] & 0x0FU) << 8)));
+    if (torque_motor_raw > 2047) torque_motor_raw -= 4096;
+    update_sample(&torque_meas, torque_motor_raw);
+
+    // SteerDriverTorque (bits 24-35, 12-bit signed) -> torque_driver for driver override check
     int torque_driver_raw = ((msg->data[3] | (msg->data[4] << 8)) & 0xFFFU);
     if (torque_driver_raw > 2047) torque_driver_raw -= 4096;
     update_sample(&torque_driver, torque_driver_raw);
