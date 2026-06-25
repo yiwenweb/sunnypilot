@@ -130,8 +130,11 @@ class CarState(CarStateBase):
         self.eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
         self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["Counter"])
 
-        # 降低驾驶员接管阈值，解决手动打盘对抗报错的问题。原值为 59，过高。
-        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 15, 5)
+        # 驾驶员接管判定阈值
+        # 实测: 车停 / 手离开方向盘时,静态噪声最大可达 ±57,均值约 14.5
+        # 阈值 15 会让 36% 的静态采样误触发 steeringPressed,进而频繁触发 steerOverride
+        # 阈值 59 是 sunnypilot 上游默认值,实测 0% 误触发,改回该值
+        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 59, 5)
 
         ret.parkingBrake = (cp.vl["EPB"]["EPB_ActiveFlag"] == 1)
 
