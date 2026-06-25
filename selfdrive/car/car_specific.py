@@ -125,7 +125,7 @@ class CarSpecificEvents:
                                          pcm_enable=self.CP.pcmCruise, allow_button_cancel=False)
 
     elif self.CP.brand == 'byd':
-      events = self.create_common_events(CS, CS_prev, pcm_enable=False)
+      events = self.create_common_events(CS, CS_prev, pcm_enable=self.CP.pcmCruise)
 
     else:
       events = self.create_common_events(CS, CS_prev)

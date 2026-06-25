@@ -62,7 +62,7 @@ class CarInterface(CarInterfaceBase):
 
         ret.alphaLongitudinalAvailable = use_experimental_long
         ret.openpilotLongitudinalControl = alpha_long and ret.alphaLongitudinalAvailable
-        ret.pcmCruise = not ret.openpilotLongitudinalControl
+        ret.pcmCruise = True  # Always follow PCM cruise state for activation/speed display, even when OP handles longitudinal accel
 
         ret.longitudinalTuning.kpBP, ret.longitudinalTuning.kiBP = [[0.], [0.]]
         ret.longitudinalTuning.kpV, ret.longitudinalTuning.kiV = [[1.5], [0.3]]

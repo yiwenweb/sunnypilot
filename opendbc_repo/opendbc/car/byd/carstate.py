@@ -151,7 +151,10 @@ class CarState(CarStateBase):
 
         # FIXED: removed lkas_isMainSwOn (944 momentary button) - use only persistent states from 813
         ret.cruiseState.available = lkas_config_isAccOn and lkas_hud_AccOn1
-        ret.cruiseState.enabled = self.acc_state in (1, 3, 5)  # 1=ACC_ON(standby), 3=ACC_ACTIVE, 5=FORCE_ACCEL
+        # enabled 只在 ACC 真正激活时为 True (3=ACC_ACTIVE, 5=FORCE_ACCEL)
+        # 不含 1=ACC_ON(standby): 待机时若算作 enabled，pcmEnable 会在按下 ACC 开关进入待机的瞬间误触发纵向
+        # 横向(MADS)依赖 cruiseState.available，不受此影响，待机状态下仍可激活横向
+        ret.cruiseState.enabled = self.acc_state in (3, 5)  # 3=ACC_ACTIVE, 5=FORCE_ACCEL
         ret.cruiseState.standstill = ret.standstill
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
