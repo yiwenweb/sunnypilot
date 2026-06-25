@@ -119,11 +119,16 @@ static void byd_rx_hook(const CANPacket_t *msg) {
 
     // FIXED: Use 813 ACC_HUD_ADAS from MPC to determine cruise state
     // AccState field: byte 2 bits [5:3] (3-bit field)
-    // Values: 0=OFF, 1=ACC_ON(standby), 3=ACC_ACTIVE, 5=FORCE_ACCEL, 7=FAULT
+    // Observed values on Tang DM 2018:
+    //   0=OFF, 1=STANDBY, 2=ACTIVATING (transient), 3=ACTIVE, 5=FORCE_ACCEL, 7=FAULT
+    // Empirical: AccState=2 is a brief transition state between STANDBY (1) and ACTIVE (3).
+    // Treating it as block causes controls_allowed to drop momentarily,
+    // which forces carcontroller to reset lkas_active and steer_softstart_limit,
+    // breaking lateral handshake. Include 2 in the allowed set.
     if (msg->addr == BYD_ACC_HUD_ADAS_RX) {
       unsigned int acc_state = ((msg->data[2] >> 3) & 0x07U);
-      // controls_allowed when ACC is in standby(1), active(3), or force_accel(5)
-      bool cruise_engaged = (acc_state == 1U) || (acc_state == 3U) || (acc_state == 5U);
+      bool cruise_engaged = (acc_state == 1U) || (acc_state == 2U) ||
+                            (acc_state == 3U) || (acc_state == 5U);
       controls_allowed = cruise_engaged;
 
       // Also update acc_main_on based on continuous state
