@@ -153,9 +153,11 @@ class CarState(CarStateBase):
 
         # FIXED: removed lkas_isMainSwOn (944 momentary button) - use only persistent states from 813
         ret.cruiseState.available = lkas_config_isAccOn and lkas_hud_AccOn1
-        # Include acc_state 1(standby) and 2(activating) so panda controls_allowed stays True
-        # when ACC is on, allowing lateral torque to be sent.
-        ret.cruiseState.enabled = self.acc_state in (1, 2, 3, 5)
+        # enabled only when ACC truly engaged (3=ACC_ACTIVE, 5=FORCE_ACCEL).
+        # Excludes 1=standby: with pcmCruise, treating standby as enabled would fire
+        # pcmEnable (green/longitudinal) the moment ACC switch is pressed, skipping the
+        # blue lateral-only state. Lateral (MADS) uses cruiseState.available, not enabled.
+        ret.cruiseState.enabled = self.acc_state in (3, 5)
         ret.cruiseState.standstill = ret.standstill
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
