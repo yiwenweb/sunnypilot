@@ -67,9 +67,10 @@ class CarState(CarStateBase):
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
 
-        # LKAS_Prepared (bit0) is the handshake signal that goes 1 when ACC activates.
-        # Confirmed via live CAN: 792 byte0 toggles 0xF8<->0xF9 (bit0) on ACC activation.
-        self.lkas_prepared = bool(cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"])
+        # CruiseActivated (bit1) is the real handshake signal: goes 1 when ACC is active.
+        # Confirmed: 0.98 working logs show byte0=0xFA (bit1=1) during lateral control.
+        # bit0 (LKAS_Prepared) only appears briefly in AccState=2 transition, not reliable.
+        self.lkas_prepared = bool(cp.vl["ACC_EPS_STATE"]["CruiseActivated"])
 
         self.mpc_lkas_config = int(cp_cam.vl["ACC_MPC_STATE"]["LKAS_Config"])
         lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
