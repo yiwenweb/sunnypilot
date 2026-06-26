@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 from openpilot.tools.lib.logreader import LogReader
-import glob, os
+import glob, os, sys
 from collections import defaultdict
 
-base = '/data/media/0/realdata'
+base = sys.argv[1] if len(sys.argv) > 1 else '/data/media/0/realdata'
 routes = defaultdict(list)
 for seg in sorted(glob.glob(base + '/*/rlog.zst')):
     route = os.path.basename(os.path.dirname(seg)).rsplit('--', 1)[0]

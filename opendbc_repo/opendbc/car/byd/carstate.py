@@ -67,7 +67,10 @@ class CarState(CarStateBase):
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
 
-        self.lkas_prepared = cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"]
+        # CruiseActivated (bit1) is the real handshake signal from EPS.
+        # LKAS_Prepared (bit0) is almost never set on Tang DM 2018.
+        # 0.98 worked by triggering lkas_active as soon as CruiseActivated=1.
+        self.lkas_prepared = bool(cp.vl["ACC_EPS_STATE"]["CruiseActivated"])
 
         self.mpc_lkas_config = int(cp_cam.vl["ACC_MPC_STATE"]["LKAS_Config"])
         lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
