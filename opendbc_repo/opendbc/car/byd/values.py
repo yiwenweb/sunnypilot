@@ -9,17 +9,17 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
-  STEER_MAX = 897                 # max steer torque (observed max during live sniffing: 897)
-  STEER_DELTA_UP = 18             # Panda is 18
-  STEER_DELTA_DOWN = 18           # Panda is 18
+  STEER_MAX = 300                 # max steer torque (0.98 confirmed max: 300; 897 triggers TorqueFailed)
+  STEER_DELTA_UP = 7              # match 0.98 reference (18 causes too rapid changes)
+  STEER_DELTA_DOWN = 10           # match 0.98 reference
 
   STEER_DRIVER_ALLOWANCE = 68
   STEER_DRIVER_MULTIPLIER = 3
   STEER_DRIVER_FACTOR = 1
-  STEER_ERROR_MAX = 80            # Panda is 80
+  STEER_ERROR_MAX = 50            # match 0.98 reference
 
   STEER_STEP = 2  # 100/2=50hz
-  STEER_SOFTSTART_STEP = 10  # 20ms(50Hz) * 300 / 10 = 600ms to full torque
+  STEER_SOFTSTART_STEP = 6  # 20ms(50Hz) * 300 / 6 = 1000ms to full torque
 
   ACC_STEP = 2  # 50hz
 

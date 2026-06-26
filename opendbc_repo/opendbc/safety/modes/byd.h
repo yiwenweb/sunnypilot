@@ -33,12 +33,12 @@ static uint32_t byd_get_checksum(const CANPacket_t *msg) { UNUSED(msg); return 0
 static uint32_t byd_compute_checksum(const CANPacket_t *msg) { UNUSED(msg); return 0U; }
 
 static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
-  .max_torque = 897,
-  .max_rate_up = 18,
-  .max_rate_down = 18,
+  .max_torque = 300,       // 0.98 confirmed max: ±300; 897 triggers EPS TorqueFailed
+  .max_rate_up = 7,        // match 0.98 reference values
+  .max_rate_down = 10,
   .max_rt_delta = 150,
-  .type = TorqueMotorLimited,       // FIXED: was TorqueDriverLimited
-  .max_torque_error = 80,
+  .type = TorqueMotorLimited,
+  .max_torque_error = 50,
   .min_valid_request_frames = 10,
   .max_invalid_request_frames = 5,
   .min_valid_request_rt_interval = 250000U,
