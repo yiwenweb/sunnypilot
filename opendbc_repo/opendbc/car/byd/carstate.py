@@ -67,10 +67,9 @@ class CarState(CarStateBase):
         ret = structs.CarState()
         ret_sp = structs.CarStateSP()
 
-        # CruiseActivated (bit1) is the real handshake signal from EPS.
-        # LKAS_Prepared (bit0) is almost never set on Tang DM 2018.
-        # 0.98 worked by triggering lkas_active as soon as CruiseActivated=1.
-        self.lkas_prepared = bool(cp.vl["ACC_EPS_STATE"]["CruiseActivated"])
+        # LKAS_Prepared (bit0) is the handshake signal that goes 1 when ACC activates.
+        # Confirmed via live CAN: 792 byte0 toggles 0xF8<->0xF9 (bit0) on ACC activation.
+        self.lkas_prepared = bool(cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"])
 
         self.mpc_lkas_config = int(cp_cam.vl["ACC_MPC_STATE"]["LKAS_Config"])
         lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
@@ -154,10 +153,9 @@ class CarState(CarStateBase):
 
         # FIXED: removed lkas_isMainSwOn (944 momentary button) - use only persistent states from 813
         ret.cruiseState.available = lkas_config_isAccOn and lkas_hud_AccOn1
-        # enabled 只在 ACC 真正激活时为 True (3=ACC_ACTIVE, 5=FORCE_ACCEL)
-        # 不含 1=ACC_ON(standby): 待机时若算作 enabled，pcmEnable 会在按下 ACC 开关进入待机的瞬间误触发纵向
-        # 横向(MADS)依赖 cruiseState.available，不受此影响，待机状态下仍可激活横向
-        ret.cruiseState.enabled = self.acc_state in (3, 5)  # 3=ACC_ACTIVE, 5=FORCE_ACCEL
+        # Include acc_state 1(standby) and 2(activating) so panda controls_allowed stays True
+        # when ACC is on, allowing lateral torque to be sent.
+        ret.cruiseState.enabled = self.acc_state in (1, 2, 3, 5)
         ret.cruiseState.standstill = ret.standstill
         ret.cruiseState.speed = cp_cam.vl["ACC_HUD_ADAS"]["SetSpeed"] * CV.KPH_TO_MS
 
