@@ -188,10 +188,10 @@ class CarState(CarStateBase):
                 else:
                     self.mrr_leading_dist = 199
 
-        # TorqueFailed signal is [PARTIAL/UNVERIFIED] - its meaning during active control is unknown.
-        # Disabling steerFaultPermanent until TorqueFailed semantics are validated on real vehicle.
+        # TorqueFailed: EPS rejects control and requires vehicle restart to recover.
+        # Confirmed: byte0=0xFC (bit2=1) when EPS locks up; bit0 never goes 1 in that state.
         self.torque_failed_counter = 0
-        ret.steerFaultPermanent = False
+        ret.steerFaultPermanent = bool(cp.vl["ACC_EPS_STATE"]["TorqueFailed"])
 
         ret.buttonEvents = [
             *create_button_events(self.btn_acc_cancel, prev_btn_acc_cancel, {1: ButtonType.cancel}),
