@@ -30,6 +30,19 @@ class CarControllerParams:
 
   USE_STEERING_SPEED_LIMITER = False
 
+  # --- Anti-stall protection (prevents low-speed EPS TorqueFailed lockup) ---
+  # Root cause (confirmed from fault logs): at near-standstill the EPS motor cannot move
+  # the wheel, so sustained steer torque with no wheel motion stalls the motor. After a
+  # few seconds the BYD EPS asserts TorqueFailed and locks LKAS until restart.
+  # Mitigation: when low speed + sustained torque + wheel not moving persists, briefly
+  # release torque to reset the EPS stall timer, producing a "push / rest" pulse pattern.
+  ANTISTALL_ENABLE = True
+  ANTISTALL_SPEED = 2.0           # m/s, only guard below this speed
+  ANTISTALL_TORQUE = 40           # |apply_torque| (0..STEER_MAX) considered "pushing hard"
+  ANTISTALL_RATE = 5.0            # deg/s, below this the wheel is considered "stuck"
+  ANTISTALL_TRIGGER_FRAMES = 75   # 50Hz * 1.5s, stall frames before forcing a release
+  ANTISTALL_RELEASE_FRAMES = 30   # 50Hz * 0.6s, torque held at 0 to reset EPS timer
+
   # op long control
   K_accel_jerk_upper = 0.1
   K_accel_jerk_lower = 0.5
