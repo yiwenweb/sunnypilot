@@ -124,6 +124,13 @@ class CarController(CarControllerBase):
               # wheel is moving or torque/speed back to normal: decay the stall counter
               self.stall_counter = max(0, self.stall_counter - 2)
 
+            # debug: only print while the guard is active to avoid spam
+            if self.stall_counter > 0 or self.release_counter > 0:
+              print("ANTISTALL v=%.2f tq=%d rate=%.1f | stall=%d release=%d %s" % (
+                CS.out.vEgo, apply_torque, abs(CS.steeringRateDegAbs),
+                self.stall_counter, self.release_counter,
+                "<<< RELEASING" if self.release_counter > 0 else ("STALL?" if stalled else "")))
+
         else:
           if CS.lkas_prepared:
             self.lkas_active = 1.0
