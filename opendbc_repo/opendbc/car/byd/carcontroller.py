@@ -98,38 +98,36 @@ class CarController(CarControllerBase):
                                                           CS.out.steeringTorque, CarControllerParams)
 
           # --- Anti-stall protection ---
-          # Detect low-speed motor stall (sustained torque + wheel not moving) and force a
-          # brief torque release so the BYD EPS stall timer resets before it asserts
-          # TorqueFailed. Uses wheel motion to distinguish a stall from normal low-speed
-          # steering (where the wheel is actually turning), preserving low-speed control.
+          # Detect low-speed sustained near-max torque (wheel winding to lock while torque
+          # pins at STEER_MAX) and force a brief torque release so the BYD EPS overload
+          # timer resets before it asserts TorqueFailed.
           if CarControllerParams.ANTISTALL_ENABLE:
             P = CarControllerParams
-            stalled = (CS.out.vEgo < P.ANTISTALL_SPEED and
-                       abs(apply_torque) >= P.ANTISTALL_TORQUE and
-                       abs(CS.steeringRateDegAbs) < P.ANTISTALL_RATE)
+            pushing_hard = (CS.out.vEgo < P.ANTISTALL_SPEED and
+                            abs(apply_torque) >= P.ANTISTALL_TORQUE)
 
             if self.release_counter > 0:
-              # in release window: hold torque at 0 to let the EPS stall timer reset
+              # in release window: hold torque at 0 to let the EPS overload timer reset
               self.release_counter -= 1
               apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
                                                               CS.out.steeringTorque, CarControllerParams)
               if self.release_counter == 0:
                 self.stall_counter = 0
-            elif stalled:
+            elif pushing_hard:
               self.stall_counter += 1
               if self.stall_counter >= P.ANTISTALL_TRIGGER_FRAMES:
-                # stall sustained too long: enter release window
+                # sustained too long: enter release window
                 self.release_counter = P.ANTISTALL_RELEASE_FRAMES
             else:
-              # wheel is moving or torque/speed back to normal: decay the stall counter
+              # torque/speed back to normal: decay the counter
               self.stall_counter = max(0, self.stall_counter - 2)
 
             # debug: only print while the guard is active to avoid spam
             if self.stall_counter > 0 or self.release_counter > 0:
-              print("ANTISTALL v=%.2f tq=%d rate=%.1f | stall=%d release=%d %s" % (
-                CS.out.vEgo, apply_torque, abs(CS.steeringRateDegAbs),
+              print("ANTISTALL v=%.2f tq=%d ang=%.0f | cnt=%d release=%d %s" % (
+                CS.out.vEgo, apply_torque, CS.out.steeringAngleDeg,
                 self.stall_counter, self.release_counter,
-                "<<< RELEASING" if self.release_counter > 0 else ("STALL?" if stalled else "")))
+                "<<< RELEASING" if self.release_counter > 0 else ("PUSH?" if pushing_hard else "")))
 
         else:
           if CS.lkas_prepared:
