@@ -39,7 +39,7 @@ class CarControllerParams:
   # Mitigation: when low speed + sustained near-max torque persists, briefly release torque
   # to reset the EPS overload timer, producing a "push / rest" pulse that never lets the
   # EPS see a continuous over-threshold window.
-  ANTISTALL_ENABLE = True
+  ANTISTALL_ENABLE = False        # disabled: handshake/torque-authority fix supersedes this
   ANTISTALL_SPEED = 2.0           # m/s, only guard below this speed
   ANTISTALL_TORQUE = 150          # |apply_torque| (0..STEER_MAX) considered "pushing hard"
   ANTISTALL_TRIGGER_FRAMES = 50   # 50Hz * 1.0s, sustained-torque frames before forcing release

@@ -136,17 +136,16 @@ class CarController(CarControllerBase):
             self.steerRateLim = 1.0
             self.lkas_req_prepare = 0
             self.steer_softstart_limit = 0
-            self.lat_safeoff = 1
           else:
             self.lkas_req_prepare = 1
 
-      elif self.lat_safeoff:
-        if self.apply_torque_last == 0:
-          self.lat_safeoff = 0
-        apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
-                                                          CS.out.steeringTorque, CarControllerParams)
-
       else:
+        # Cancel / lat inactive: immediately zero torque and reset the handshake.
+        # 门总 0.98 behaviour: torque drops to 0 at once on cancel. The previous slow
+        # "lat_safeoff" ramp kept lkas_active=1 and kept sending torque for ~0.6s, so
+        # re-pressing ACC during that window skipped the prepare handshake and the EPS
+        # faulted (TorqueFailed). A clean reset lets the next activation re-handshake.
+        apply_torque = 0
         self.lkas_req_prepare = 0
         self.steerRateLimActive = False
         self.steerRateLim = 1.0
