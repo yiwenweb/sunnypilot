@@ -38,7 +38,10 @@ static const TorqueSteeringLimits BYD_STEERING_LIMITS = {
   .max_rate_down = 16,
   .max_rt_delta = 243,
   .type = TorqueMotorLimited,
-  .max_torque_error = 50,
+  .max_torque_error = 150, // BYD EPS has significant motor torque reporting lag; 50 caused
+                           // dist_to_meas_check violations at ~80+ torque (EPS still near 0),
+                           // triggering controlsMismatch immediateDisable. 150 gives enough
+                           // headroom for EPS to catch up within a few frames.
   .min_valid_request_frames = 10,
   .max_invalid_request_frames = 5,
   .min_valid_request_rt_interval = 250000U,

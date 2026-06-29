@@ -26,7 +26,7 @@ class CarControllerParams:
   ACCEL_MAX = 2.0
   ACCEL_MIN = -3.5
 
-  K_DASHSPEED = 0.0719088  # convert pulse to kph
+  K_DASHSPEED = 0.0735  # convert pulse to kph (matches panda byd.h UPDATE_VEHICLE_SPEED factor)
 
   USE_STEERING_SPEED_LIMITER = False
 
