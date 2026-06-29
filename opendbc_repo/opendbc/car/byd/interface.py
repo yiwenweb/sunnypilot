@@ -39,7 +39,8 @@ class CarInterface(CarInterfaceBase):
         ret.minEnableSpeed = -1.
         ret.minSteerSpeed = 0.1 * CV.KPH_TO_MS
 
-        ret.steerActuatorDelay = 0.05
+        ret.steerActuatorDelay = 0.3   # 门总 0.98 confirmed 0.30 (BYD EPS has ~0.3s lag);
+                                       # 0.05 assumed near-instant response → no lead steering → sluggish turn-in
         ret.steerLimitTimer = 0.4
 
         if candidate in PLATFORM_HANTANG_DMEV:
@@ -52,6 +53,10 @@ class CarInterface(CarInterfaceBase):
 
         if use_torque_lat:
             CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
+            # 对齐门总 0.98 实测调参 (configure_torque_tune 默认 ki=0.3, deadzone=0):
+            ret.lateralTuning.torque.ki = 0.1                      # 门总=0.1 (默认0.3偏大易振荡)
+            ret.lateralTuning.torque.steeringAngleDeadzoneDeg = 0.1  # 门总=0.1
+            # 注: kp=1.0/kf=1.0 与门总一致; latAccelFactor/friction 由 override.toml 提供(已对齐2.75/0.1)
         else:
             ret.lateralTuning.init('pid')
             ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kiBP = [[8.3, 27.8], [8.3, 27.8]]

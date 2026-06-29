@@ -95,5 +95,8 @@ legend = ["LAT_ACCEL_FACTOR", "MAX_LAT_ACCEL_MEASURED", "FRICTION"]
 "HONDA_CIVIC_2022" = [2.5, 1.2, 0.15]
 "HONDA_HRV_3G" = [2.5, 1.2, 0.2]
 
-# BYD - tuning: increased LAT_ACCEL_FACTOR for stronger steering response
-"BYD_TANG_DM" = [6.0, 2.5, 0.15]
+# BYD - matched to 门总 0.98 closed-source tuning (from rlog carParams):
+# LAT_ACCEL_FACTOR=2.75 (was 6.0 — 6.0 was BACKWARDS: it sits in the denominator of
+# torque=latAccel/LAT_ACCEL_FACTOR, so larger value = WEAKER steering, not stronger).
+# 门总 confirmed 2.75. FRICTION=0.1 to match 门总 (was 0.15).
+"BYD_TANG_DM" = [2.75, 2.5, 0.1]
