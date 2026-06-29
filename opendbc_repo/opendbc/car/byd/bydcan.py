@@ -113,6 +113,12 @@ def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActiv
 
 
 # send fake torque feedback from eps to trick MPC
+# 门总 0.98 behaviour (confirmed from rlog, src=130 vs src=0): the fake 318 sent to the
+# MPC is a PURE PASS-THROUGH of the real EPS 318 - LKAS_Prepared, CruiseActivated and
+# MainTorque all match the real EPS frame-for-frame (3002/3002). Only the Counter is
+# re-stamped (and checksum recomputed). Previously we overrode these fields with fabricated
+# values (Prepared=0/Cruise=1/MainTorque=mpc_output), which diverged from the real EPS state
+# and could make the MPC detect a conflict and cancel LKAS.
 def create_fake_318(packer, CP, esc_msg: dict, faketorque, laks_reqprepare, laks_active, enabled, counter):
     values = {s: esc_msg[s] for s in [
         "LKAS_Prepared",
@@ -129,28 +135,12 @@ def create_fake_318(packer, CP, esc_msg: dict, faketorque, laks_reqprepare, laks
         "SETME6_0xFFF",
     ]}
 
+    # Pass through real EPS state unchanged, including the real EPS counter.
+    # 门总 0.98: fake counter == real EPS counter frame-for-frame (3002/3002), i.e. the
+    # fake 318 is a byte-faithful relay of the real EPS 318 onto the MPC bus. Using our own
+    # counter here would desync from the real EPS stream the MPC also partially sees.
     values["ReportHandsNotOnSteeringWheel"] = 0
-    values["Counter"] = counter
-
-    if enabled:
-        if laks_active:
-            values.update({
-                "LKAS_Prepared": 0,
-                "CruiseActivated": 1,
-                "MainTorque": faketorque,
-            })
-        elif laks_reqprepare:
-            values.update({
-                "LKAS_Prepared": 1,
-                "CruiseActivated": 0,
-                "MainTorque": 0,
-            })
-        else:
-            values.update({
-                "LKAS_Prepared": 0,
-                "CruiseActivated": 0,
-                "MainTorque": 0,
-            })
+    values["Counter"] = esc_msg["Counter"]
 
     data = packer.make_can_msg("ACC_EPS_STATE", CanBus.MPC, values)[1]
     values["CheckSum"] = byd_checksum(data)
