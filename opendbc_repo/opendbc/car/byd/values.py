@@ -9,9 +9,9 @@ Ecu = CarParams.Ecu
 
 
 class CarControllerParams:
-  STEER_MAX = 300                 # max steer torque (0.98 confirmed max: 300; 897 triggers TorqueFailed)
-  STEER_DELTA_UP = 7              # match 0.98 reference (18 causes too rapid changes)
-  STEER_DELTA_DOWN = 10           # match 0.98 reference
+  STEER_MAX = 300                 # 门总 0.98 confirmed working max; 897 is rejected by EPS (TorqueFailed)
+  STEER_DELTA_UP = 16             # 门总 0.98 measured per-frame torque rate (+16); 7 made engagement sluggish
+  STEER_DELTA_DOWN = 16           # 门总 0.98 measured per-frame torque rate (-16)
 
   STEER_DRIVER_ALLOWANCE = 68
   STEER_DRIVER_MULTIPLIER = 3
@@ -19,7 +19,7 @@ class CarControllerParams:
   STEER_ERROR_MAX = 50            # match 0.98 reference
 
   STEER_STEP = 2  # 100/2=50hz
-  STEER_SOFTSTART_STEP = 6  # 20ms(50Hz) * 300 / 6 = 1000ms to full torque
+  STEER_SOFTSTART_STEP = 300  # = STEER_MAX -> reaches full ceiling in 1 frame (soft-start disabled to match 门总 0.98, which engages at full torque immediately)
 
   ACC_STEP = 2  # 50hz
 
