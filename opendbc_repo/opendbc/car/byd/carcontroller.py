@@ -90,6 +90,14 @@ class CarController(CarControllerBase):
 
           new_steer = int(round(new_steer_pu * CarControllerParams.STEER_MAX))
 
+          # 低速扭矩封顶: 按车速限制 |扭矩| 上限, 复刻门总 0.98 实测包络,
+          # 防止低速大扭矩把方向盘顶到机械限位导致 EPS 过载 TorqueFailed 锁死。
+          if CarControllerParams.USE_LOWSPEED_TORQUE_LIMIT:
+            tq_ceiling = int(np.interp(CS.out.vEgo,
+                                       CarControllerParams.LOWSPEED_TQ_BP,
+                                       CarControllerParams.LOWSPEED_TQ_V))
+            new_steer = np.clip(new_steer, -tq_ceiling, tq_ceiling)
+
           if self.steer_softstart_limit < CarControllerParams.STEER_MAX:
             self.steer_softstart_limit = self.steer_softstart_limit + CarControllerParams.STEER_SOFTSTART_STEP
             new_steer = np.clip(new_steer, -self.steer_softstart_limit, self.steer_softstart_limit)

@@ -13,6 +13,15 @@ class CarControllerParams:
   STEER_DELTA_UP = 16             # 门总 0.98 measured per-frame torque rate (+16); 7 made engagement sluggish
   STEER_DELTA_DOWN = 16           # 门总 0.98 measured per-frame torque rate (-16)
 
+  # --- 低速扭矩上限 (防 EPS 低速过载 TorqueFailed 永久锁死) ---
+  # 依据门总 0.98 健康日志实测包络: 0-5km/h 峰值仅 ~195 (满300占比0%),
+  # 5-10km/h 才偶尔触及300(5%, 且为瞬时非持续), >=10km/h 才常规放开到满扭。
+  # 门总靠"低速封顶"规避锁死(扭矩曲线平滑), 而非 ANTISTALL 的推/歇脉冲。
+  # 此前缺这条保护 -> 低速大扭矩把方向盘顶到机械限位、扭矩钉满数秒 -> EPS 锁死。
+  USE_LOWSPEED_TORQUE_LIMIT = True
+  LOWSPEED_TQ_BP = [1.4, 2.8]        # m/s  (≈5, 10 km/h)
+  LOWSPEED_TQ_V  = [195, STEER_MAX]  # 对应 |扭矩| 上限: <=5km/h 封 195, >=10km/h 放开 300, 之间线性
+
   STEER_DRIVER_ALLOWANCE = 68
   STEER_DRIVER_MULTIPLIER = 3
   STEER_DRIVER_FACTOR = 1
