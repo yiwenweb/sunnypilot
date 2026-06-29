@@ -49,7 +49,7 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
         values.update({
             "LKAS_Output": req_torque,
             "LKAS_Active": 1,
-            "LKAS_State": 2,  # Always "active" when OP controls; never pass through MPC's cancel state (MPC_State=2 -> LKAS_State=4 would tell EPS to exit)
+            "LKAS_State": 7,  # 门总 0.98 sends LKAS_State=7 constantly (confirmed: 3000/3000 frames). Previously 2.
             "LeftLaneState": 3 if hud_control.leftLaneDepart else int(hud_control.leftLaneVisible) + 1,
             "RightLaneState": 3 if hud_control.rightLaneDepart else int(hud_control.rightLaneVisible) + 1,
         })
@@ -57,6 +57,7 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
         values.update({
             "LKAS_Output": 0,
             "LKAS_Active": 0,
+            "LKAS_State": 7,  # 门总 keeps State=7 even when inactive (during OP operation)
         })
 
     data = packer.make_can_msg("ACC_MPC_STATE", CanBus.ESC, values)[1]
