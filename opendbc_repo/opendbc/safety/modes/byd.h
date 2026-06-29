@@ -197,11 +197,18 @@ static bool byd_fwd_hook(int bus_num, int addr) {
     }
   }
 
-  // Bus 2 -> Bus 0: block MPC's 790 when OP is steering (OP replaces it)
+  // Bus 2 -> Bus 0: ALWAYS block MPC's 790 (316) from reaching the EPS bus.
+  // Confirmed from rlog (门总 vs ours): in 门总 the EPS bus carries ONLY OP's 316
+  // (Active=1), MPC's stock 316 stays isolated on bus2. In ours, MPC's stock 316
+  // (Active=0, byte-identical to src=2) was leaking onto bus0 because the block was
+  // gated on byd_op_steering_active — any gap (OP sending Active=0 frames, a tx-check
+  // miss, or the 100ms timeout edge) let MPC's Active=0 316 reach the EPS at 50Hz,
+  // so the EPS saw a "don't steer" stream mixed with OP's "steer" command. Block it
+  // unconditionally so the EPS only ever hears OP, matching 门总.
   // Block MPC's 814 when OP is sending ACC_CMD
   // 813/815 always pass through (stock longitudinal)
   if (bus_num == 2) {
-    if (byd_op_steering_active && (addr == BYD_ACC_MPC_STATE)) {
+    if (addr == BYD_ACC_MPC_STATE) {
       return true;
     }
     if (byd_op_acc_active && (addr == BYD_ACC_CMD)) {
