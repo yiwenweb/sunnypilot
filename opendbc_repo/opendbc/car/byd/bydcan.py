@@ -45,6 +45,14 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
     values["LKAS_ReqPrepare"] = req_prepare
     values["Counter"] = counter
 
+    # 强制 LKAS_Config=1 (ALARM), 对齐门总 0.98。
+    # 取证结论 (byd_field_diff): 接管(Active=1)期间, 我们的316命令 16个字段中 15个与门总
+    # 完全一致, 唯一差异是 LKAS_Config: 门总恒发 1(ALARM), 我们透传原厂摄像头值 3(ALARM_AND_LKA)。
+    # 这是两次 EPS TorqueFailed 锁死的根因: EPS 在 Config=3 下对"大扭矩+方向盘不转"启用严格
+    # 校验并锁死(07:04驾驶员顶住/07:08低速阻力顶住); 门总 Config=1 下 EPS 无条件信任扭矩命令,
+    # 故任何速度/对抗/打死方向都不锁。门总特意覆盖此透传字段, 即为此。
+    values["LKAS_Config"] = 1
+
     if active:
         values.update({
             "LKAS_Output": req_torque,

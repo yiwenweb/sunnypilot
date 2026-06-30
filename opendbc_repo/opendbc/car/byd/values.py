@@ -13,16 +13,13 @@ class CarControllerParams:
   STEER_DELTA_UP = 16             # 门总 0.98 measured per-frame torque rate (+16); 7 made engagement sluggish
   STEER_DELTA_DOWN = 16           # 门总 0.98 measured per-frame torque rate (-16)
 
-  # --- 低速扭矩上限 (防 EPS 低速过载 TorqueFailed 永久锁死) ---
-  # 依据门总0.98健康日志 vs 我们锁死dump 的低速持续扭矩包络实测对比:
-  #   0-3km/h: 门总 p50=127 p90=176 max=180; 我们锁死时被旧封顶压到 195 并"持续0.36s" -> 锁死
-  #   门总 0-3km/h 连续>=180 最长仅 0.04s (纯瞬时尖峰), 连续>=150 最长 0.68s
-  #   我们锁死前 0-3km/h 连续>=195 持续 0.36s, >=180 持续 0.38s  <-- 正是这"低速持续大扭矩"顶爆EPS
-  # 结论: 不是峰值高低, 是"持续时间"。低速封顶必须更低, 让高扭矩只能瞬时、不能持续。
-  # 新封顶参照门总 0-3km/h 的 p50~p90 (127~176): <=3km/h 封 150, 5km/h 封 170, >=10km/h 放开 300。
-  USE_LOWSPEED_TORQUE_LIMIT = True
-  LOWSPEED_TQ_BP = [0.83, 1.4, 2.8]      # m/s  (≈3, 5, 10 km/h)
-  LOWSPEED_TQ_V  = [150, 170, STEER_MAX]  # |扭矩|上限: <=3km/h封150, 5km/h封170, >=10km/h放开300, 线性
+  # --- 低速扭矩上限 (默认关闭) ---
+  # 历史: 曾以为低速大扭矩持续导致 EPS 锁死, 加了低速封顶。但取证(byd_field_diff)证明
+  # 真正根因是 LKAS_Config=3 vs 门总=1 (见 bydcan.py)。门总在低速/对抗/打死方向下满扭矩
+  # 也不锁, 说明扭矩大小不是根因。故关闭封顶, 恢复满扭矩力气 (对齐门总"任何情况都有力")。
+  USE_LOWSPEED_TORQUE_LIMIT = False
+  LOWSPEED_TQ_BP = [0.83, 1.4, 2.8]      # m/s  (≈3, 5, 10 km/h) [保留参数, 未启用]
+  LOWSPEED_TQ_V  = [150, 170, STEER_MAX]
 
   STEER_DRIVER_ALLOWANCE = 68
   STEER_DRIVER_MULTIPLIER = 3
@@ -41,17 +38,14 @@ class CarControllerParams:
 
   USE_STEERING_SPEED_LIMITER = False
 
-  # --- Anti-stall protection (prevents low-speed EPS TorqueFailed lockup) ---
-  # 兜底机制 (与低速封顶并用): 即便封顶到150, 若 <3km/h 持续高扭矩仍可能累积触发EPS过载。
-  # 实测分水岭: 门总 0-3km/h 连续>=150 最长 0.68s 安全, 但连续>=180 仅 0.04s(从不持续);
-  # 我们锁死前正是连续>=150 达 0.42s + >=180 达 0.38s。
-  # 策略: <3km/h 且 |扭矩|>=140 持续超 0.4s(20帧) -> 强制歇 0.3s(15帧), 重置EPS过载计时器,
-  # 确保永不出现门总从不出现的"低速持续高扭矩>0.4s"窗口。
-  ANTISTALL_ENABLE = True          # 重新启用: dump实证低速持续扭矩0.36~0.42s即锁死
-  ANTISTALL_SPEED = 0.83           # m/s (≈3km/h), 只在极低速守护
-  ANTISTALL_TORQUE = 140           # |apply_torque| 视为"持续推", 略低于150封顶以提前介入
-  ANTISTALL_TRIGGER_FRAMES = 20    # 50Hz * 0.4s, 持续超此即强制释放(锁死实测0.36~0.42s)
-  ANTISTALL_RELEASE_FRAMES = 15    # 50Hz * 0.3s, 扭矩归0以重置EPS过载计时器
+  # --- Anti-stall protection (默认关闭) ---
+  # 同上: 真正根因是 LKAS_Config (见 bydcan.py), 非扭矩持续。关闭以恢复满扭矩, 对齐门总。
+  # 看门狗会继续监控, 若 Config=1 后仍锁再议。
+  ANTISTALL_ENABLE = False
+  ANTISTALL_SPEED = 0.83           # m/s (≈3km/h) [保留参数, 未启用]
+  ANTISTALL_TORQUE = 140
+  ANTISTALL_TRIGGER_FRAMES = 20
+  ANTISTALL_RELEASE_FRAMES = 15
 
   # op long control
   K_accel_jerk_upper = 0.1
