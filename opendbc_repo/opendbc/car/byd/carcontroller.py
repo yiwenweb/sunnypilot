@@ -186,16 +186,6 @@ class CarController(CarControllerBase):
       can_sends.append(bydcan.create_steering_control(self.packer, self.CP, CS.cam_lkas,
           self.apply_torque_last, self.lkas_req_prepare, self.lkas_active, CC.hudControl, self.mpc_lkas_counter))
 
-      # 调试: 接管相关时打印 EPS 响应, 用于确认 LOCK1 修复效果。
-      # 关注: latActive后 -> Cru何时=1 -> 我们发的torque -> EPS实际MainTq是否跟随。
-      # 若修复生效, Cru=1后 MainTq 应在~0.1s内跟随我们的torque; 若仍锁, TqF会=1。
-      if CC.latActive or self.lkas_active or self.lkas_req_prepare:
-        print("BYDENG f=%d lat=%d prep=%d act=%d | Cru=%d Prep=%d TqF=%d | OPtq=%d MainTq=%d drvTq=%d" % (
-            self.frame, int(CC.latActive), self.lkas_req_prepare, int(self.lkas_active),
-            int(CS.eps_cruise_activated), int(CS.lkas_prepared),
-            int(CS.out.steerFaultPermanent),
-            self.apply_torque_last, int(CS.out.steeringTorqueEps), int(CS.out.steeringTorque)))
-
       # Send fake 0x318 (EPS->MPC) to trick MPC into thinking EPS is executing MPC's commands.
       # Without this, MPC detects conflict and may cancel LKAS or generate DTC.
       can_sends.append(bydcan.create_fake_318(self.packer, self.CP, CS.esc_eps,
