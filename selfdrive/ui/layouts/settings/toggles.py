@@ -23,6 +23,11 @@ DESCRIPTIONS = {
   'RecordFront': "Upload data from the driver facing camera and help improve the driver monitoring algorithm.",
   "IsMetric": "Display speed in km/h instead of mph.",
   "RecordAudio": "Record and store microphone audio while driving. The audio will be included in the dashcam video in comma connect.",
+  "AccelBar": "Show a bottom-center horizontal bar indicating vehicle acceleration (green) and deceleration (red).",
+  "DevUIInfo": (
+    "Show a developer debug overlay with live values (lead distance/speed, steering angle, EPS torque, acceleration). " +
+    "Off / Bottom bar / Right column / Both."
+  ),
 }
 
 
@@ -84,6 +89,24 @@ class TogglesLayout(Widget):
       toggle_item(
         "Use Metric System", DESCRIPTIONS["IsMetric"], self._params.get_bool("IsMetric"), icon="metric.png"
       ),
+      multiple_button_item(
+        "Acceleration Bar",
+        DESCRIPTIONS["AccelBar"],
+        buttons=["Off", "On"],
+        button_width=255,
+        callback=self._set_accel_bar,
+        selected_index=1 if self._params.get_bool("AccelBar") else 0,
+        icon="speed_limit.png",
+      ),
+      multiple_button_item(
+        "Developer UI",
+        DESCRIPTIONS["DevUIInfo"],
+        buttons=["Off", "Bottom", "Right", "Both"],
+        button_width=255,
+        callback=self._set_developer_ui,
+        selected_index=self._params.get("DevUIInfo", return_default=True),
+        icon="warning.png",
+      ),
     ]
 
     self._scroller = Scroller(items, line_separator=True, spacing=0)
@@ -93,3 +116,9 @@ class TogglesLayout(Widget):
 
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index)
+
+  def _set_accel_bar(self, button_index: int):
+    self._params.put_bool("AccelBar", bool(button_index))
+
+  def _set_developer_ui(self, button_index: int):
+    self._params.put("DevUIInfo", button_index)

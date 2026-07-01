@@ -137,11 +137,11 @@ class HudRenderer(Widget):
     set_speed_color = COLORS.dark_grey
     if self.is_cruise_set:
       set_speed_color = COLORS.white
-      if ui_state.status == UIStatus.ENGAGED:
+      if ui_state.status in (UIStatus.ENGAGED, UIStatus.LONG_ONLY):
         max_color = COLORS.engaged
       elif ui_state.status == UIStatus.DISENGAGED:
         max_color = COLORS.disengaged
-      elif ui_state.status == UIStatus.OVERRIDE:
+      elif ui_state.status in (UIStatus.OVERRIDE, UIStatus.LAT_ONLY):
         max_color = COLORS.override
 
     max_text = "MAX"

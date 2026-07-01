@@ -9,6 +9,8 @@ from openpilot.selfdrive.ui.onroad.driver_state import DriverStateRenderer
 from openpilot.selfdrive.ui.onroad.hud_renderer import HudRenderer
 from openpilot.selfdrive.ui.onroad.model_renderer import ModelRenderer
 from openpilot.selfdrive.ui.onroad.cameraview import CameraView
+from openpilot.selfdrive.ui.sunnypilot.accel_bar import AccelBar
+from openpilot.selfdrive.ui.sunnypilot.developer_ui import DeveloperUiRenderer
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.common.transformations.camera import DEVICE_CAMERAS, DeviceCameraConfig, view_frame_from_device_frame
 from openpilot.common.transformations.orientation import rot_from_euler
@@ -23,6 +25,8 @@ BORDER_COLORS = {
   UIStatus.DISENGAGED: rl.Color(0x17, 0x33, 0x49, 0xC8),   # Blue for disengaged state
   UIStatus.OVERRIDE: rl.Color(0x91, 0x9B, 0x95, 0xF1),     # Gray for override state
   UIStatus.ENGAGED: rl.Color(0x17, 0x86, 0x44, 0xF1),      # Green for engaged state
+  UIStatus.LAT_ONLY: rl.Color(0x00, 0xC8, 0xC8, 0xF1),     # Cyan for lateral-only (MADS) state
+  UIStatus.LONG_ONLY: rl.Color(0x96, 0x1C, 0xA8, 0xF1),    # Purple for longitudinal-only state
 }
 
 WIDE_CAM_MAX_SPEED = 10.0  # m/s (22 mph)
@@ -48,6 +52,8 @@ class AugmentedRoadView(CameraView):
     self._hud_renderer = HudRenderer()
     self.alert_renderer = AlertRenderer()
     self.driver_state_renderer = DriverStateRenderer()
+    self._accel_bar = AccelBar()
+    self._developer_ui = DeveloperUiRenderer()
 
     # Callbacks
     self._click_callback: Callable | None = None
@@ -96,6 +102,8 @@ class AugmentedRoadView(CameraView):
 
     # Custom UI extension point - add custom overlays here
     # Use self._content_rect for positioning within camera bounds
+    self._accel_bar.render(self._content_rect)
+    self._developer_ui.render(self._content_rect)
 
     # End clipping region
     rl.end_scissor_mode()

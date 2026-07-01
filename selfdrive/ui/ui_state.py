@@ -4,7 +4,7 @@ import time
 import threading
 from collections.abc import Callable
 from enum import Enum
-from cereal import messaging, log
+from cereal import messaging, log, custom
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.params import Params, UnknownKeyName
 from openpilot.common.swaglog import cloudlog
@@ -21,6 +21,12 @@ class UIStatus(Enum):
   DISENGAGED = "disengaged"
   ENGAGED = "engaged"
   OVERRIDE = "override"
+  LAT_ONLY = "lat_only"    # MADS: only lateral (steering) active
+  LONG_ONLY = "long_only"  # only longitudinal active
+
+
+# MADS state machine states (custom.ModularAssistiveDrivingSystem.ModularAssistiveDrivingSystemState)
+MADSState = custom.ModularAssistiveDrivingSystem.ModularAssistiveDrivingSystemState
 
 
 class UIState:
@@ -50,6 +56,7 @@ class UIState:
         "wideRoadCameraState",
         "managerState",
         "selfdriveState",
+        "selfdriveStateSP",
         "longitudinalPlan",
       ]
     )
@@ -69,6 +76,10 @@ class UIState:
     self.panda_type: log.PandaState.PandaType = log.PandaState.PandaType.unknown
     self.personality: log.LongitudinalPersonality = log.LongitudinalPersonality.standard
     self.light_sensor: float = -1.0
+
+    # sunnypilot custom onroad UI toggles (read from params)
+    self.accel_bar: bool = False       # bottom-center acceleration bar
+    self.developer_ui: int = 0         # DevUIInfo: 0=off, 1=bottom, 2=right, 3=both
 
     self._update_params()
 
@@ -119,11 +130,24 @@ class UIState:
     if self.started and self.sm.updated["selfdriveState"]:
       ss = self.sm["selfdriveState"]
       state = ss.state
+      ss_sp = self.sm["selfdriveStateSP"]
+      mads = ss_sp.mads
 
       if state in (log.SelfdriveState.OpenpilotState.preEnabled, log.SelfdriveState.OpenpilotState.overriding):
         self.status = UIStatus.OVERRIDE
-      else:
+      elif mads.state in (MADSState.paused, MADSState.overriding):
+        self.status = UIStatus.OVERRIDE
+      elif not mads.available:
+        # MADS off: fall back to stock two-state behavior
         self.status = UIStatus.ENGAGED if ss.enabled else UIStatus.DISENGAGED
+      elif mads.enabled and ss.enabled:
+        self.status = UIStatus.ENGAGED
+      elif mads.enabled:
+        self.status = UIStatus.LAT_ONLY
+      elif ss.enabled:
+        self.status = UIStatus.LONG_ONLY
+      else:
+        self.status = UIStatus.DISENGAGED
 
     # Check for engagement state changes
     if self.engaged != self._engaged_prev:
@@ -142,6 +166,17 @@ class UIState:
       self.is_metric = self.params.get_bool("IsMetric")
     except UnknownKeyName:
       self.is_metric = False
+
+    # sunnypilot onroad UI toggles
+    try:
+      self.accel_bar = self.params.get_bool("AccelBar")
+    except UnknownKeyName:
+      self.accel_bar = False
+    try:
+      # DevUIInfo: 0=OFF, 1=BOTTOM, 2=RIGHT, 3=BOTH
+      self.developer_ui = self.params.get("DevUIInfo", return_default=True)
+    except UnknownKeyName:
+      self.developer_ui = 0
 
 
 class Device:
