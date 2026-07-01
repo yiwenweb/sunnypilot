@@ -38,6 +38,9 @@ class CarState(CarStateBase):
 
         self.lkas_prepared = False
         self.eps_cruise_activated = False
+        # 机制①: EPS 单方面切断横向控制的检测/报警状态
+        self.eps_cruise_activated_last = False
+        self.eps_cut_alert_frames = 0
         self.acc_state = 0
         self.adas_set_dist = 0
 
@@ -168,7 +171,23 @@ class CarState(CarStateBase):
 
         # Note: some firmware versions have SteerWarning always asserted, so we ignore it for now
         # ret.steerFaultTemporary = bool((self.acc_state == 7) or self.eps_warning)
-        ret.steerFaultTemporary = bool(self.acc_state == 7)
+
+        # 机制①: EPS 单方面切断横向控制的报警 (复刻门总: EPS 撤销授权时 C3 立即声光提醒)。
+        # 判据: EPS CruiseActivated 1->0, 且此刻 ACC 仍处于激活态(3/5) => 不是驾驶员正常退出
+        # (取证: 正常退出时掉线都发生在 ACC 已退出/停车, op 侧先松手; 而"过弯中 EPS 强行切断"
+        #  会在 ACC 仍激活时把 Cru 拉低, 即本判据)。触发后保持 ~1s(50帧) 让报警可感知,
+        # Cru 恢复或 ACC 退出即结束。用 steerFaultTemporary, openpilot 会自动出声光警告。
+        acc_engaged = self.acc_state in (3, 5)
+        eps_cut = (self.eps_cruise_activated_last and not self.eps_cruise_activated and acc_engaged)
+        if eps_cut:
+            self.eps_cut_alert_frames = 50
+        elif self.eps_cut_alert_frames > 0 and acc_engaged and not self.eps_cruise_activated:
+            self.eps_cut_alert_frames -= 1
+        else:
+            self.eps_cut_alert_frames = 0
+        self.eps_cruise_activated_last = self.eps_cruise_activated
+
+        ret.steerFaultTemporary = bool((self.acc_state == 7) or (self.eps_cut_alert_frames > 0))
 
         self.acc_active_last = ret.cruiseState.enabled
 
