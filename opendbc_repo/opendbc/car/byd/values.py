@@ -47,19 +47,16 @@ class CarControllerParams:
   ANTISTALL_TRIGGER_FRAMES = 20
   ANTISTALL_RELEASE_FRAMES = 15
 
-  # --- LOCK3 保护: EPS 行驶中单方面撤出检测 (默认开启) ---
-  # 实证(20260701_125945_LOCK1): 稳定接管中(Cru=1, OPtq~76, MainTq~75 跟随良好), EPS 在
-  # 一帧内 Prepared 0->1 且 MainTq 从75瞬间掉到0 (自己停止出力, 疑似脱手/要求接管)。OP 未
-  # 察觉, 继续发扭矩且横向控制器还在往上加(76->90)。命令满力 vs 实际0力 错配持续~0.46s ->
-  # EPS 判 TorqueFailed 锁死。修复: 接管中若 EPS 停止出力(MainTq≈0)而我们仍发较大扭矩, 判
-  # 定 EPS 已撤出, 立即把扭矩快速收0并退出握手, 绝不硬顶 (对齐门总"EPS撤出即松手"逻辑)。
+  # --- LOCK3: EPS 请求退出横向 (Prepared 0->1) -> 快速松手退出 (对齐门总 0.98, 默认开启) ---
+  # 门总日志实证 (byd_menmen_prep.py, 41段/1621s): LKAS_Prepared 0->1 = EPS 主动请求"结束本次
+  # 横向会话"(通常因驾驶员介入方向盘, drvTq 骤变/很大), 之后 0.08~0.14s 内 byte0 -> 0xF8 完全退出。
+  # 门总响应: 一见 Prepared 0->1 就 2-3帧内把扭矩收到0, 随后 Active 置0 退出; 全程 Active=0 占比
+  # 80%、ReqPrepare=1 占比 0% -> 门总【只快速退出, 从不重握手/硬顶】。
+  # 我们锁死那次(20260701)相反: Prepared 0->1 后仍继续发扭矩(76->90)、Active 保持1, 使 Prepared 与
+  # MainTq 卡在(1,0)达 0.5s, EPS 等不到 OP 退出 -> TorqueFailed 锁死。故抄门总: 检测 Prepared 上升沿
+  # -> 按速率把扭矩快速收0 -> Active=0 干净退出, 不重握手; 待驾驶员松手 EPS 回稳后走正常流程重接管。
   LOCK3_ENABLE = True
-  LOCK3_EPS_ZERO = 5           # |MainTorque| <= 此值视为 EPS 未出力
-  LOCK3_CMD_TORQUE = 30        # 我方 apply_torque 绝对值 >= 此值才算"命令-执行错配"
-  LOCK3_TRIGGER_FRAMES = 3     # 连续 3 帧(~60ms)错配即判定撤出, 快于 EPS 锁死窗口(~0.46s)
-  LOCK3_RECOVER_COOLDOWN = 25  # 触发重握手后冷却 25 帧(~0.5s), 给 EPS 时间恢复出力, 期间不再重复触发
-  LOCK3_MAX_ATTEMPTS = 3       # 连续重握手 3 次仍失败(EPS 拒绝) -> 彻底退出并报警, 避免无限抖动
-  LOCK3_GIVEUP_COOLDOWN = 250  # 放弃后冷却 250 帧(~5s)再允许重新自动恢复
+  LOCK3_EXIT_FRAMES = 8        # 退出收尾窗口上限(帧, ~0.16s); 门总实测 2-3帧收完扭矩, 给足余量
 
   # op long control
   K_accel_jerk_upper = 0.1
