@@ -39,9 +39,10 @@ class CarController(CarControllerBase):
     self.stall_counter = 0
     self.release_counter = 0
 
-    # LOCK3: EPS unilateral withdrawal detection state
+    # LOCK3: EPS unilateral withdrawal detection + auto re-handshake recovery state
     self.eps_withdraw_counter = 0
-    self.eps_withdrawn = False
+    self.eps_recover_cooldown = 0
+    self.eps_recover_attempts = 0
 
     self.first_start = True
     self.rfss = 0
@@ -150,39 +151,53 @@ class CarController(CarControllerBase):
                 self.stall_counter, self.release_counter,
                 "<<< RELEASING" if self.release_counter > 0 else ("PUSH?" if pushing_hard else "")))
 
-          # LOCK3 保护: 行驶中 EPS 单方面撤出 (实证 20260701 LOCK1 dump):
-          # 稳定接管中 EPS 突然 LKAS_Prepared 0->1 且 MainTorque 从~75 瞬间掉到 0 (EPS 自行停止
-          # 电机出力, 很可能因脱手/内部判定要求驾驶员接管)。此时 OP 未察觉仍在发大扭矩且横向控制器
-          # 继续上调(76->90), 形成"OP命令大扭矩 + Active=1, EPS实际执行0"的错配, 持续~0.46s ->
-          # EPS 判定命令与执行严重不符 -> TorqueFailed 锁死。
-          # 修复: 检测到 Cru=1 时 EPS MainTorque≈0 而我们仍在发较大扭矩, 判为 EPS 撤出, 立即
-          # 快速收扭矩到0并退出握手 (对齐门总"EPS撤出即松手"), 由 carstate 的 steerFaultTemporary
-          # 同步报警提示接管。窗口很短(~0.46s), 故触发帧数取小(3帧≈60ms)。
-          if CarControllerParams.LOCK3_ENABLE and CS.eps_cruise_activated:
+          # LOCK3 保护 + 自动重握手恢复 (实证 20260701 LOCK1 dump 逐帧):
+          #   -0.52s  byte0=0xFA Prep0 Cru1 TqF0 MainTq75   稳定接管中
+          #   -0.50s  byte0=0xFB Prep1 Cru1 TqF0 MainTq66   ★EPS 主动 Prepared 0->1 = 发起重握手请求
+          #   -0.42s  byte0=0xFB Prep1 Cru1 TqF0 MainTq 0   EPS 停止出力, 等 OP 配合重握手
+          #   ...     (持续 0.5s: Prep1 Cru1 TqF0 MainTq0, drvTq≈0 -> 疑因脱手触发)
+          #   +0.00s  byte0=0xFC Prep0 Cru0 TqF1            OP 未配合 -> EPS 判超时 -> 锁死
+          # 关键: EPS 不是猝死, 而是先给了 ~0.5s 窗口(Prep=1)等 OP 重新握手。我们过去继续发老扭矩
+          # (MainTq 却=0)形成错配, 等不到正确响应才锁。门总的做法是立即配合重走握手。
+          # 修复: 接管中若 EPS 出力≈0 而我方仍发较大扭矩 -> 判 EPS 发起重握手 -> 立即松扭矩+归零
+          # 握手状态, 交回下方 else 分支自动重新握手 (Prep=1 时下一帧即 active=1, 从0软起恢复)。
+          # 冷却期避免抖动; 连续多次失败(EPS 拒绝重握手)则彻底退出并由 steerFaultTemporary 报警。
+          if self.eps_recover_cooldown > 0:
+            self.eps_recover_cooldown -= 1
+
+          if CarControllerParams.LOCK3_ENABLE and CS.eps_cruise_activated and self.eps_recover_cooldown == 0:
             eps_out = abs(int(CS.out.steeringTorqueEps))
             cmd_big = abs(apply_torque) >= CarControllerParams.LOCK3_CMD_TORQUE
             if eps_out <= CarControllerParams.LOCK3_EPS_ZERO and cmd_big:
               self.eps_withdraw_counter += 1
-              if self.eps_withdraw_counter >= CarControllerParams.LOCK3_TRIGGER_FRAMES:
-                self.eps_withdrawn = True
             else:
               self.eps_withdraw_counter = max(0, self.eps_withdraw_counter - 1)
               if eps_out > CarControllerParams.LOCK3_EPS_ZERO:
-                self.eps_withdrawn = False
+                # EPS 恢复出力 = 重握手成功, 清零尝试计数
+                self.eps_recover_attempts = 0
 
-            if self.eps_withdrawn:
-              # EPS 已撤出: 快速朝0收扭矩, 收到0后退出握手让其重新协商
-              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
-                                                              CS.out.steeringTorque, CarControllerParams)
-              print("LOCK3 EPS-WITHDRAW v=%.2f OPtq=%d MainTq=%d cnt=%d -> releasing %d" % (
-                CS.out.vEgo, apply_torque, int(CS.out.steeringTorqueEps),
-                self.eps_withdraw_counter, apply_torque))
-              if abs(apply_torque) <= CarControllerParams.STEER_DELTA_DOWN:
-                self.lkas_active = 0
+            if self.eps_withdraw_counter >= CarControllerParams.LOCK3_TRIGGER_FRAMES:
+              # 确认 EPS 撤出 (MainTq≈0 而我方在发力): 立即松手并触发重握手
+              apply_torque = 0
+              self.lkas_active = 0
+              self.steer_softstart_limit = 0
+              self.steerRateLimActive = False
+              self.steerRateLim = 1.0
+              self.eps_withdraw_counter = 0
+              self.eps_recover_attempts += 1
+              if self.eps_recover_attempts >= CarControllerParams.LOCK3_MAX_ATTEMPTS:
+                # 反复重握手仍失败 -> EPS 坚持要驾驶员接管, 彻底退出握手不再自动恢复
                 self.lkas_req_prepare = 0
-                self.steer_softstart_limit = 0
-                self.eps_withdrawn = False
-                self.eps_withdraw_counter = 0
+                self.eps_recover_cooldown = CarControllerParams.LOCK3_GIVEUP_COOLDOWN
+                print("LOCK3 GIVE-UP v=%.2f attempts=%d -> disengage, alert driver" % (
+                  CS.out.vEgo, self.eps_recover_attempts))
+              else:
+                # 请求重握手: 下一帧 else 分支见 Prep=1 即 active=1 从0软起恢复
+                self.lkas_req_prepare = 1
+                self.eps_recover_cooldown = CarControllerParams.LOCK3_RECOVER_COOLDOWN
+                print("LOCK3 EPS-WITHDRAW v=%.2f OPtq=%d MainTq=%d -> release+rehandshake (attempt %d)" % (
+                  CS.out.vEgo, int(self.apply_torque_last), int(CS.out.steeringTorqueEps),
+                  self.eps_recover_attempts))
 
         else:
           if CS.lkas_prepared:

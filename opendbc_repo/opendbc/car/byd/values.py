@@ -54,9 +54,12 @@ class CarControllerParams:
   # EPS 判 TorqueFailed 锁死。修复: 接管中若 EPS 停止出力(MainTq≈0)而我们仍发较大扭矩, 判
   # 定 EPS 已撤出, 立即把扭矩快速收0并退出握手, 绝不硬顶 (对齐门总"EPS撤出即松手"逻辑)。
   LOCK3_ENABLE = True
-  LOCK3_EPS_ZERO = 5         # |MainTorque| <= 此值视为 EPS 未出力
-  LOCK3_CMD_TORQUE = 30      # 我方 apply_torque 绝对值 >= 此值才算"命令-执行错配"
-  LOCK3_TRIGGER_FRAMES = 3   # 连续 3 帧(~60ms)错配即判定撤出, 快于 EPS 锁死窗口(~0.46s)
+  LOCK3_EPS_ZERO = 5           # |MainTorque| <= 此值视为 EPS 未出力
+  LOCK3_CMD_TORQUE = 30        # 我方 apply_torque 绝对值 >= 此值才算"命令-执行错配"
+  LOCK3_TRIGGER_FRAMES = 3     # 连续 3 帧(~60ms)错配即判定撤出, 快于 EPS 锁死窗口(~0.46s)
+  LOCK3_RECOVER_COOLDOWN = 25  # 触发重握手后冷却 25 帧(~0.5s), 给 EPS 时间恢复出力, 期间不再重复触发
+  LOCK3_MAX_ATTEMPTS = 3       # 连续重握手 3 次仍失败(EPS 拒绝) -> 彻底退出并报警, 避免无限抖动
+  LOCK3_GIVEUP_COOLDOWN = 250  # 放弃后冷却 250 帧(~5s)再允许重新自动恢复
 
   # op long control
   K_accel_jerk_upper = 0.1
