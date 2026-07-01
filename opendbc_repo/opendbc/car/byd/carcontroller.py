@@ -39,6 +39,10 @@ class CarController(CarControllerBase):
     self.stall_counter = 0
     self.release_counter = 0
 
+    # LOCK3: EPS unilateral withdrawal detection state
+    self.eps_withdraw_counter = 0
+    self.eps_withdrawn = False
+
     self.first_start = True
     self.rfss = 0
     self.sss = 0
@@ -145,6 +149,40 @@ class CarController(CarControllerBase):
                 CS.out.vEgo, apply_torque, CS.out.steeringAngleDeg,
                 self.stall_counter, self.release_counter,
                 "<<< RELEASING" if self.release_counter > 0 else ("PUSH?" if pushing_hard else "")))
+
+          # LOCK3 保护: 行驶中 EPS 单方面撤出 (实证 20260701 LOCK1 dump):
+          # 稳定接管中 EPS 突然 LKAS_Prepared 0->1 且 MainTorque 从~75 瞬间掉到 0 (EPS 自行停止
+          # 电机出力, 很可能因脱手/内部判定要求驾驶员接管)。此时 OP 未察觉仍在发大扭矩且横向控制器
+          # 继续上调(76->90), 形成"OP命令大扭矩 + Active=1, EPS实际执行0"的错配, 持续~0.46s ->
+          # EPS 判定命令与执行严重不符 -> TorqueFailed 锁死。
+          # 修复: 检测到 Cru=1 时 EPS MainTorque≈0 而我们仍在发较大扭矩, 判为 EPS 撤出, 立即
+          # 快速收扭矩到0并退出握手 (对齐门总"EPS撤出即松手"), 由 carstate 的 steerFaultTemporary
+          # 同步报警提示接管。窗口很短(~0.46s), 故触发帧数取小(3帧≈60ms)。
+          if CarControllerParams.LOCK3_ENABLE and CS.eps_cruise_activated:
+            eps_out = abs(int(CS.out.steeringTorqueEps))
+            cmd_big = abs(apply_torque) >= CarControllerParams.LOCK3_CMD_TORQUE
+            if eps_out <= CarControllerParams.LOCK3_EPS_ZERO and cmd_big:
+              self.eps_withdraw_counter += 1
+              if self.eps_withdraw_counter >= CarControllerParams.LOCK3_TRIGGER_FRAMES:
+                self.eps_withdrawn = True
+            else:
+              self.eps_withdraw_counter = max(0, self.eps_withdraw_counter - 1)
+              if eps_out > CarControllerParams.LOCK3_EPS_ZERO:
+                self.eps_withdrawn = False
+
+            if self.eps_withdrawn:
+              # EPS 已撤出: 快速朝0收扭矩, 收到0后退出握手让其重新协商
+              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
+                                                              CS.out.steeringTorque, CarControllerParams)
+              print("LOCK3 EPS-WITHDRAW v=%.2f OPtq=%d MainTq=%d cnt=%d -> releasing %d" % (
+                CS.out.vEgo, apply_torque, int(CS.out.steeringTorqueEps),
+                self.eps_withdraw_counter, apply_torque))
+              if abs(apply_torque) <= CarControllerParams.STEER_DELTA_DOWN:
+                self.lkas_active = 0
+                self.lkas_req_prepare = 0
+                self.steer_softstart_limit = 0
+                self.eps_withdrawn = False
+                self.eps_withdraw_counter = 0
 
         else:
           if CS.lkas_prepared:

@@ -47,6 +47,17 @@ class CarControllerParams:
   ANTISTALL_TRIGGER_FRAMES = 20
   ANTISTALL_RELEASE_FRAMES = 15
 
+  # --- LOCK3 保护: EPS 行驶中单方面撤出检测 (默认开启) ---
+  # 实证(20260701_125945_LOCK1): 稳定接管中(Cru=1, OPtq~76, MainTq~75 跟随良好), EPS 在
+  # 一帧内 Prepared 0->1 且 MainTq 从75瞬间掉到0 (自己停止出力, 疑似脱手/要求接管)。OP 未
+  # 察觉, 继续发扭矩且横向控制器还在往上加(76->90)。命令满力 vs 实际0力 错配持续~0.46s ->
+  # EPS 判 TorqueFailed 锁死。修复: 接管中若 EPS 停止出力(MainTq≈0)而我们仍发较大扭矩, 判
+  # 定 EPS 已撤出, 立即把扭矩快速收0并退出握手, 绝不硬顶 (对齐门总"EPS撤出即松手"逻辑)。
+  LOCK3_ENABLE = True
+  LOCK3_EPS_ZERO = 5         # |MainTorque| <= 此值视为 EPS 未出力
+  LOCK3_CMD_TORQUE = 30      # 我方 apply_torque 绝对值 >= 此值才算"命令-执行错配"
+  LOCK3_TRIGGER_FRAMES = 3   # 连续 3 帧(~60ms)错配即判定撤出, 快于 EPS 锁死窗口(~0.46s)
+
   # op long control
   K_accel_jerk_upper = 0.1
   K_accel_jerk_lower = 0.5
