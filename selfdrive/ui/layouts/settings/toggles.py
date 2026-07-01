@@ -95,7 +95,7 @@ class TogglesLayout(Widget):
         buttons=["Off", "On"],
         button_width=255,
         callback=self._set_accel_bar,
-        selected_index=1 if self._params.get_bool("AccelBar") else 0,
+        selected_index=1 if self._safe_get_bool("AccelBar") else 0,
         icon="speed_limit.png",
       ),
       multiple_button_item(
@@ -117,8 +117,20 @@ class TogglesLayout(Widget):
   def _set_longitudinal_personality(self, button_index: int):
     self._params.put("LongitudinalPersonality", button_index)
 
+  def _safe_get_bool(self, key: str) -> bool:
+    # AccelBar is a newly added param key; if the compiled params library
+    # doesn't know it yet (params_keys.h not rebuilt), fall back to False
+    # instead of crashing the whole UI.
+    try:
+      return self._params.get_bool(key)
+    except Exception:
+      return False
+
   def _set_accel_bar(self, button_index: int):
-    self._params.put_bool("AccelBar", bool(button_index))
+    try:
+      self._params.put_bool("AccelBar", bool(button_index))
+    except Exception:
+      pass
 
   def _set_developer_ui(self, button_index: int):
     self._params.put("DevUIInfo", button_index)
