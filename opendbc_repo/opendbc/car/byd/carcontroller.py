@@ -105,7 +105,16 @@ class CarController(CarControllerBase):
           apply_torque = apply_driver_steer_torque_limits(new_steer, self.apply_torque_last,
                                                           CS.out.steeringTorque, CarControllerParams)
 
-          # --- Anti-stall protection ---
+          # 门总接管序列: Act=1 后必须等 EPS CruiseActivated=1 才发扭矩。
+          # 在 Cru=0 时发非零扭矩 -> panda 的 steer_req=Active&&CruiseActivated 判为"未接管却
+          # 发力" -> 拦截 -> EPS 收到 Active 却收不到扭矩 -> 电机 MainTorque=0 -> 0.7s后
+          # TorqueFailed 锁死 (LOCK1 实证: Cru=0 时 OPout 已爬到160, MainTq 全程0)。
+          # 故 Cru 未到达前强制扭矩=0 且软起点归零, Cru 到达后从0平滑爬升 (对齐门总)。
+          if not CS.eps_cruise_activated:
+            apply_torque = 0
+            self.steer_softstart_limit = 0
+            self.steerRateLimActive = False
+            self.steerRateLim = 1.0
           # Detect low-speed sustained near-max torque (wheel winding to lock while torque
           # pins at STEER_MAX) and force a brief torque release so the BYD EPS overload
           # timer resets before it asserts TorqueFailed.
@@ -148,19 +157,24 @@ class CarController(CarControllerBase):
             self.lkas_req_prepare = 1
 
       else:
-        # Cancel / lat inactive: immediately zero torque and reset the handshake.
-        # 门总 0.98 behaviour: torque drops to 0 at once on cancel. The previous slow
-        # "lat_safeoff" ramp kept lkas_active=1 and kept sending torque for ~0.6s, so
-        # re-pressing ACC during that window skipped the prepare handshake and the EPS
-        # faulted (TorqueFailed). A clean reset lets the next activation re-handshake.
-        apply_torque = 0
-        self.lkas_req_prepare = 0
-        self.steerRateLimActive = False
-        self.steerRateLim = 1.0
-        self.lkas_active = 0
-        self.steer_softstart_limit = 0
-        self.stall_counter = 0
-        self.release_counter = 0
+        # 退出接管 (latActive=0): 门总的退出序列是先把扭矩按下降速率平滑降到接近0, 再松手
+        # (Act 1->0)。我们过去在此直接 apply_torque=0 硬清零, 当时若正出满扭矩(-195), EPS
+        # 电机实打实出着力, 命令一帧消失 -> 判异常 TorqueFailed 锁死 (LOCK2 实证)。
+        # 修复: 若仍在接管且 EPS 巡航仍激活且上帧扭矩还较大, 则保持 lkas_active=1, 用速率限制
+        # 把扭矩朝0平滑收敛(每帧≤STEER_DELTA_DOWN); 待扭矩接近0或巡航已退出, 再完全复位握手。
+        if self.lkas_active and CS.eps_cruise_activated and abs(self.apply_torque_last) > CarControllerParams.STEER_DELTA_DOWN:
+          apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
+                                                          CS.out.steeringTorque, CarControllerParams)
+          # 收尾期间保持 active/prepare 不变, 仅让扭矩平滑归零
+        else:
+          apply_torque = 0
+          self.lkas_req_prepare = 0
+          self.steerRateLimActive = False
+          self.steerRateLim = 1.0
+          self.lkas_active = 0
+          self.steer_softstart_limit = 0
+          self.stall_counter = 0
+          self.release_counter = 0
 
       self.apply_torque_last = apply_torque
 

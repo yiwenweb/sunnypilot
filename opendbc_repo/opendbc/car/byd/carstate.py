@@ -37,6 +37,7 @@ class CarState(CarStateBase):
         self.lkas_allowed_speed = False
 
         self.lkas_prepared = False
+        self.eps_cruise_activated = False
         self.acc_state = 0
         self.adas_set_dist = 0
 
@@ -70,6 +71,10 @@ class CarState(CarStateBase):
         # LKAS_Prepared (bit0) is the working handshake signal — confirmed on-vehicle:
         # with STEER_MAX=300, lateral controls the wheel when using bit0; bit1 does not work.
         self.lkas_prepared = bool(cp.vl["ACC_EPS_STATE"]["LKAS_Prepared"])
+        # EPS CruiseActivated (bit1): 门总接管序列里, Act=1 后必须等此位=1 才开始发扭矩。
+        # 在 Cru=0 时发非零扭矩会被 panda 拦截(steer_req=Active&&CruiseActivated), EPS 收到
+        # Active 却收不到扭矩 -> 电机 MainTorque=0 -> 0.7s 后 TorqueFailed 锁死 (LOCK1)。
+        self.eps_cruise_activated = bool(cp.vl["ACC_EPS_STATE"]["CruiseActivated"])
 
         self.mpc_lkas_config = int(cp_cam.vl["ACC_MPC_STATE"]["LKAS_Config"])
         lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
