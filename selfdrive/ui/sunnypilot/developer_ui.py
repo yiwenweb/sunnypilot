@@ -111,6 +111,13 @@ def _collect_elements(sm, is_metric: bool) -> list[UiElement]:
   # EPS measured torque (native CAN units) - key BYD debug signal
   elements.append(UiElement("EPS TQ", f"{cs.steeringTorqueEps:.0f}", "", WHITE))
 
+  # Driver steering torque (native CAN units) - 用于标定 hands-on 阈值。
+  # 颜色: 越过 steeringPressed 阈值(=EPS握持标准, 边框会变灰)时显示灰色, 否则绿色,
+  # 让标定时一眼看出"当前握持力是否已被判定为手在盘上"。
+  drv_tq = cs.steeringTorque
+  drv_color = GREY if steer_override else GREEN
+  elements.append(UiElement("DRV TQ", f"{drv_tq:.0f}", "", drv_color))
+
   # Longitudinal acceleration
   elements.append(UiElement("A EGO", f"{cs.aEgo:.2f}", "m/s2", WHITE))
 
