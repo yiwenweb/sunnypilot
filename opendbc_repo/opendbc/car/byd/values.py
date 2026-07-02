@@ -58,6 +58,20 @@ class CarControllerParams:
   LOCK3_ENABLE = True
   LOCK3_EXIT_FRAMES = 8        # 退出收尾窗口上限(帧, ~0.16s); 门总实测 2-3帧收完扭矩, 给足余量
 
+  # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
+  # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):
+  # 司机全程用力对抗方向盘(drvTq -49~-81), 我们接管后 OPtq 快爬到71 与司机对顶, EPS 电机
+  # MainTq 也被顶到 47~70。MADS 检测到 override -> latActive 掉0 -> 我们按 LOCK2 把"命令"
+  # 平滑降 48->32->16->0(3帧, 这步对的), 但命令到0那帧【同时】把 Active=0 松手, 而此刻 EPS
+  # 实际电机 MainTq 仍冻在 47(司机在顶, 电机滞后未跟随命令回落) -> Active 一撤电机还在出力
+  # -> EPS 判"授权撤销但电机仍在出力" -> TorqueFailed 锁死。LOCK2 当时能过是因那次 MainTq 跟着
+  # 命令一起归0; 本次司机对抗使 MainTq 滞后卡高位, 而退出条件只看"我们的命令"没看"EPS 实际出力"。
+  # 修复: 退出收尾保持 Active=1 且命令=0, 直到 EPS MainTorque 也降到阈值以下才干净松手;
+  # 设超时上限防止司机持续对抗时无限挂起(超时后仍松手兜底, 此时命令已持续0, MainTq通常已回落)。
+  LOCK4_ENABLE = True
+  LOCK4_EPS_RELEASE_TQ = 10     # EPS MainTorque 降到 |x|<=此值 视为电机已卸载, 可安全松手
+  LOCK4_EXIT_MAX_FRAMES = 30    # 退出收尾最长挂起帧数(~0.6s), 超时强制松手兜底
+
   # op long control
   K_accel_jerk_upper = 0.1
   K_accel_jerk_lower = 0.5

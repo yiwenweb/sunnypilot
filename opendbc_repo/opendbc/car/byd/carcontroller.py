@@ -44,6 +44,9 @@ class CarController(CarControllerBase):
     self.eps_exit_release = 0
     self.eps_exit_wait = False
 
+    # LOCK4: 退出收尾时等 EPS 电机(MainTorque)卸载再松手, 防司机对抗导致 MainTq 滞后锁死
+    self.exit_dwell = 0
+
     self.first_start = True
     self.rfss = 0
     self.sss = 0
@@ -68,6 +71,7 @@ class CarController(CarControllerBase):
       if CC.latActive:
         if self.lkas_active:
           steer_desire = CC.actuators.torque
+          self.exit_dwell = 0   # 正在接管出力, 清退出收尾计数, 保证下次退出从0起
 
           if CarControllerParams.USE_STEERING_SPEED_LIMITER:
             rate_limit = np.interp(CS.out.aEgo, [8.3, 27.8], [132, 64])
@@ -211,10 +215,25 @@ class CarController(CarControllerBase):
         # 电机实打实出着力, 命令一帧消失 -> 判异常 TorqueFailed 锁死 (LOCK2 实证)。
         # 修复: 若仍在接管且 EPS 巡航仍激活且上帧扭矩还较大, 则保持 lkas_active=1, 用速率限制
         # 把扭矩朝0平滑收敛(每帧≤STEER_DELTA_DOWN); 待扭矩接近0或巡航已退出, 再完全复位握手。
-        if self.lkas_active and CS.eps_cruise_activated and abs(self.apply_torque_last) > CarControllerParams.STEER_DELTA_DOWN:
+        #
+        # LOCK4 (20260702 实证补强): 仅靠"我们的命令降到0"不够。司机用力对抗时 EPS 电机
+        # MainTorque 会滞后卡在高位(命令已0, MainTq仍47), 此时松手 Active=0 -> EPS 判"授权撤
+        # 销但电机仍出力" -> 锁死。故退出收尾还须等 EPS MainTorque(=steeringTorqueEps)也降到
+        # 阈值以下才松手; 命令归0后进入 exit_dwell 挂起等待电机卸载, 超时兜底防无限挂起。
+        eps_mt = abs(int(CS.out.steeringTorqueEps))
+        cmd_settling = self.lkas_active and CS.eps_cruise_activated and \
+            abs(self.apply_torque_last) > CarControllerParams.STEER_DELTA_DOWN
+        eps_loaded = (CarControllerParams.LOCK4_ENABLE and self.lkas_active and
+                      CS.eps_cruise_activated and eps_mt > CarControllerParams.LOCK4_EPS_RELEASE_TQ and
+                      self.exit_dwell < CarControllerParams.LOCK4_EXIT_MAX_FRAMES)
+        if cmd_settling or eps_loaded:
+          # 保持 active, 命令按速率平滑收敛到0; 若命令已到0但 EPS 电机还在出力, 挂起等待卸载
           apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
                                                           CS.out.steeringTorque, CarControllerParams)
-          # 收尾期间保持 active/prepare 不变, 仅让扭矩平滑归零
+          self.exit_dwell += 1
+          if not cmd_settling and eps_loaded:
+            print("LOCK4 EXIT-DWELL cmd=0 wait EPS unload: MainTq=%d drvTq=%d dwell=%d" % (
+              eps_mt, int(CS.out.steeringTorque), self.exit_dwell))
         else:
           apply_torque = 0
           self.lkas_req_prepare = 0
@@ -224,6 +243,7 @@ class CarController(CarControllerBase):
           self.steer_softstart_limit = 0
           self.stall_counter = 0
           self.release_counter = 0
+          self.exit_dwell = 0
 
       self.apply_torque_last = apply_torque
       # LOCK3: 记录本帧 Prepared, 供下帧检测 Prepared 0->1 上升沿 (EPS 请求退出)
