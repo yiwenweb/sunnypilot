@@ -140,18 +140,19 @@ class CarState(CarStateBase):
         self.eps_warning = bool(cp.vl["ACC_EPS_STATE"]["SteerWarning"])
         self.eps_state_counter = int(cp.vl["ACC_EPS_STATE"]["Counter"])
 
-        # 驾驶员接管判定阈值 (steeringPressed): 校准到 EPS 的 hands-on(握持)检测水平, 使 C3 边框
-        # 蓝->灰 与 "达到 EPS 认可的握持力" 对齐, 让边框成为 EPS 握持状态的实时指示灯。
-        # 单位说明: steeringTorque = 318.SteerDriverTorque 原始CAN计数 (12-bit signed, scale=1),
-        #   不是 Nm。按 EPS 扭矩传感器典型满量程 ±2047≈±10Nm 估算, 1计数≈0.005Nm。
-        #   实测数据验证该系数合理: 门总 max=879≈4.3Nm(用力打方向), 均值75≈0.37Nm(搭手)。
-        # 历史: 旧值 59(≈0.29Nm) 是上游默认值, 偏"override/主动干预"级, 高于 EPS 的 hands-on 水平,
-        #   导致轻搭手/配重块能被 EPS 认可却不足以让 C3 变灰。现下调到 30(≈0.15Nm), 贴近 EPS hands-on。
-        # 噪声权衡: 车停/脱手时静态噪声峰值 ±57、均值14.5, 阈值30 落在噪声带内。故把滤波从 5 帧
-        #   加长到 12 帧(~0.24s): 随机噪声难连续12帧超30, 真握持则持续超30 -> 既灵敏又不误报。
-        # TODO(实车标定): developer UI 已加 DRV TQ 实时显示。挂配重块读出其稳定原始值 X, 并确认车辆
-        #   仪表不报离手, 则将阈值定为略低于 X (X-5) 即可精确对齐 EPS。当前 30 为基于估算的初值。
-        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 30, 12)
+        # 驾驶员接管判定阈值 (steeringPressed)。
+        # 单位: steeringTorque = 318.SteerDriverTorque 原始CAN计数 (12-bit signed, scale=1), 非Nm。
+        # 实测: 车停/脱手静态噪声峰值 ±57、均值14.5; 59 是上游默认值, 实测 0% 误触发。
+        #
+        # 历史与回退 (实证):
+        #  - 曾为让 C3 边框变色对齐"EPS hands-on握持"而下调到 30 + 滤波12帧 (commit fdd0152)。
+        #  - 路测(20260703 17:57时段)证实副作用: steeringPressed 同时驱动 latcontrol 的
+        #    freeze_integrator。挂配重块时扭矩>30 持续触发 steeringPressed -> 积分器长期冻结 ->
+        #    无法消除车道居中稳态误差 -> 车在车道内系统性偏一侧(实测偏移0.1~0.16m, 拉不回中心)。
+        #  - 故回退到 59: 配重块/轻搭手一般到不了 59, 不冻结积分器, 车道保持恢复正常。
+        #  - 代价: 边框对"配重块级"轻握持不再变色。如需UI握持指示, 应另出一个"仅UI用"的低阈值信号,
+        #    不要用 steeringPressed(控制用)兼任 (见笔记31章)。滤波帧数一并回退到 5。
+        ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 59, 5)
 
         ret.parkingBrake = (cp.vl["EPB"]["EPB_ActiveFlag"] == 1)
 
