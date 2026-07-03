@@ -47,6 +47,12 @@ class CarController(CarControllerBase):
     # LOCK4: 退出收尾时等 EPS 电机(MainTorque)卸载再松手, 防司机对抗导致 MainTq 滞后锁死
     self.exit_dwell = 0
 
+    # LOCK5: 重接管延迟出力 + 顶不动收回 (对齐门总)
+    self.reengage_delay = 0    # 重接管后剩余的"强制0出力"帧数
+    self.lkas_active_last = 0  # 上一帧 lkas_active, 用于检测 0->1 重接管沿
+    self.stuck_counter = 0     # 大对抗且顶不动的持续帧数
+    self.lock5_giveup = False  # 已进入"顶不动收回"放弃状态
+
     self.first_start = True
     self.rfss = 0
     self.sss = 0
@@ -124,6 +130,43 @@ class CarController(CarControllerBase):
             self.steer_softstart_limit = 0
             self.steerRateLimActive = False
             self.steerRateLim = 1.0
+
+          # LOCK5: 重接管"延迟出力 + 顶不动收回" (对齐门总 byd_men_reengage_ramp 实证)
+          if CarControllerParams.LOCK5_ENABLE:
+            P = CarControllerParams
+            # (a) 重接管延迟: lkas_active 0->1 (本帧刚接管) 后, 前 N 帧强制 0 出力,
+            #     给 EPS 几帧稳定再出力 (门总大对抗重接管帧+0~+2 出力恒0)。
+            if self.lkas_active and not self.lkas_active_last:
+              self.reengage_delay = P.LOCK5_REENGAGE_DELAY_FRAMES
+              self.stuck_counter = 0
+              self.lock5_giveup = False
+            if self.reengage_delay > 0:
+              self.reengage_delay -= 1
+              apply_torque = 0
+              self.steer_softstart_limit = 0   # 保证延迟结束后从0慢软起
+
+            # (d) 顶不动收回: 司机大力对抗(|drvTq|大) 且我们命令已出力(|out|>阈值) 但 EPS 电机
+            #     (MainTorque)长期顶不上去(<阈值, 说明方向盘被司机压住电机跟不动) -> 判定"顶不动",
+            #     持续超 STUCK_FRAMES 帧则把命令收回 0 放弃硬顶 (门总 drv0=-175 样例行为),
+            #     避免长时间硬顶触发 TorqueFailed 锁死。待司机松手(drvTq 变小)再解除放弃、重新出力。
+            drv_big = abs(int(CS.out.steeringTorque)) >= P.LOCK5_FIGHT_DRV_TQ
+            out_big = abs(int(apply_torque)) >= P.LOCK5_STUCK_OUT
+            eps_stuck = abs(int(CS.out.steeringTorqueEps)) < P.LOCK5_STUCK_MAINTQ
+            if drv_big and out_big and eps_stuck:
+              self.stuck_counter += 1
+            elif not drv_big:
+              self.stuck_counter = max(0, self.stuck_counter - 2)
+              if self.stuck_counter == 0:
+                self.lock5_giveup = False
+            if self.stuck_counter >= P.LOCK5_STUCK_FRAMES:
+              self.lock5_giveup = True
+            if self.lock5_giveup:
+              # 放弃硬顶: 命令按速率收回到0 (不松手退出, 只是不再顶), 待司机松手自然恢复
+              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
+                                                              CS.out.steeringTorque, CarControllerParams)
+              print("LOCK5 GIVEUP drv=%d out=%d MainTq=%d stuck=%d -> release (like 门总 -175)" % (
+                int(CS.out.steeringTorque), int(apply_torque), int(CS.out.steeringTorqueEps), self.stuck_counter))
+
           # Detect low-speed sustained near-max torque (wheel winding to lock while torque
           # pins at STEER_MAX) and force a brief torque release so the BYD EPS overload
           # timer resets before it asserts TorqueFailed.
@@ -248,6 +291,8 @@ class CarController(CarControllerBase):
       self.apply_torque_last = apply_torque
       # LOCK3: 记录本帧 Prepared, 供下帧检测 Prepared 0->1 上升沿 (EPS 请求退出)
       self.eps_prepared_last = bool(CS.lkas_prepared)
+      # LOCK5: 记录本帧 lkas_active, 供下帧检测 0->1 重接管沿
+      self.lkas_active_last = self.lkas_active
 
       self.mpc_lkas_counter = int(self.mpc_lkas_counter + 1) & 0xF
       self.eps_fake318_counter = int(self.eps_fake318_counter + 1) & 0xF

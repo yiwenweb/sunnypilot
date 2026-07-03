@@ -27,7 +27,12 @@ class CarControllerParams:
   STEER_ERROR_MAX = 50            # match 0.98 reference
 
   STEER_STEP = 2  # 100/2=50hz
-  STEER_SOFTSTART_STEP = 300  # = STEER_MAX -> reaches full ceiling in 1 frame (soft-start disabled to match 门总 0.98, which engages at full torque immediately)
+  # STEER_SOFTSTART_STEP: 重接管后扭矩上限每帧的爬升量。
+  # 历史误判: 曾设 300(1帧到顶,等于禁用软起), 以为门总"立即满扭矩接管"。
+  # 但 byd_men_reengage_ramp.py 实测门总重接管后是【慢软起】: 每帧步进≈16, 前几帧甚至为0,
+  # 大对抗时 6-8 帧才爬到 ~36。300 的瞬间到顶正是 20260703 大对抗重接管锁死的根因之一。
+  # 改回 16 (门总实测步进, = STEER_DELTA_UP), 让重接管扭矩每帧+16 渐进。
+  STEER_SOFTSTART_STEP = 16
 
   ACC_STEP = 2  # 50hz
 
@@ -71,6 +76,23 @@ class CarControllerParams:
   LOCK4_ENABLE = True
   LOCK4_EPS_RELEASE_TQ = 10     # EPS MainTorque 降到 |x|<=此值 视为电机已卸载, 可安全松手
   LOCK4_EXIT_MAX_FRAMES = 30    # 退出收尾最长挂起帧数(~0.6s), 超时强制松手兜底
+
+  # --- LOCK5: 重接管"延迟出力 + 顶不动收回" (对齐门总 0.98, 默认开启) ---
+  # byd_men_reengage_ramp.py 实证 (41段, 195次重接管): 门总在 Active 0->1 重新接管后:
+  #  (a) 前 3 帧 LKAS_Output 恒=0 (尤其大对抗 |drv|>=60 那 128 次: 帧+0/+1/+2 均值全 0.0),
+  #      即先给 EPS 几帧稳定再出力;
+  #  (b) 之后每帧 +16 慢软起 (见 STEER_SOFTSTART_STEP);
+  #  (c) 大对抗时出力封顶 ~36~44, 不猛涨;
+  #  (d) 顶不动就收回: 样例 drv0=-175 out=[0,0,0,16,21,12,0,0,0,0,0,0] —— 门总试出力发现
+  #      顶不动(司机扭矩大且 EPS 电机跟不动)立即把命令收回 0 放弃硬顶。
+  # 20260703 锁死正因缺此逻辑: 重接管瞬间冲到 -54 持续硬顶司机 -150 对抗 ~1s -> TorqueFailed。
+  LOCK5_ENABLE = True
+  LOCK5_REENGAGE_DELAY_FRAMES = 3   # 重接管后强制 0 出力的帧数 (门总帧+0~+2 恒0)
+  # 顶不动收回: 司机大力对抗 & 我们出力已达一定值但 EPS 电机(MainTorque)顶不上去 且方向盘几乎不动
+  LOCK5_FIGHT_DRV_TQ = 100          # 司机扭矩 |drvTq| 超此值视为"大力对抗"
+  LOCK5_STUCK_FRAMES = 25           # 对抗且顶不动持续超此帧数(~0.5s) -> 收回放弃硬顶
+  LOCK5_STUCK_OUT = 40              # 我们命令 |out| 超此值却顶不动, 才算真硬顶(门总大对抗也压~40)
+  LOCK5_STUCK_MAINTQ = 30           # EPS 电机 |MainTorque| 长期低于此值 = 顶不动(电机没能跟上命令)
 
   # op long control
   K_accel_jerk_upper = 0.1
