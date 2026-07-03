@@ -51,6 +51,7 @@ void UIStateSP::update() {
 void ui_update_params_sp(UIStateSP *s) {
   auto params = Params();
   s->scene.dev_ui_info = std::atoi(params.get("DevUIInfo").c_str());
+  s->scene.accel_bar = params.getBool("AccelBar");
 }
 
 DeviceSP::DeviceSP(QObject *parent) : Device(parent) {

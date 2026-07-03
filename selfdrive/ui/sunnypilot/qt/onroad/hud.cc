@@ -75,11 +75,17 @@ void HudRendererSP::updateState(const UIState &s) {
   latAccelFactorFiltered = ltp.getLatAccelFactorFiltered();
   frictionCoefficientFiltered = ltp.getFrictionCoefficientFiltered();
   liveValid = ltp.getLiveValid();
+  accelBarEnabled = s.scene.accel_bar;
 }
 
 void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
   HudRenderer::draw(p, surface_rect);
   if (!reversing) {
+    // AccelBar at bottom center
+    if (accelBarEnabled) {
+      drawAccelBar(p, surface_rect);
+    }
+
     // Bottom Dev UI
     if (devUiInfo == 2) {
       QRect rect_bottom(surface_rect.left(), surface_rect.bottom() - 60, surface_rect.width(), 61);
@@ -205,4 +211,48 @@ void HudRendererSP::drawBottomDevUI(QPainter &p, int x, int y) {
 
   UiElement altitudeElement = DeveloperUi::getAltitude(gpsAccuracy, altitude);
   rw += drawBottomDevUIElement(p, rw, y, altitudeElement.value, altitudeElement.label, altitudeElement.units, altitudeElement.color);
+}
+
+void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
+  // RocketFuel: vertical bar on the left side (ported from sunnypilot 2026)
+  // Green fills UP for acceleration, red fills DOWN for deceleration
+  const int bar_width = 36;
+  const int bar_height = 280;
+  const float max_accel = 3.0f;  // m/s^2
+  const int margin_left = 20;
+
+  int track_x = margin_left;
+  int track_y = surface_rect.center().y() - bar_height / 2;
+
+  // Background track (dark rounded rect)
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(0, 0, 0, 100));
+  p.drawRoundedRect(track_x, track_y, bar_width, bar_height, bar_width / 2, bar_width / 2);
+
+  // Center zero line
+  int center_y = track_y + bar_height / 2;
+  p.setPen(QPen(QColor(255, 255, 255, 70), 1));
+  p.drawLine(track_x + 4, center_y, track_x + bar_width - 4, center_y);
+
+  // Filled portion
+  float accel_val = std::clamp(aEgo, -max_accel, max_accel);
+  int fill_height = (int)(std::abs(accel_val) / max_accel * (bar_height / 2 - 4));
+
+  if (fill_height > 1) {
+    QColor color;
+    int fill_y;
+    if (accel_val >= 0) {
+      // Acceleration: green, fills upward from center
+      color = QColor(0, 210, 90, 200);
+      fill_y = center_y - fill_height;
+    } else {
+      // Deceleration: red, fills downward from center
+      color = QColor(230, 55, 55, 200);
+      fill_y = center_y;
+    }
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawRoundedRect(track_x + 4, fill_y, bar_width - 8, fill_height, 6, 6);
+  }
 }

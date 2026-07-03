@@ -9,4 +9,5 @@
 
 typedef struct UISceneSP : UIScene {
   int dev_ui_info = 0;
+  bool accel_bar = false;
 } UISceneSP;
