@@ -76,6 +76,9 @@ void HudRendererSP::updateState(const UIState &s) {
   frictionCoefficientFiltered = ltp.getFrictionCoefficientFiltered();
   liveValid = ltp.getLiveValid();
   accelBarEnabled = s.scene.accel_bar;
+  turnSignalEnabled = s.scene.turn_signal;
+  leftBlinker = car_state.getLeftBlinker();
+  rightBlinker = car_state.getRightBlinker();
 }
 
 void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
@@ -84,6 +87,11 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     // AccelBar at bottom center
     if (accelBarEnabled) {
       drawAccelBar(p, surface_rect);
+    }
+
+    // Turn signal indicators (left/right sides)
+    if (turnSignalEnabled) {
+      drawTurnSignals(p, surface_rect);
     }
 
     // Bottom Dev UI
@@ -255,4 +263,50 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
     p.setBrush(color);
     p.drawRoundedRect(track_x + 4, fill_y, bar_width - 8, fill_height, 6, 6);
   }
+}
+
+void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
+  // 2026-style turn signal indicators on left and right sides
+  const int arrow_size = 55;
+  const int margin = 40;
+  int cy = surface_rect.center().y();
+
+  auto drawArrow = [&](int cx, int cy, bool pointingLeft, bool active) {
+    if (!active) return;
+
+    // Glow background
+    p.save();
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 220, 80, 60));
+    p.drawEllipse(QPoint(cx, cy), arrow_size, arrow_size * 2 / 3);
+
+    // Arrow body
+    QPainterPath arrow;
+    int dir = pointingLeft ? -1 : 1;
+
+    // Triangle points
+    QPointF tip(cx + dir * arrow_size * 0.7, cy);
+    QPointF base1(cx - dir * arrow_size * 0.3, cy - arrow_size * 0.5);
+    QPointF base2(cx - dir * arrow_size * 0.3, cy + arrow_size * 0.5);
+
+    // Arrow head (triangle)
+    arrow.moveTo(tip);
+    arrow.lineTo(base1);
+    arrow.lineTo(base2);
+    arrow.closeSubpath();
+
+    // Arrow stem (thin rectangle)
+    QRectF stem(cx - dir * arrow_size * 0.6, cy - arrow_size * 0.15,
+                arrow_size * 0.6, arrow_size * 0.3);
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 255, 90, 220));
+    p.drawPath(arrow);
+    p.drawRoundedRect(stem, 3, 3);
+
+    p.restore();
+  };
+
+  drawArrow(margin + arrow_size / 2, cy, true, leftBlinker);
+  drawArrow(surface_rect.right() - margin - arrow_size / 2, cy, false, rightBlinker);
 }

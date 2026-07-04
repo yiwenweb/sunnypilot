@@ -18,10 +18,10 @@ OsmPanel::OsmPanel(QWidget *parent) : QFrame(parent) {
   main_layout = new QStackedLayout(this);
 
   const auto list = new ListWidgetSP(this, false);
-  list->addItem(mapdVersion = new LabelControlSP(tr("Mapd Version"), "Loading..."));
+  list->addItem(mapdVersion = new LabelControlSP(tr("地图版本"), "加载中..."));
   list->addItem(setupOsmDeleteMapsButton(parent));
-  list->addItem(offlineMapsETA = new LabelControlSP(tr("Offline Maps ETA"), ""));
-  list->addItem(offlineMapsElapsed = new LabelControlSP(tr("Time Elapsed"), ""));
+  list->addItem(offlineMapsETA = new LabelControlSP(tr("离线地图预计时间"), ""));
+  list->addItem(offlineMapsElapsed = new LabelControlSP(tr("已用时间"), ""));
   list->addItem(setupOsmUpdateButton(parent));
   list->addItem(setupOsmDownloadButton(parent));
   list->addItem(setupUsStatesButton(parent));
@@ -43,9 +43,9 @@ OsmPanel::OsmPanel(QWidget *parent) : QFrame(parent) {
 }
 
 ButtonControlSP *OsmPanel::setupOsmDeleteMapsButton(QWidget *parent) {
-  osmDeleteMapsBtn = new ButtonControlSP(tr("Downloaded Maps"), tr("DELETE")); // Updated on updateLabels()
+  osmDeleteMapsBtn = new ButtonControlSP(tr("已下载地图"), tr("删除")); // Updated on updateLabels()
   connect(osmDeleteMapsBtn, &ButtonControlSP::clicked, [=]() {
-    if (showConfirmationDialog(parent, tr("This will delete ALL downloaded maps\n\nAre you sure you want to delete all the maps?"), tr("Yes, delete all the maps."))) {
+    if (showConfirmationDialog(parent, tr("这将删除所有已下载的地图数据\n\n确定要删除所有地图吗？"), tr("是的，删除所有地图"))) {
       QtConcurrent::run([=]() {
         QDir dir(MAP_PATH);
         osmDeleteMapsBtn->setEnabled(false);
@@ -62,7 +62,7 @@ ButtonControlSP *OsmPanel::setupOsmDeleteMapsButton(QWidget *parent) {
 }
 
 ButtonControlSP *OsmPanel::setupOsmUpdateButton(QWidget *parent) {
-  osmUpdateBtn = new ButtonControlSP(tr("Database Update"), tr("CHECK")); // Updated on updateLabels()
+  osmUpdateBtn = new ButtonControlSP(tr("数据库更新"), tr("检查")); // Updated on updateLabels()
   connect(osmUpdateBtn, &ButtonControlSP::clicked, [=]() {
     if (osm_download_in_progress && !download_failed_state) {
       updateLabels();
@@ -76,10 +76,10 @@ ButtonControlSP *OsmPanel::setupOsmUpdateButton(QWidget *parent) {
 }
 
 ButtonControlSP *OsmPanel::setupOsmDownloadButton(QWidget *parent) {
-  osmDownloadBtn = new ButtonControlSP(tr("Country"), tr("SELECT"));
+  osmDownloadBtn = new ButtonControlSP(tr("国家/地区"), tr("选择"));
   connect(osmDownloadBtn, &ButtonControlSP::clicked, [=]() {
     osmDownloadBtn->setEnabled(false);
-    osmDownloadBtn->setValue(tr("Fetching Country list..."));
+    osmDownloadBtn->setValue(tr("正在获取国家列表..."));
     const std::vector<std::tuple<QString, QString, QString, QString> > locations = getOsmLocations();
     osmDownloadBtn->setEnabled(true);
     osmDownloadBtn->setValue("");
@@ -91,7 +91,7 @@ ButtonControlSP *OsmPanel::setupOsmDownloadButton(QWidget *parent) {
       locationTitles.push_back(std::get<0>(loc));
     }
 
-    const QString selection = MultiOptionDialog::getSelection(tr("Country"), locationTitles, currentTitle, this);
+    const QString selection = MultiOptionDialog::getSelection(tr("国家/地区"), locationTitles, currentTitle, this);
     if (!selection.isEmpty()) {
       params.put("OsmLocal", "1");
       params.put("OsmLocationTitle", selection.toStdString());
@@ -118,24 +118,24 @@ ButtonControlSP *OsmPanel::setupOsmDownloadButton(QWidget *parent) {
 }
 
 ButtonControlSP *OsmPanel::setupUsStatesButton(QWidget *parent) {
-  usStatesBtn = new ButtonControlSP(tr("State"), tr("SELECT"));
+  usStatesBtn = new ButtonControlSP(tr("州"), tr("选择"));
   connect(usStatesBtn, &ButtonControlSP::clicked, [=]() {
-    const std::tuple<QString, QString> allStatesOption = std::make_tuple("All States (~4.8 GB)", "All");
+    const std::tuple<QString, QString> allStatesOption = std::make_tuple("全部州 (~4.8 GB)", "All");
     usStatesBtn->setEnabled(false);
-    usStatesBtn->setValue(tr("Fetching State list..."));
+    usStatesBtn->setValue(tr("正在获取州列表..."));
     const std::vector<std::tuple<QString, QString, QString, QString> > locations =
         getUsStatesLocations(allStatesOption);
     usStatesBtn->setEnabled(true);
     usStatesBtn->setValue("");
     const QString initTitle = QString::fromStdString(params.get("OsmStateTitle"));
-    const QString currentTitle = ((initTitle == std::get<0>(allStatesOption)) || (initTitle.length() == 0)) ? tr("All") : initTitle;
+    const QString currentTitle = ((initTitle == std::get<0>(allStatesOption)) || (initTitle.length() == 0)) ? tr("全部") : initTitle;
 
     QStringList locationTitles;
     for (auto &loc: locations) {
       locationTitles.push_back(std::get<0>(loc));
     }
 
-    const QString selection = MultiOptionDialog::getSelection(tr("State"), locationTitles, currentTitle, this);
+    const QString selection = MultiOptionDialog::getSelection(tr("州"), locationTitles, currentTitle, this);
     if (!selection.isEmpty()) {
       params.put("OsmStateTitle", selection.toStdString());
       for (auto &loc: locations) {

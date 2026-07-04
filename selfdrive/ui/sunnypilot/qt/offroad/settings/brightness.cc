@@ -25,8 +25,8 @@ const QMap<QString, QString> Brightness::brightness_options = {
 
 Brightness::Brightness() : OptionControlSP(
   "Brightness",
-  tr("Brightness"),
-  tr("Overrides the brightness of the device."),
+  tr("亮度"),
+  tr("覆盖设备的屏幕亮度设置。"),
   "../assets/offroad/icon_blank.png",
   {0, 11}, 1, true, &brightness_options) {
 

@@ -14,7 +14,7 @@ DeveloperPanelSP::DeveloperPanelSP(SettingsWindow *parent) : DeveloperPanel(pare
   #endif
 
   // Advanced Controls Toggle
-  showAdvancedControls = new ParamControlSP("ShowAdvancedControls", tr("Show Advanced Controls"), tr("Toggle visibility of advanced sunnypilot controls.\nThis only toggles the visibility of the controls; it does not toggle the actual control enabled/disabled state."), "");
+  showAdvancedControls = new ParamControlSP("ShowAdvancedControls", tr("显示高级控制"), tr("切换 sunnypilot 高级控制的可见性。\n此开关仅控制显示/隐藏，不影响功能的实际启用状态。"), "");
   addItem(showAdvancedControls);
 
   QObject::connect(showAdvancedControls, &ParamControlSP::toggleFlipped, this, [=](bool) {
@@ -24,15 +24,15 @@ DeveloperPanelSP::DeveloperPanelSP(SettingsWindow *parent) : DeveloperPanel(pare
   showAdvancedControls->showDescription();
 
   // Github Runner Toggle
-  enableGithubRunner = new ParamControlSP("EnableGithubRunner", tr("Enable GitHub runner service"), tr("Enables or disables the github runner service."), "", this, true);
+  enableGithubRunner = new ParamControlSP("EnableGithubRunner", tr("启用 GitHub Runner 服务"), tr("启用或禁用 GitHub Runner 服务。"), "", this, true);
   addItem(enableGithubRunner);
 
   // Copyparty Toggle
-  enableCopyparty = new ParamControlSP("EnableCopyparty", tr("Enable Copyparty service"), tr("Copyparty is a very capable file server, you can use it to download your routes, view your logs and even make some edits on some files from your browser. Requires you to connect to your comma locally via it's IP."), "", this, false);
+  enableCopyparty = new ParamControlSP("EnableCopyparty", tr("启用 Copyparty 服务"), tr("Copyparty 是一款功能强大的文件服务器，可通过浏览器下载路线数据、查看日志、甚至编辑文件。需要通过 IP 地址本地连接到您的 comma 设备。"), "", this, false);
   addItem(enableCopyparty);
 
   // Quickboot Mode Toggle
-  prebuiltToggle = new ParamControlSP("QuickBootToggle", tr("Enable Quickboot Mode"), tr(""), "", this, true);
+  prebuiltToggle = new ParamControlSP("QuickBootToggle", tr("启用快速启动模式"), tr(""), "", this, true);
   addItem(prebuiltToggle);
 
   QObject::connect(prebuiltToggle, &ParamControl::toggleFlipped, [=](bool state) {
@@ -43,7 +43,7 @@ DeveloperPanelSP::DeveloperPanelSP(SettingsWindow *parent) : DeveloperPanel(pare
   prebuiltToggle->setVisible(false);
 
   // Error log button
-  errorLogBtn = new ButtonControlSP(tr("Error Log"), tr("VIEW"), tr("View the error log for sunnypilot crashes."));
+  errorLogBtn = new ButtonControlSP(tr("错误日志"), tr("查看"), tr("查看 sunnypilot 崩溃的错误日志。"));
   connect(errorLogBtn, &ButtonControlSP::clicked, [=]() {
     QFileInfo file("/data/community/crashes/error.log");
     QString text;
@@ -71,10 +71,9 @@ void DeveloperPanelSP::updateToggles(bool offroad) {
   prebuiltToggle->refresh();
 
   prebuiltToggle->setDescription(disable_updates
-    ? tr("When toggled on, this creates a prebuilt file to allow accelerated boot times. When toggled off, "
-         "it immediately removes the prebuilt file so compilation of locally edited cpp files can be made. "
-         "<br><br><b>To edit C++ files locally on device, you MUST first turn off this toggle so the changes can recompile.</b>")
-    : tr("Quickboot mode requires updates to be disabled.<br>Enable 'Disable Updates' in the Software panel first."));
+    ? tr("开启后将创建预编译文件以加速启动。关闭后立即删除预编译文件，使本地修改的 C++ 文件可以重新编译。"
+         "<br><br><b>要在设备上编辑 C++ 文件，必须先关闭此开关以允许重新编译。</b>")
+    : tr("快速启动模式需要先禁用更新。<br>请先在\"软件\"面板中启用\"禁用更新\"。"));
   prebuiltToggle->showDescription();
 
   enableGithubRunner->setVisible(!is_release);

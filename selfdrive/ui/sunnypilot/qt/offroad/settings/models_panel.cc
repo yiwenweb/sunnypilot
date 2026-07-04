@@ -104,10 +104,9 @@ ModelsPanel::ModelsPanel(QWidget *parent) : QWidget(parent) {
   list->addItem(horizontal_line());
 
   // Lane Turn Desire toggle
-  lane_turn_desire_toggle = new ParamControlSP("LaneTurnDesire", tr("Use Lane Turn Desires"),
-                            "If you’re driving at 20 mph (32 km/h) or below and have your blinker on, "
-                            "the car will plan a turn in that direction at the nearest drivable path. "
-                            "This prevents situations (like at red lights) where the car might plan the wrong turn direction.",
+  lane_turn_desire_toggle = new ParamControlSP("LaneTurnDesire", tr("启用车道转弯意图"),
+                            "当时速低于 20 mph (32 km/h) 且开启转向灯时，车辆将在最近的可行驶道路上规划该方向的转弯。"
+                            "可避免在红绿灯等场景下规划错误转弯方向的问题。",
                              "../assets/offroad/icon_shell.png");
   list->addItem(lane_turn_desire_toggle);
 
@@ -116,8 +115,8 @@ ModelsPanel::ModelsPanel(QWidget *parent) : QWidget(parent) {
   bool is_metric_initial = params.getBool("IsMetric");
   const float K = 1.609344f;
   int per_value_change_scaled = is_metric_initial ? static_cast<int>(std::round((1.0f / K) * 100.0f)) : 100; // 100 -> 1 mph
-  lane_turn_value_control = new OptionControlSP("LaneTurnValue", tr("Adjust Lane Turn Speed"),
-    tr("Set the maximum speed for lane turn desires. Default is 19 %1.").arg(is_metric_initial ? "km/h" : "mph"),
+  lane_turn_value_control = new OptionControlSP("LaneTurnValue", tr("调整车道转弯速度"),
+    tr("设置车道转弯意图的最高速度，默认为 19 %1。").arg(is_metric_initial ? "km/h" : "mph"),
     "", {5 * 100, max_value_mph * 100}, per_value_change_scaled, false, nullptr, true, true);
   lane_turn_value_control->showDescription();
   list->addItem(lane_turn_value_control);
@@ -128,14 +127,13 @@ ModelsPanel::ModelsPanel(QWidget *parent) : QWidget(parent) {
   connect(lane_turn_value_control, &OptionControlSP::updateLabels, this, &ModelsPanel::refreshLaneTurnValueControl);
 
   // LiveDelay toggle
-  lagd_toggle_control = new ParamControlSP("LagdToggle", tr("Live Learning Steer Delay"), "", "../assets/offroad/icon_shell.png");
+  lagd_toggle_control = new ParamControlSP("LagdToggle", tr("实时学习转向延迟"), "", "../assets/offroad/icon_shell.png");
   lagd_toggle_control->showDescription();
   list->addItem(lagd_toggle_control);
 
   // Software delay control
-  delay_control = new OptionControlSP("LagdToggleDelay", tr("Adjust Software Delay"),
-                                      tr("Adjust the software delay when Live Learning Steer Delay is toggled off."
-                                         "\nThe default software delay value is 0.2"),
+  delay_control = new OptionControlSP("LagdToggleDelay", tr("调整软件延迟"),
+                                      tr("关闭实时学习转向延迟时，手动调整软件延迟值。\n默认软件延迟为 0.2。"),
                                       "", {5, 50}, 1, false, nullptr, true, true);
 
   connect(delay_control, &OptionControlSP::updateLabels, [=]() {
@@ -420,8 +418,7 @@ void ModelsPanel::updateLabels() {
   currentModelLblBtn->setValue(GetActiveModelInternalName());
 
   // Update lagdToggle description with current value
-  QString desc = tr("Enable this for the car to learn and adapt its steering response time. "
-                   "Disable to use a fixed steering response time. Keeping this on provides the stock openpilot experience.");
+  QString desc = tr("启用后车辆将实时学习并适应转向响应时间。关闭则使用固定转向响应时间。保持开启可获得原版 openpilot 体验。");
   bool lagdEnabled = params.getBool("LagdToggle");
   if (lagdEnabled) {
     auto liveDelayBytes = params.get("LiveDelay");
@@ -429,7 +426,7 @@ void ModelsPanel::updateLabels() {
       auto LD = loadCerealEvent(params, "LiveDelay");
       float lateralDelay = LD->getLiveDelay().getLateralDelay();
       desc += QString("<br><br><b><span style=\"color:#e0e0e0\">%1</span></b> <span style=\"color:#e0e0e0\">%2 s</span>")
-              .arg(tr("Live Steer Delay:")).arg(QString::number(lateralDelay, 'f', 3));
+              .arg(tr("实时转向延迟:")).arg(QString::number(lateralDelay, 'f', 3));
     }
   } else {
     auto carParamsBytes = params.get("CarParamsPersistent");
@@ -443,9 +440,9 @@ void ModelsPanel::updateLabels() {
       float totalLag = steerDelay + softwareDelay;
       desc += QString("<br><br><span style=\"color:#e0e0e0\">"
                       "<b>%1</b> %2 s + <b>%3</b> %4 s = <b>%5</b> %6 s</span>")
-             .arg(tr("Actuator Delay:"), QString::number(steerDelay, 'f', 2),
-                  tr("Software Delay:"), QString::number(softwareDelay, 'f', 2),
-                  tr("Total Delay:"), QString::number(totalLag, 'f', 2));
+             .arg(tr("执行器延迟:"), QString::number(steerDelay, 'f', 2),
+                  tr("软件延迟:"), QString::number(softwareDelay, 'f', 2),
+                  tr("总计延迟:"), QString::number(totalLag, 'f', 2));
     }
   }
   lagd_toggle_control->setDescription(desc);
@@ -467,10 +464,10 @@ void ModelsPanel::updateLabels() {
  */
 void ModelsPanel::showResetParamsDialog() {
   const auto confirmMsg = QString("%1<br><br><b>%2</b><br><br><b>%3</b>")
-                          .arg(tr("Model download has started in the background."))
-                          .arg(tr("We STRONGLY suggest you to reset calibration."))
-                          .arg(tr("Would you like to do that now?"));
-  const auto button_text = tr("Reset Calibration");
+                          .arg(tr("模型已在后台开始下载。"))
+                          .arg(tr("强烈建议您重置校准。"))
+                          .arg(tr("是否现在重置？"));
+  const auto button_text = tr("重置校准");
 
   QString content("<body><h2 style=\"text-align: center;\">" + tr("Driving Model Selector") + "</h2><br>"
                   "<p style=\"text-align: center; margin: 0 128px; font-size: 50px;\">" + confirmMsg + "</p></body>");

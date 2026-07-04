@@ -23,8 +23,15 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
   std::vector<std::tuple<QString, QString, QString, QString, bool> > toggle_defs{
     {
       "AccelBar",
-      tr("Acceleration Bar"),
-      tr("Display a horizontal acceleration/deceleration bar at the bottom center of the screen. Green indicates acceleration (to the right), red indicates braking (to the left). Ported from sunnypilot 2026 RocketFuel feature."),
+      tr("加速度指示条"),
+      tr("在屏幕左侧显示 RocketFuel 风格加速度竖条。绿色向上表示加速，红色向下表示减速。移植自 sunnypilot 2026 RocketFuel 功能。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
+    {
+      "TurnSignal",
+      tr("转向灯指示箭头"),
+      tr("在屏幕左右两侧显示转向灯动态箭头图标。开启左/右转向灯时对应侧显示绿色动画箭头。"),
       "../assets/offroad/icon_monitoring.png",
       false,
     },

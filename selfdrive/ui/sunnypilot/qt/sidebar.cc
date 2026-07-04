@@ -28,16 +28,16 @@ void SidebarSP::updateState(const UIStateSP &s) {
   auto elapsed_sunnylink_ping = nanos_since_boot() - last_sunnylink_ping;
   auto sunnylink_enabled = params.getBool("SunnylinkEnabled");
 
-  QString status = tr("DISABLED");
+  QString status = tr("已禁用");
   QColor color = disabled_color;
 
   if (sunnylink_enabled && last_sunnylink_ping == 0) {
     // If sunnylink is enabled, but we don't have a dongle id, and we haven't received a ping yet, we are registering
-    status = sl_dongle_id.has_value() ? tr("OFFLINE") : tr("REGIST...");
+    status = sl_dongle_id.has_value() ? tr("离线") : tr("注册中...");
     color = sl_dongle_id.has_value() ? warning_color : progress_color;
   } else if (sunnylink_enabled) {
     // If sunnylink is enabled, we are considered online if we have received a ping in the last 80 seconds, else error.
-    status = elapsed_sunnylink_ping < 80000000000ULL ? tr("ONLINE") : tr("ERROR");
+    status = elapsed_sunnylink_ping < 80000000000ULL ? tr("在线") : tr("错误");
     color = elapsed_sunnylink_ping < 80000000000ULL ? good_color : danger_color;
   }
   sunnylinkStatus = ItemStatus{{tr("SUNNYLINK"), status}, color};

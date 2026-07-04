@@ -21,15 +21,15 @@ MadsSettings::MadsSettings(QWidget *parent) : QWidget(parent) {
 
   ListWidget *list = new ListWidget(this, false);
   // Main cruise
-  madsMainCruiseToggle = new ParamControl("MadsMainCruiseAllowed", tr("Toggle with Main Cruise"), "", "");
+  madsMainCruiseToggle = new ParamControl("MadsMainCruiseAllowed", tr("与主巡航联动"), "", "");
   list->addItem(madsMainCruiseToggle);
 
   // Unified Engagement Mode
-  madsUnifiedEngagementModeToggle = new ParamControl("MadsUnifiedEngagementMode", tr("Unified Engagement Mode (UEM)"), "", "");
+  madsUnifiedEngagementModeToggle = new ParamControl("MadsUnifiedEngagementMode", tr("统一接合模式 (UEM)"), "", "");
   list->addItem(madsUnifiedEngagementModeToggle);
 
   // Steering Mode On Brake
-  madsSteeringMode = new ButtonParamControl("MadsSteeringMode", tr("Steering Mode on Brake Pedal"), "", "", madsSteeringModeTexts(), 500);
+  madsSteeringMode = new ButtonParamControl("MadsSteeringMode", tr("刹车时转向模式"), "", "", madsSteeringModeTexts(), 500);
   QObject::connect(madsSteeringMode, &ButtonParamControl::buttonClicked, [=] {
     updateToggles(offroad);
   });

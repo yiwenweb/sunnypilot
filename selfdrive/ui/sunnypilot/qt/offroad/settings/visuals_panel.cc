@@ -23,15 +23,15 @@ VisualsPanel::VisualsPanel(QWidget *parent) : QWidget(parent) {
   std::vector<std::tuple<QString, QString, QString, QString, bool> > toggle_defs{
     {
       "BlindSpot",
-      tr("Show Blind Spot Warnings"),
-      tr("Enabling this will display warnings when a vehicle is detected in your blind spot as long as your car has BSM supported."),
+      tr("盲区警告提示"),
+      tr("开启后，当盲区监测 (BSM) 检测到盲区内有车辆时，屏幕两侧将显示警告图标。需要车辆支持 BSM 功能。"),
       "../assets/offroad/icon_monitoring.png",
       false,
     },
     {
       "RainbowMode",
-      tr("Enable Tesla Rainbow Mode"),
-      RainbowizeWords(tr("A beautiful rainbow effect on the path the model wants to take.")) + "<br/><i>" + tr("It")+ " <b>" + tr("does not") + "</b> " + tr("affect driving in any way.") + "</i>",
+      tr("彩虹路径模式"),
+      RainbowizeWords(tr("在模型规划的路径上显示美丽的彩虹渐变效果。")) + "<br/><i>" + tr("此功能")+ " <b>" + tr("不会") + "</b> " + tr("影响驾驶行为。") + "</i>",
       "../assets/offroad/icon_monitoring.png",
       false,
     },
@@ -62,9 +62,9 @@ VisualsPanel::VisualsPanel(QWidget *parent) : QWidget(parent) {
   }
 
   // Visuals: Display Metrics below Chevron
-  std::vector<QString> chevron_info_settings_texts{tr("Off"), tr("Distance"), tr("Speed"), tr("Time"), tr("All")};
+  std::vector<QString> chevron_info_settings_texts{tr("关闭"), tr("距离"), tr("速度"), tr("时间"), tr("全部")};
   chevron_info_settings = new ButtonParamControlSP(
-    "ChevronInfo", tr("Display Metrics Below Chevron"), tr("Display useful metrics below the chevron that tracks the lead car (only applicable to cars with openpilot longitudinal control)."),
+    "ChevronInfo", tr("前车信息显示"), tr("在跟踪前车的箭头下方显示距离/速度/TTC 等实用指标（仅适用于 openpilot 纵向控制的车型）。"),
     "",
     chevron_info_settings_texts,
     200);
@@ -73,9 +73,9 @@ VisualsPanel::VisualsPanel(QWidget *parent) : QWidget(parent) {
   param_watcher->addParam("ChevronInfo");
 
   // Visuals: Developer UI Info (Dev UI)
-  std::vector<QString> dev_ui_settings_texts{tr("Off"), tr("Right"), tr("Right &&\nBottom")};
+  std::vector<QString> dev_ui_settings_texts{tr("关闭"), tr("右侧"), tr("右侧 &&\n底部")};
   dev_ui_settings = new ButtonParamControlSP(
-    "DevUIInfo", tr("Developer UI"), tr("Display real-time parameters and metrics from various sources."),
+    "DevUIInfo", tr("开发者界面"), tr("显示来自各模块的实时参数和指标数据。"),
     "",
     dev_ui_settings_texts,
     380);

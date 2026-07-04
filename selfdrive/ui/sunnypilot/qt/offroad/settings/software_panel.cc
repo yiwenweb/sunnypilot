@@ -30,14 +30,14 @@ SoftwarePanelSP::SoftwarePanelSP(QWidget *parent) : SoftwarePanel(parent) {
       }
 
       QString cur = QString::fromStdString(params.get("UpdaterTargetBranch"));
-      QString selection = MultiOptionDialog::getSelection(tr("Select a branch"), branches, cur, this);
+      QString selection = MultiOptionDialog::getSelection(tr("选择分支"), branches, cur, this);
       if (!selection.isEmpty()) {
         params.put("UpdaterTargetBranch", selection.toStdString());
         targetBranchBtn->setValue(QString::fromStdString(params.get("UpdaterTargetBranch")));
         checkForUpdates();
       }
     } else {
-      InputDialog d(tr("Search Branch"), this, tr("Enter search keywords, or leave blank to list all branches."), false);
+      InputDialog d(tr("搜索分支"), this, tr("输入搜索关键词，留空则列出全部分支。"), false);
       d.setMinLength(0);
       const int ret = d.exec();
       if (ret) {
@@ -48,8 +48,8 @@ SoftwarePanelSP::SoftwarePanelSP(QWidget *parent) : SoftwarePanel(parent) {
 
   // Disable Updates toggle
   disableUpdatesToggle = new ParamControl("DisableUpdates",
-    tr("Disable Updates"),
-    tr("When enabled, software updates will be disabled. <b>This requires a reboot to take effect.</b>"),
+    tr("禁用更新"),
+    tr("启用后将禁止软件更新。<b>需要重启才能生效。</b>"),
     "../assets/icons/icon_warning.png",
     this, true);
   disableUpdatesToggle->showDescription();
@@ -76,11 +76,11 @@ void SoftwarePanelSP::searchBranches(const QString &query) {
   results.sort();
 
   if (results.isEmpty()) {
-    ConfirmationDialog::alert(tr("No branches found for keywords: %1").arg(query), this);
+    ConfirmationDialog::alert(tr("未找到匹配关键词的分支: %1").arg(query), this);
     return;
   }
 
-  QString selected_branch = MultiOptionDialog::getSelection(tr("Select a branch"), results, "", this);
+  QString selected_branch = MultiOptionDialog::getSelection(tr("选择分支"), results, "", this);
 
   if (!selected_branch.isEmpty()) {
     params.put("UpdaterTargetBranch", selected_branch.toStdString());
@@ -90,8 +90,8 @@ void SoftwarePanelSP::searchBranches(const QString &query) {
 }
 
 void SoftwarePanelSP::handleDisableUpdatesToggled(bool state) {
-  if (ConfirmationDialog::confirm(tr("%1 updates requires a reboot.<br>Reboot now?")
-      .arg(state ? "Disabling" : "Enabling"), tr("Reboot"), this)) {
+  if (ConfirmationDialog::confirm(tr("%1更新需要重启。<br>是否现在重启？")
+      .arg(state ? "禁用" : "启用"), tr("重启"), this)) {
     params.putBool("DoReboot", true);
   } else {
     params.putBool("DisableUpdates", !state);
@@ -103,8 +103,8 @@ void SoftwarePanelSP::updateDisableUpdatesToggle(bool offroad) {
   bool enabled = offroad;
   disableUpdatesToggle->setEnabled(enabled);
   disableUpdatesToggle->setDescription(enabled
-    ? tr("When enabled, software updates will be disabled.<br><b>This requires a reboot to take effect.</b>")
-    : tr("Please enable always offroad mode or turn off vehicle to adjust these toggles"));
+    ? tr("启用后将禁止软件更新。<br><b>需要重启才能生效。</b>")
+    : tr("请先启用始终离线模式或关闭车辆后再调整此开关。"));
 }
 
 void SoftwarePanelSP::showEvent(QShowEvent *event) {

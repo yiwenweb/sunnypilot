@@ -192,8 +192,8 @@ selfdrive/ui/
 
 | 序号 | 功能 | 目标文件 | 难度 | 状态 |
 |------|------|---------|------|------|
-| 1 | **AccelBar 底部加减速横条** | `sunnypilot/qt/onroad/hud.cc` | ⭐ 低 | ✅ 已完成 |
-| 2 | **MADS 五态彩色边框** | `sunnypilot/qt/onroad/annotated_camera.cc` | ⭐ 低 | ❌ 待实现 |
+| 1 | **AccelBar (RocketFuel竖条)** | `sunnypilot/qt/onroad/hud.cc` | ⭐ 低 | ✅ 已完成 |
+| 2 | **MADS 五态彩色边框** | `ui.cc` updateStatus() | — | ✅ 代码中原有 |
 
 **AccelBar 已完成实现详情**：
 - 参数名：`AccelBar` (bool, PERSISTENT | BACKUP, 默认 "0")
@@ -208,22 +208,22 @@ selfdrive/ui/
 - ✅ 已改为 **2026 RocketFuel 风格**：左侧竖条，36x280px，加速绿向上填充，减速红向下填充
 - 满量程 ±3.0 m/s²，深色圆角背景 + 中心零位线
 
-### 优先级 P1：2026 新增、Qt C++ 可独立实现
+### 优先级 P1：已完成 ✅
 
-| 序号 | 功能 | 依赖 | 难度 |
+| 序号 | 功能 | 依赖 | 状态 |
 |------|------|------|------|
-| 3 | **TurnSignal 转向灯图标** | `carState.leftBlinker/rightBlinker` | ⭐⭐ 中 |
-| 4 | **RocketFuel 侧边加速度竖条** | `carState.aEgo` | ⭐ 低 |
+| 3 | **TurnSignal 转向灯箭头** | `carState.leftBlinker/rightBlinker` | ✅ 已完成 |
+| 4 | ~~RocketFuel~~ → 已合并到 AccelBar | — | — |
 
-### 优先级 P2：需要数据管道支持
+### 优先级 P2：需要数据管道支持（待确认 0.10.1 是否有对应 SP 消息）
 
 | 序号 | 功能 | 所需数据 | 难度 |
 |------|------|---------|------|
 | 5 | **CircularAlerts 环形提醒** | `longitudinalPlanSP.e2eAlerts` | ⭐⭐⭐ 中-高 |
 | 6 | **RoadName 道路名称** | `liveMapDataSP.roadName` | ⭐⭐⭐ 中-高 |
 | 7 | **SpeedLimit 限速标志** | `longitudinalPlanSP.speedLimit` | ⭐⭐⭐ 高 |
-| 8 | **SmartCruiseControl** | `longitudinalPlanSP.smartCruiseControl` | ⭐⭐⭐ 高 |
-| 9 | **SteeringArc 转向弧** | 扭矩数据 | ⭐⭐ 中 |
+| 8 | **SmartCruiseControl SCC状态** | `longitudinalPlanSP.smartCruiseControl` | ⭐⭐⭐ 高 |
+| 9 | **SteeringArc 转向弧** | 扭矩/角度数据 | ⭐⭐ 中 |
 
 ---
 

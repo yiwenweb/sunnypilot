@@ -21,13 +21,13 @@ LateralPanel::LateralPanel(SettingsWindowSP *parent) : QFrame(parent) {
   // MADS
   madsToggle = new ParamControl(
     "Mads",
-    tr("Modular Assistive Driving System (MADS)"),
-    tr("Enable the beloved MADS feature. Disable toggle to revert back to stock sunnypilot engagement/disengagement."),
+    tr("模块化辅助驾驶系统 (MADS)"),
+    tr("启用广受好评的 MADS 功能。关闭后将恢复为原版 sunnypilot 的接合/解除逻辑。"),
     "");
   madsToggle->setConfirmation(true, false);
   list->addItem(madsToggle);
 
-  madsSettingsButton = new PushButtonSP(tr("Customize MADS"));
+  madsSettingsButton = new PushButtonSP(tr("自定义 MADS"));
   madsSettingsButton->setObjectName("mads_btn");
   connect(madsSettingsButton, &QPushButton::clicked, [=]() {
     sunnypilotScroller->setLastScrollPosition();
@@ -47,7 +47,7 @@ LateralPanel::LateralPanel(SettingsWindowSP *parent) : QFrame(parent) {
   list->addItem(vertical_space());
 
   // Lane Change Settings
-  laneChangeSettingsButton = new PushButtonSP(tr("Customize Lane Change"));
+  laneChangeSettingsButton = new PushButtonSP(tr("自定义变道"));
   laneChangeSettingsButton->setObjectName("lane_change_btn");
   connect(laneChangeSettingsButton, &QPushButton::clicked, [=]() {
     sunnypilotScroller->setLastScrollPosition();
@@ -67,8 +67,8 @@ LateralPanel::LateralPanel(SettingsWindowSP *parent) : QFrame(parent) {
   // Blinker Pause Lateral Control
   blinkerPauseLateralSettings = new BlinkerPauseLateralSettings(
     "BlinkerPauseLateralControl",
-    tr("Pause Lateral Control with Blinker"),
-    tr("Pause lateral control with blinker when traveling below the desired speed selected."),
+    tr("转向灯暂停横向控制"),
+    tr("当车速低于设定值时，开启转向灯后暂停横向控制。"),
     "",
     this);
   list->addItem(blinkerPauseLateralSettings);

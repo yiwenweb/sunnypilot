@@ -18,7 +18,7 @@ LongitudinalPanel::LongitudinalPanel(QWidget *parent) : QWidget(parent) {
   cruisePanelScroller = new ScrollViewSP(list, this);
   vlayout->addWidget(cruisePanelScroller);
 
-  customAccIncrement = new CustomAccIncrement("CustomAccIncrementsEnabled", tr("Custom ACC Speed Increments"), "", "", this);
+  customAccIncrement = new CustomAccIncrement("CustomAccIncrementsEnabled", tr("自定义 ACC 速度增量"), "", "", this);
   list->addItem(customAccIncrement);
 
   QObject::connect(uiState(), &UIState::offroadTransition, this, &LongitudinalPanel::refresh);
@@ -47,10 +47,10 @@ void LongitudinalPanel::refresh(bool _offroad) {
     is_pcm_cruise = false;
   }
 
-  QString accEnabledDescription = tr("Enable custom Short & Long press increments for cruise speed increase/decrease.");
-  QString accNoLongDescription = tr("This feature can only be used with openpilot longitudinal control enabled.");
-  QString accPcmCruiseDisabledDescription = tr("This feature is not supported on this platform due to vehicle limitations.");
-  QString onroadOnlyDescription = tr("Start the vehicle to check vehicle compatibility.");
+  QString accEnabledDescription = tr("启用自定义短按/长按的巡航速度增减量。");
+  QString accNoLongDescription = tr("此功能需启用 openpilot 纵向控制才能使用。");
+  QString accPcmCruiseDisabledDescription = tr("由于车辆限制，此平台不支持该功能。");
+  QString onroadOnlyDescription = tr("启动车辆以检查车辆兼容性。");
 
   if (offroad) {
     customAccIncrement->setDescription(onroadOnlyDescription);

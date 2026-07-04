@@ -8,7 +8,7 @@
 #include "selfdrive/ui/sunnypilot/qt/offroad/settings/lateral/neural_network_lateral_control.h"
 
 NeuralNetworkLateralControl::NeuralNetworkLateralControl() :
-  ParamControl("NeuralNetworkLateralControl", tr("Neural Network Lateral Control (NNLC)"),  "", "") {
+  ParamControl("NeuralNetworkLateralControl", tr("神经网络横向控制 (NNLC)"),  "", "") {
   setConfirmation(true, false);
   updateToggle();
 }

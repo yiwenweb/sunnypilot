@@ -29,8 +29,8 @@ LaneChangeSettings::LaneChangeSettings(QWidget* parent) : QWidget(parent) {
   std::vector<std::tuple<QString, QString, QString, QString>> toggle_defs{
     {
       "AutoLaneChangeBsmDelay",
-      tr("Auto Lane Change: Delay with Blind Spot"),
-      tr("Toggle to enable a delay timer for seamless lane changes when blind spot monitoring (BSM) detects a obstructing vehicle, ensuring safe maneuvering."),
+      tr("自动变道：盲区延时"),
+      tr("当盲区监测 (BSM) 检测到有车辆阻挡时，启用延时定时器以确保变道安全。"),
       "../assets/offroad/icon_blank.png",
     },
   };
@@ -83,10 +83,8 @@ void LaneChangeSettings::updateToggles() {
 // Auto Lane Change Timer (ALCT)
 AutoLaneChangeTimer::AutoLaneChangeTimer() : OptionControlSP(
   "AutoLaneChangeTimer",
-  tr("Auto Lane Change by Blinker"),
-  tr("Set a timer to delay the auto lane change operation when the blinker is used. "
-     "No nudge on the steering wheel is required to auto lane change if a timer is set. Default is Nudge.\n"
-     "Please use caution when using this feature. Only use the blinker when traffic and road conditions permit."),
+  tr("转向灯自动变道"),
+  tr("设置转向灯自动变道的延时时间。设定定时器后，无需轻推方向盘即可自动变道。默认为轻推模式。\n请谨慎使用此功能，仅在交通和路况允许时使用转向灯。"),
   "../assets/offroad/icon_blank.png",
   {-1, 5}) {
 
