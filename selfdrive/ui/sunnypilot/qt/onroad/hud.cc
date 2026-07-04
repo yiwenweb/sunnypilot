@@ -316,7 +316,7 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
   // RocketFuel: vertical bar on the left side (ported from sunnypilot 2026)
   // Green fills UP for acceleration, red fills DOWN for deceleration
   const int bar_width = 36;
-  const int bar_height = 280;
+  const int bar_height = 470;  // lengthened by ~2/3 from 280
   const float max_accel = 3.0f;  // m/s^2
   const int margin_left = 20;
 
@@ -470,20 +470,20 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
-  // 2026-style steering angle arc at bottom center
-  const int arc_width = 400;
-  const int arc_height = 80;
-  const int margin_bottom = 20;
-  const float max_angle = 90.f;  // degrees
+  // 2026-style steering angle arc at bottom center, enlarged and more compact
+  const int arc_width = 600;       // enlarged from 400
+  const int arc_height = 160;      // enlarged from 80
+  const int margin_bottom = 16;    // closer to edge
+  const float max_angle = 55.f;    // more compact: full scale at 55° instead of 90°
 
   int cx = surface_rect.center().x();
   int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
 
   QRect arc_rect(cx - arc_width / 2, cy - arc_height, arc_width, arc_height * 2);
 
-  // Track background arc
+  // Track background arc (thicker, brighter)
   p.save();
-  p.setPen(QPen(QColor(255, 255, 255, 50), 8));
+  p.setPen(QPen(QColor(255, 255, 255, 80), 12));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, 45 * 16, 90 * 16);  // 180 degrees arc
 
@@ -491,31 +491,31 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   float clamped_angle = std::clamp(angleSteers, -max_angle, max_angle);
   if (std::abs(clamped_angle) > 1.f) {
     bool is_active = latActive && !steerOverride;
-    QColor arc_color = is_active ? QColor(0, 220, 100, 220) : QColor(180, 180, 180, 180);
+    QColor arc_color = is_active ? QColor(0, 220, 100, 240) : QColor(180, 180, 180, 200);
 
-    p.setPen(QPen(arc_color, 10));
+    p.setPen(QPen(arc_color, 16));
     int span = (int)(clamped_angle / max_angle * 90 * 16);
     int start = 90 * 16 - span;
     p.drawArc(arc_rect, start, span);
   }
 
-  // Center indicator dot
+  // Center indicator dot (larger)
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor(255, 255, 255, 150));
-  p.drawEllipse(QPoint(cx, cy), 6, 6);
+  p.setBrush(QColor(255, 255, 255, 180));
+  p.drawEllipse(QPoint(cx, cy), 10, 10);
 
   p.restore();
 }
 
 void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
-  // 4-panel debug plot overlay (right side)
-  constexpr int PANEL_W = 420;
-  constexpr int PANEL_H = 100;
-  constexpr int MARGIN = 10;
-  constexpr int LABEL_W = 55;
+  // 4-panel debug plot overlay (top-left, enlarged 4x area)
+  constexpr int PANEL_W = 840;   // 2x width
+  constexpr int PANEL_H = 200;   // 2x height
+  constexpr int MARGIN = 20;
+  constexpr int LABEL_W = 95;
   constexpr int N = DebugPlotHistory::SIZE;
 
-  int panel_x = surface_rect.right() - PANEL_W - MARGIN;
+  int panel_x = surface_rect.left() + MARGIN;
   int panel_y = surface_rect.top() + MARGIN + 20;
 
   // Helper: draw a single panel with one or two lines
@@ -526,29 +526,29 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
     // Panel background
     p.setPen(Qt::NoPen);
     p.setBrush(QColor(0, 0, 0, 150));
-    p.drawRoundedRect(panel_x, y, PANEL_W, PANEL_H, 6, 6);
+    p.drawRoundedRect(panel_x, y, PANEL_W, PANEL_H, 10, 10);
 
-    // Title (top-left, small)
-    p.setFont(InterFont(16, QFont::Normal));
+    // Title (top-left, larger)
+    p.setFont(InterFont(28, QFont::Normal));
     p.setPen(QColor(200, 200, 200, 180));
-    p.drawText(QRect(panel_x + 6, y + 2, PANEL_W - 12, 18), Qt::AlignLeft | Qt::AlignVCenter, title);
+    p.drawText(QRect(panel_x + 10, y + 4, PANEL_W - 20, 28), Qt::AlignLeft | Qt::AlignVCenter, title);
 
     // Y-axis labels
-    p.setFont(InterFont(14, QFont::Normal));
+    p.setFont(InterFont(24, QFont::Normal));
     p.setPen(QColor(180, 180, 180, 150));
-    p.drawText(QRect(panel_x + 2, y + 18, LABEL_W, 16), Qt::AlignRight, QString::number(y_max, 'f', 1));
-    p.drawText(QRect(panel_x + 2, y + PANEL_H - 18, LABEL_W, 16), Qt::AlignRight, QString::number(y_min, 'f', 1));
+    p.drawText(QRect(panel_x + 4, y + 32, LABEL_W, 26), Qt::AlignRight, QString::number(y_max, 'f', 1));
+    p.drawText(QRect(panel_x + 4, y + PANEL_H - 32, LABEL_W, 26), Qt::AlignRight, QString::number(y_min, 'f', 1));
 
     // Unit
-    p.setFont(InterFont(12, QFont::Normal));
+    p.setFont(InterFont(20, QFont::Normal));
     p.setPen(QColor(160, 160, 160, 140));
-    p.drawText(QRect(panel_x + 2, y + PANEL_H / 2 - 8, LABEL_W, 16), Qt::AlignRight, unit);
+    p.drawText(QRect(panel_x + 4, y + PANEL_H / 2 - 12, LABEL_W, 24), Qt::AlignRight, unit);
 
     // Plot area
-    int plot_x = panel_x + LABEL_W + 4;
-    int plot_w = PANEL_W - LABEL_W - 10;
-    int plot_y = y + 18;
-    int plot_h = PANEL_H - 22;
+    int plot_x = panel_x + LABEL_W + 8;
+    int plot_w = PANEL_W - LABEL_W - 16;
+    int plot_y = y + 32;
+    int plot_h = PANEL_H - 40;
 
     // Clipping
     p.save();
@@ -558,7 +558,7 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
     double zero_norm = -y_min / (y_max - y_min);
     int zero_y = plot_y + plot_h - (int)(zero_norm * plot_h);
     if (y_min < 0 && y_max > 0) {
-      p.setPen(QPen(QColor(255, 255, 255, 60), 1, Qt::DashLine));
+      p.setPen(QPen(QColor(255, 255, 255, 60), 2, Qt::DashLine));
       p.drawLine(plot_x, zero_y, plot_x + plot_w, zero_y);
     }
 
@@ -578,8 +578,8 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
       p.drawPolyline(pts.data(), pts.size());
     };
 
-    drawLine(h0, c0, 2.0f);
-    if (h1) drawLine(*h1, c1, 1.5f);
+    drawLine(h0, c0, 3.5f);
+    if (h1) drawLine(*h1, c1, 2.5f);
 
     p.restore();
   };
@@ -590,54 +590,55 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
   drawPanel(cur_y, "转向角", "°", -100.f, 100.f,
             steerHistory, QColor(80, 160, 255),
             &steerDesHistory, QColor(80, 255, 140));
-  cur_y += PANEL_H + 6;
+  cur_y += PANEL_H + 12;
 
   // Panel 2: 速度 Speed
   drawPanel(cur_y, "速度", "km/h", 0.f, 160.f,
             speedHistory, QColor(80, 160, 255));
-  cur_y += PANEL_H + 6;
+  cur_y += PANEL_H + 12;
 
   // Panel 3: 加速度 Acceleration
   drawPanel(cur_y, "加速度", "m/s²", -3.f, 3.f,
             accelHistory, QColor(80, 160, 255));
-  cur_y += PANEL_H + 6;
+  cur_y += PANEL_H + 12;
 
   // Panel 4: EPS扭矩
   drawPanel(cur_y, "EPS扭矩", "", -3000.f, 3000.f,
             torqueHistory, QColor(255, 180, 60));
 }
 
+
 void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) {
-  // Standstill timer: bottom-right corner, circular badge style
+  // Standstill timer: middle-right of screen, large circular badge
   int min = standstillSeconds / 60;
   int sec = standstillSeconds % 60;
   QString time = (min > 0) ? QString("%1:%2").arg(min).arg(sec, 2, 10, QChar('0'))
                             : QString("%1s").arg(sec);
 
-  const int badge_size = 80;
-  int cx = surface_rect.right() - UI_BORDER_SIZE - badge_size;
-  int cy = surface_rect.bottom() - UI_BORDER_SIZE - badge_size;
+  const int badge_size = 180;
+  int cx = surface_rect.center().x() + surface_rect.width() / 4;
+  int cy = surface_rect.center().y();
 
   // Circular background
   p.save();
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor(0, 0, 0, 140));
+  p.setBrush(QColor(0, 0, 0, 160));
   p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
 
   // Timer icon (⏱)
-  p.setFont(InterFont(24, QFont::Normal));
-  p.setPen(QColor(255, 255, 255, 160));
+  p.setFont(InterFont(48, QFont::Normal));
+  p.setPen(QColor(255, 255, 255, 180));
   QFontMetrics icon_fm(p.font());
   QRect icon_rect = icon_fm.boundingRect("⏱");
-  icon_rect.moveCenter(QPoint(cx, cy - 18));
+  icon_rect.moveCenter(QPoint(cx, cy - 38));
   p.drawText(icon_rect, Qt::AlignCenter, "⏱");
 
   // Time text
-  p.setFont(InterFont(28, QFont::Bold));
+  p.setFont(InterFont(56, QFont::Bold));
   p.setPen(QColor(100, 220, 255, 255));
   QFontMetrics fm(p.font());
   QRect time_rect = fm.boundingRect(time);
-  time_rect.moveCenter(QPoint(cx, cy + 15));
+  time_rect.moveCenter(QPoint(cx, cy + 35));
   p.drawText(time_rect, Qt::AlignCenter, time);
 
   p.restore();
