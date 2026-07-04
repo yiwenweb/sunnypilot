@@ -35,6 +35,20 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       "../assets/offroad/icon_monitoring.png",
       false,
     },
+    {
+      "SpeedLimit",
+      tr("限速标志"),
+      tr("在屏幕右上角显示当前道路的限速标志（维也纳风格圆形标识）。如果前方有限速变化，会显示前方限速提示。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
+    {
+      "RoadName",
+      tr("道路名称"),
+      tr("在屏幕顶部居中显示当前行驶的道路名称（来自 OSM 地图数据）。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
   };
 
   for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {

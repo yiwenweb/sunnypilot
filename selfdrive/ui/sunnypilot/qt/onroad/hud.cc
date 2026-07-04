@@ -79,6 +79,21 @@ void HudRendererSP::updateState(const UIState &s) {
   turnSignalEnabled = s.scene.turn_signal;
   leftBlinker = car_state.getLeftBlinker();
   rightBlinker = car_state.getRightBlinker();
+  speedLimitEnabled = s.scene.speed_limit;
+  roadNameEnabled = s.scene.road_name;
+
+  // LiveMapDataSP
+  if (sm.rcv_frame("liveMapDataSP") > 0) {
+    auto live_map = sm["liveMapDataSP"].getLiveMapDataSP();
+    speedLimitValid = live_map.getSpeedLimitValid();
+    speedLimit = live_map.getSpeedLimit();
+    speedLimitAheadValid = live_map.getSpeedLimitAheadValid();
+    speedLimitAhead = live_map.getSpeedLimitAhead();
+    roadName = QString::fromStdString(live_map.getRoadName());
+  } else {
+    speedLimitValid = false;
+    roadName.clear();
+  }
 }
 
 void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
@@ -92,6 +107,16 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     // Turn signal indicators (left/right sides)
     if (turnSignalEnabled) {
       drawTurnSignals(p, surface_rect);
+    }
+
+    // Speed limit sign (near set speed)
+    if (speedLimitEnabled && speedLimitValid) {
+      drawSpeedLimit(p, surface_rect);
+    }
+
+    // Road name (top center)
+    if (roadNameEnabled && !roadName.isEmpty()) {
+      drawRoadName(p, surface_rect);
     }
 
     // Bottom Dev UI
@@ -309,4 +334,71 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
 
   drawArrow(margin + arrow_size / 2, cy, true, leftBlinker);
   drawArrow(surface_rect.right() - margin - arrow_size / 2, cy, false, rightBlinker);
+}
+
+void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
+  // 2026-style speed limit sign (Vienna convention: white circle, red border)
+  const int sign_size = 90;
+  int cx = surface_rect.right() - sign_size - UI_BORDER_SIZE * 3;
+  int cy = surface_rect.top() + UI_BORDER_SIZE * 2 + sign_size / 2;
+
+  // Convert speed from m/s
+  int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
+  QString text = QString::number(limit_kmh);
+
+  // Draw sign background (white circle with red border)
+  p.save();
+  p.setPen(QPen(QColor(200, 40, 40), 8));
+  p.setBrush(QColor(255, 255, 255, 245));
+  p.drawEllipse(QPoint(cx, cy), sign_size / 2, sign_size / 2);
+
+  // Speed number
+  p.setPen(QColor(30, 30, 30));
+  p.setFont(InterFont(sign_size / 2, QFont::Bold));
+  QFontMetrics fm(p.font());
+  QRect text_rect = fm.boundingRect(text);
+  text_rect.moveCenter(QPoint(cx, cy));
+  p.drawText(text_rect, Qt::AlignCenter, text);
+
+  // Speed limit ahead (smaller sign below)
+  if (speedLimitAheadValid) {
+    int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
+    QString ahead_text = QString::number(ahead_kmh);
+    int ahead_y = cy + sign_size + 10;
+    int ahead_size = sign_size * 2 / 3;
+
+    p.setPen(QPen(QColor(200, 40, 40, 180), 5));
+    p.setBrush(QColor(255, 255, 255, 200));
+    p.drawEllipse(QPoint(cx, ahead_y), ahead_size / 2, ahead_size / 2);
+
+    p.setPen(QColor(30, 30, 30));
+    p.setFont(InterFont(ahead_size / 2, QFont::Bold));
+    QFontMetrics afm(p.font());
+    QRect ahead_rect = afm.boundingRect(ahead_text);
+    ahead_rect.moveCenter(QPoint(cx, ahead_y));
+    p.drawText(ahead_rect, Qt::AlignCenter, ahead_text);
+  }
+}
+
+void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
+  // Road name at top center
+  int y = surface_rect.top() + 12;
+
+  p.save();
+  p.setFont(InterFont(32, QFont::Normal));
+  p.setPen(QColor(255, 255, 255, 180));
+
+  QString displayName = roadName;
+  QFontMetrics fm(p.font());
+
+  // Truncate if too long
+  int max_width = surface_rect.width() - 200;
+  if (fm.horizontalAdvance(displayName) > max_width) {
+    displayName = fm.elidedText(displayName, Qt::ElideRight, max_width);
+  }
+
+  QRect text_rect = fm.boundingRect(displayName);
+  text_rect.moveCenter(QPoint(surface_rect.center().x(), y + text_rect.height() / 2));
+  p.drawText(text_rect, Qt::AlignCenter, displayName);
+  p.restore();
 }

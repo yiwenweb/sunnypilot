@@ -53,6 +53,8 @@ void ui_update_params_sp(UIStateSP *s) {
   s->scene.dev_ui_info = std::atoi(params.get("DevUIInfo").c_str());
   s->scene.accel_bar = params.getBool("AccelBar");
   s->scene.turn_signal = params.getBool("TurnSignal");
+  s->scene.speed_limit = params.getBool("SpeedLimit");
+  s->scene.road_name = params.getBool("RoadName");
 }
 
 DeviceSP::DeviceSP(QObject *parent) : Device(parent) {

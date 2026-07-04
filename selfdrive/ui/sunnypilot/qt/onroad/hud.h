@@ -27,6 +27,8 @@ private:
   void drawBottomDevUI(QPainter &p, int x, int y);
   void drawAccelBar(QPainter &p, const QRect &surface_rect);
   void drawTurnSignals(QPainter &p, const QRect &surface_rect);
+  void drawSpeedLimit(QPainter &p, const QRect &surface_rect);
+  void drawRoadName(QPainter &p, const QRect &surface_rect);
 
   bool lead_status;
   float lead_d_rel;
@@ -57,6 +59,13 @@ private:
   bool turnSignalEnabled;
   bool leftBlinker;
   bool rightBlinker;
+  bool speedLimitEnabled;
+  bool roadNameEnabled;
+  bool speedLimitValid;
+  float speedLimit;
+  bool speedLimitAheadValid;
+  float speedLimitAhead;
+  QString roadName;
   cereal::CarParams::SteerControlType steerControlType;
   cereal::CarControl::Actuators::Reader actuators;
 };
