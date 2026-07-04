@@ -391,6 +391,18 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
   int y = surface_rect.top() + 12;
 
   p.save();
+  p.setFont(InterFont(32, QFont::Normal));
+  p.setPen(QColor(255, 255, 255, 180));
+
+  QString displayName = roadName;
+  QFontMetrics fm(p.font());
+
+  // Truncate if too long
+  int max_width = surface_rect.width() - 200;
+  if (fm.horizontalAdvance(displayName) > max_width) {
+    displayName = fm.elidedText(displayName, Qt::ElideRight, max_width);
+  }
+
   QRect text_rect = fm.boundingRect(displayName);
   text_rect.moveCenter(QPoint(surface_rect.center().x(), y + text_rect.height() / 2));
   p.drawText(text_rect, Qt::AlignCenter, displayName);
