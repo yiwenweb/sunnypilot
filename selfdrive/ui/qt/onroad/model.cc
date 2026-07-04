@@ -233,108 +233,90 @@ void ModelRenderer::drawLeadStatusAtPosition(QPainter &painter,
     QFontMetrics fm(content_font);
     bool is_metric = s->scene.is_metric;
 
+    // Distance / Velocity / TTC values
+    const int chevron_all = 4;  // All metrics mode
+    float dist_val = std::max(0.0f, d_rel);
+    QString distance_unit = is_metric ? "m" : "ft";
+    if (!is_metric) dist_val *= 3.28084f;
+    QString dist_text = QString::number(dist_val, 'f', 0) + " " + distance_unit;
+
+    float speed_val = std::max(0.0f, (v_rel + v_ego) * (is_metric ? static_cast<float>(MS_TO_KPH) : static_cast<float>(MS_TO_MPH)));
+    QString speed_text = QString::number(speed_val, 'f', 0) + " " + (is_metric ? "km/h" : "mph");
+
+    float ttc_val = (d_rel > 0 && v_ego > 0) ? std::max(0.0f, d_rel / v_ego) : 0.0f;
+    QString ttc_text = (ttc_val > 0 && ttc_val < 200) ? QString::number(ttc_val, 'f', 1) + "s" : "---";
+
+    // Build display text based on mode
     QStringList text_lines;
+    QList<QColor> line_colors;
 
-    const int chevron_types = 3;
-    const int chevron_all = chevron_types + 1;  // All metrics (value 4)
-    QStringList chevron_text[chevron_types];
-    int position;
-    float val;
-
-    // Distance display (chevron_data == 1 or all)
-    if (chevron_data == 1 || chevron_data == chevron_all) {
-        position = 0;
-        val = std::max(0.0f, d_rel);
-        QString distance_unit = is_metric ? "m" : "ft";
-        if (!is_metric) {
-            val *= 3.28084f; // Convert meters to feet
-        }
-        chevron_text[position].append(QString::number(val, 'f', 0) + " " + distance_unit);
+    if (chevron_data == chevron_all) {
+      // All mode: 2-line compact layout (2026 style)
+      // Line 1: Speed (large, centered)
+      text_lines.append(speed_text);
+      line_colors.append(QColor(0xff, 0xff, 0xff, 0xff));
+      // Line 2: Distance | TTC (side by side, smaller)
+      text_lines.append(dist_text + QString("    ") + ttc_text);
+      line_colors.append(QColor(0xff, 0xff, 0xff, 0xff));
+    } else {
+      // Single mode: just one line
+      if (chevron_data == 1) { text_lines.append(dist_text); }
+      else if (chevron_data == 2) { text_lines.append(speed_text); }
+      else if (chevron_data == 3) { text_lines.append(ttc_text); }
+      line_colors.append(QColor(0xff, 0xff, 0xff, 0xff));
     }
 
-    // Absolute velocity display (chevron_data == 2 or all)
-    if (chevron_data == 2 || chevron_data == chevron_all) {
-        position = (chevron_data == 2) ? 0 : 1;
-        val = std::max(0.0f, (v_rel + v_ego) * (is_metric ? static_cast<float>(MS_TO_KPH) : static_cast<float>(MS_TO_MPH)));
-        chevron_text[position].append(QString::number(val, 'f', 0) + " " + (is_metric ? "km/h" : "mph"));
-    }
+    if (text_lines.isEmpty()) return;
 
-    // Time-to-contact display (chevron_data == 3 or all)
-    if (chevron_data == 3 || chevron_data == chevron_all) {
-        position = (chevron_data == 3) ? 0 : 2;
-        val = (d_rel > 0 && v_ego > 0) ? std::max(0.0f, d_rel / v_ego) : 0.0f;
-        QString ttc_str = (val > 0 && val < 200) ? QString::number(val, 'f', 1) + "s" : "---";
-        chevron_text[position].append(ttc_str);
-    }
+    // Text box dimensions - larger for 2-line layout
+    float str_w = (chevron_data == chevron_all) ? 280 : 160;
+    float str_h = 55;
 
-    // Collect all non-empty text lines
-    for (int i = 0; i < chevron_types; ++i) {
-        if (!chevron_text[i].isEmpty()) {
-            text_lines.append(chevron_text[i]);
-        }
-    }
-
-    // If no text to display, return early
-    if (text_lines.isEmpty()) {
-        return;
-    }
-
-    // Text box dimensions
-    float str_w = 150;  // Width of text area
-    float str_h = 45;   // Height per line
-
-    // Position text below chevron, centered horizontally
     float text_x = chevron_pos.x() - str_w / 2;
-    float text_y = chevron_pos.y() + sz + 15;
-
-    // Clamp to screen bounds
+    float text_y = chevron_pos.y() + sz + 10;
     text_x = std::clamp(text_x, 10.0f, (float)width - str_w - 10);
 
-    // Shadow offset
     QPoint shadow_offset(2, 2);
 
-    // Draw each line of text with shadow
     for (int i = 0; i < text_lines.size(); ++i) {
-        if (!text_lines[i].isEmpty()) {
-            QRect textRect(text_x, text_y + (i * str_h), str_w, str_h);
-
-            // Draw shadow
-            painter.setPen(QColor(0x0, 0x0, 0x0, (int)(200 * lead_status_alpha)));
-            painter.drawText(textRect.translated(shadow_offset.x(), shadow_offset.y()),
-                           Qt::AlignBottom | Qt::AlignHCenter, text_lines[i]);
-
-            // Determine text color based on content and danger level
-            QColor text_color;
-
-            // Check if this is a distance line (contains 'm' or 'ft')
-            if (text_lines[i].contains("m") || text_lines[i].contains("ft")) {
-                if (d_rel < 20.0f) {
-                    text_color = QColor(255, 80, 80, (int)(255 * lead_status_alpha)); // Red - danger
-                } else if (d_rel < 40.0f) {
-                    text_color = QColor(255, 200, 80, (int)(255 * lead_status_alpha)); // Yellow - caution
-                } else {
-                    text_color = QColor(80, 255, 120, (int)(255 * lead_status_alpha)); // Green - safe
-                }
-            }
-            // Enhanced color coding for time-to-contact
-            else if (text_lines[i].contains("s") && !text_lines[i].contains("---")) {
-                float ttc_val = text_lines[i].left(text_lines[i].length() - 1).toFloat();
-                if (ttc_val < 3.0f) {
-                    text_color = QColor(255, 80, 80, (int)(255 * lead_status_alpha)); // Red - urgent
-                } else if (ttc_val < 6.0f) {
-                    text_color = QColor(255, 200, 80, (int)(255 * lead_status_alpha)); // Yellow - caution
-                } else {
-                    text_color = QColor(0xff, 0xff, 0xff, (int)(255 * lead_status_alpha)); // White - safe
-                }
-            }
-            else {
-                text_color = QColor(0xff, 0xff, 0xff, (int)(255 * lead_status_alpha)); // White for other lines
-            }
-
-            // Draw main text
-            painter.setPen(text_color);
-            painter.drawText(textRect, Qt::AlignBottom | Qt::AlignHCenter, text_lines[i]);
+        QFont line_font = painter.font();
+        if (i == 0 && chevron_data == chevron_all) {
+          line_font.setPixelSize(42);  // Speed line: bigger
+        } else {
+          line_font.setPixelSize(35);
         }
+        line_font.setBold(true);
+        painter.setFont(line_font);
+
+        QRect textRect(text_x, text_y + (i * str_h), str_w, str_h);
+
+        // Color coding
+        QColor text_color;
+        if (chevron_data == chevron_all) {
+          if (i == 1) {
+            // Line 2: distance part colored, TTC part colored
+            text_color = QColor(0xff, 0xff, 0xff, 0xff);
+          } else {
+            text_color = QColor(0xff, 0xff, 0xff, 0xff);
+          }
+        } else {
+          // Single line mode: original color coding
+          if (text_lines[i].contains("m") || text_lines[i].contains("ft")) {
+            text_color = d_rel < 20.0f ? QColor(255, 80, 80) : (d_rel < 40.0f ? QColor(255, 200, 80) : QColor(80, 255, 120));
+          } else if (text_lines[i].contains("s") && !text_lines[i].contains("---")) {
+            text_color = ttc_val < 3.0f ? QColor(255, 80, 80) : (ttc_val < 6.0f ? QColor(255, 200, 80) : QColor(0xff, 0xff, 0xff));
+          } else {
+            text_color = QColor(0xff, 0xff, 0xff);
+          }
+        }
+
+        // Shadow
+        painter.setPen(QColor(0, 0, 0, (int)(180 * lead_status_alpha)));
+        painter.drawText(textRect.translated(shadow_offset), Qt::AlignVCenter | Qt::AlignHCenter, text_lines[i]);
+
+        // Main text with alpha
+        painter.setPen(QColor(text_color.red(), text_color.green(), text_color.blue(), (int)(255 * lead_status_alpha)));
+        painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignHCenter, text_lines[i]);
     }
 
     // Reset pen
