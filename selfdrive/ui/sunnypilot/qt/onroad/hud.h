@@ -36,6 +36,7 @@ private:
   float lead_v_rel;
   bool torqueLateral;
   float angleSteers;
+  float angleSteersDesired;
   float desiredCurvature;
   float curvature;
   float roll;
@@ -45,6 +46,7 @@ private:
   float altitude;
   float vEgo;
   float aEgo;
+  float smoothAEgo;
   float steeringTorqueEps;
   float bearingAccuracyDeg;
   float bearingDeg;

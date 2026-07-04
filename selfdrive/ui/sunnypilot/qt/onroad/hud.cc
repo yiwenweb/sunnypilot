@@ -60,6 +60,7 @@ void HudRendererSP::updateState(const UIState &s) {
   actuators = car_control.getActuators();
   torqueLateral = steerControlType == cereal::CarParams::SteerControlType::TORQUE;
   angleSteers = car_state.getSteeringAngleDeg();
+  angleSteersDesired = cs.getSteeringAngleDesiredDeg();
   desiredCurvature = cs.getDesiredCurvature();
   curvature = cs.getCurvature();
   roll = sm["liveParameters"].getLiveParameters().getRoll();
@@ -68,6 +69,8 @@ void HudRendererSP::updateState(const UIState &s) {
   altitude = gpsLocation.getAltitude();
   vEgo = car_state.getVEgo();
   aEgo = car_state.getAEgo();
+  // IIR smoothing filter for AccelBar (matches 2026 RocketFuel smoothness)
+  smoothAEgo += (aEgo - smoothAEgo) * 0.2f;
   steeringTorqueEps = car_state.getSteeringTorqueEps();
   bearingAccuracyDeg = gpsLocation.getBearingAccuracyDeg();
   bearingDeg = gpsLocation.getBearingDeg();
@@ -197,6 +200,10 @@ void HudRendererSP::drawRightDevUI(QPainter &p, int x, int y) {
 
   UiElement actualLateralAccelElement = DeveloperUi::getActualLateralAccel(curvature, vEgo, roll, latActive, steerOverride);
   rh += drawRightDevUIElement(p, x, ry, actualLateralAccelElement.value, actualLateralAccelElement.label, actualLateralAccelElement.units, actualLateralAccelElement.color);
+  ry = y + rh;
+
+  UiElement steerDesiredElement = DeveloperUi::getSteeringAngleDesiredDeg(latActive, angleSteersDesired, angleSteers);
+  rh += drawRightDevUIElement(p, x, ry, steerDesiredElement.value, steerDesiredElement.label, steerDesiredElement.units, steerDesiredElement.color);
 }
 
 int HudRendererSP::drawBottomDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color) {
@@ -274,7 +281,7 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
   p.drawLine(track_x + 4, center_y, track_x + bar_width - 4, center_y);
 
   // Filled portion
-  float accel_val = std::clamp(aEgo, -max_accel, max_accel);
+  float accel_val = std::clamp(smoothAEgo, -max_accel, max_accel);
   int fill_height = (int)(std::abs(accel_val) / max_accel * (bar_height / 2 - 4));
 
   if (fill_height > 1) {
