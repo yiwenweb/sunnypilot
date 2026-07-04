@@ -286,9 +286,22 @@ git checkout yiwen/qt-dev -- selfdrive/ui/sunnypilot/qt/onroad/hud.cc
 git checkout yiwen/qt-dev -- selfdrive/ui/sunnypilot/qt/onroad/hud.h
 # ... 其他文件
 
-# 编译部署
-scons -j4 selfdrive/ui/ui && cp selfdrive/ui/ui /data/openpilot/selfdrive/ui/ui
+# 编译
+scons -j4 selfdrive/ui/ui
+
+# ⚠️ 覆盖前必须先停掉正在运行的 ui 进程，否则 cp 会报 "Text file busy"
+sudo pkill -f manager
+sudo pkill -f "selfdrive/ui/ui"
+sleep 3
+
+# 覆盖并重启
+cp selfdrive/ui/ui /data/openpilot/selfdrive/ui/ui
+reboot
 ```
+
+> **说明**：`ui` 二进制在运行中被内核标记为 busy，直接 `cp` 覆盖会失败。
+> 必须先 `pkill` 停掉 `manager` 和 `ui` 进程（manager 会拉起 ui，所以要先杀 manager），
+> 等 3 秒确保进程完全退出后再覆盖，最后 `reboot` 让 manager 重新加载新二进制。
 
 ---
 
@@ -310,6 +323,23 @@ scons -j4 selfdrive/ui/ui && cp selfdrive/ui/ui /data/openpilot/selfdrive/ui/ui
 - `PERSISTENT` — 持久化保存
 - `BACKUP` — 备份时包含
 
+### ⚠️ 消息服务订阅指南（重要，避免 onroad 崩溃）
+
+任何在 UI 中**读取新 cereal 消息服务**的功能（如 `liveMapDataSP`、`carControlSP` 等），
+除了写绘制代码外，**必须先在 SubMaster 订阅列表中注册该服务名**：
+
+```
+文件：selfdrive/ui/sunnypilot/ui.cc
+UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" ...});
+```
+
+**原理**：`SubMaster::operator[]` 和 `rcv_frame()` 内部是 `services_.at(name)`（socketmaster.cc），
+`std::map::at()` 对未订阅的服务名会抛 `std::out_of_range` 异常 → UI 进程崩溃 → manager 反复重启失败 → 只剩逗号 logo。
+崩溃点通常在进入 onroad、HUD 首帧 `updateState()` 时触发，表现为「启动正常、进摄像头即崩溃」。
+
+**排查口诀**：进 onroad 崩溃 → 先检查 hud.cc/model.cc 里 `sm["xxx"]` / `sm.rcv_frame("xxx")` 用到的服务名
+是否都在 `ui.cc` 的订阅列表里。服务是否存在可查 `cereal/services.py`。
+
 ---
 
 ## 八、移植记录
@@ -318,6 +348,7 @@ scons -j4 selfdrive/ui/ui && cp selfdrive/ui/ui /data/openpilot/selfdrive/ui/ui
 |------|------|---------|------|
 | 2026-07-04 | **AccelBar 底部加减速横条** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `visuals_panel.cc` | ✅ 代码完成 |
 | 2026-07-04 | **SP Features 设置面板** | `sunny_features_panel.h/cc`(新建) `settings.cc` `SConscript` `icon_sunny_features.svg`(新建) | ✅ 代码完成 |
+| 2026-07-04 | **修复 onroad 崩溃** | `ui.cc` 订阅列表 +`liveMapDataSP` | ✅ 已修复 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单

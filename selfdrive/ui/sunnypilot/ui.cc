@@ -20,7 +20,7 @@ UIStateSP::UIStateSP(QObject *parent) : UIState(parent) {
     "wideRoadCameraState", "managerState", "selfdriveState", "longitudinalPlan",
     "modelManagerSP", "selfdriveStateSP", "longitudinalPlanSP", "backupManagerSP",
     "carControl", "gpsLocationExternal", "gpsLocation", "liveTorqueParameters",
-    "carStateSP", "liveParameters"
+    "carStateSP", "liveParameters", "liveMapDataSP"
   });
 
   // update timer
@@ -54,7 +54,7 @@ void ui_update_params_sp(UIStateSP *s) {
   s->scene.accel_bar = params.getBool("AccelBar");
   s->scene.turn_signal = params.getBool("TurnSignal");
   s->scene.speed_limit = params.getBool("SpeedLimit");
-  s->scene.road_name = params.getBool("RoadName");
+  s->scene.road_name = params.getBool("RoadNameDisplay");
   s->scene.steering_arc = params.getBool("SteeringArc");
   s->scene.standstill_timer = params.getBool("StandstillTimer");
   s->scene.debug_plots = params.getBool("DebugPlots");

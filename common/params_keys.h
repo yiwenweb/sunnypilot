@@ -162,7 +162,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"AccelBar", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TurnSignal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"SpeedLimit", {PERSISTENT | BACKUP, BOOL, "0"}},
-    {"RoadName", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"RoadNameDisplay", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"SteeringArc", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"StandstillTimer", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"DebugPlots", {PERSISTENT | BACKUP, BOOL, "0"}},

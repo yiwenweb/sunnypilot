@@ -10,7 +10,7 @@
 #include "selfdrive/ui/qt/util.h"
 
 
-HudRendererSP::HudRendererSP() {}
+HudRendererSP::HudRendererSP() : debugPlotsEnabled(false) {}
 
 void HudRendererSP::updateState(const UIState &s) {
   HudRenderer::updateState(s);

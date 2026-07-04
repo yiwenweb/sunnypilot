@@ -43,7 +43,7 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       false,
     },
     {
-      "RoadName",
+      "RoadNameDisplay",
       tr("道路名称"),
       tr("在屏幕顶部居中显示当前行驶的道路名称（来自 OSM 地图数据）。"),
       "../assets/offroad/icon_monitoring.png",
