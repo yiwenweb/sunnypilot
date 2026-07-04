@@ -60,7 +60,21 @@ void HudRendererSP::updateState(const UIState &s) {
   actuators = car_control.getActuators();
   torqueLateral = steerControlType == cereal::CarParams::SteerControlType::TORQUE;
   angleSteers = car_state.getSteeringAngleDeg();
-  angleSteersDesired = cs.getSteeringAngleDesiredDeg();
+  // steeringAngleDesiredDeg lives inside the lateralControlState union and only
+  // exists for pid/angle/lqr/indi controllers. Torque control (e.g. BYD) has no
+  // such field, so read it conditionally and fall back to 0.
+  const auto lat_ctrl = cs.getLateralControlState();
+  if (lat_ctrl.isPidState()) {
+    angleSteersDesired = lat_ctrl.getPidState().getSteeringAngleDesiredDeg();
+  } else if (lat_ctrl.isAngleState()) {
+    angleSteersDesired = lat_ctrl.getAngleState().getSteeringAngleDesiredDeg();
+  } else if (lat_ctrl.isLqrStateDEPRECATED()) {
+    angleSteersDesired = lat_ctrl.getLqrStateDEPRECATED().getSteeringAngleDesiredDeg();
+  } else if (lat_ctrl.isIndiStateDEPRECATED()) {
+    angleSteersDesired = lat_ctrl.getIndiStateDEPRECATED().getSteeringAngleDesiredDeg();
+  } else {
+    angleSteersDesired = 0.0f;  // torqueState / debugState have no desired angle
+  }
   desiredCurvature = cs.getDesiredCurvature();
   curvature = cs.getCurvature();
   roll = sm["liveParameters"].getLiveParameters().getRoll();
