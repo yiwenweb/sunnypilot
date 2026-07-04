@@ -99,6 +99,16 @@ void HudRendererSP::updateState(const UIState &s) {
   }
   steeringArcEnabled = s.scene.steering_arc;
   standstillTimerEnabled = s.scene.standstill_timer;
+  debugPlotsEnabled = s.scene.debug_plots;
+
+  // Push data to debug plot ring buffers
+  if (debugPlotsEnabled) {
+    steerHistory.push(angleSteers);
+    steerDesHistory.push(angleSteersDesired);
+    speedHistory.push(vEgo * (is_metric ? MS_TO_KPH : MS_TO_MPH));
+    accelHistory.push(aEgo);
+    torqueHistory.push(steeringTorqueEps);
+  }
 
   // Standstill timer: track when speed is 0 and count seconds
   static uint64_t standstill_start = 0;
@@ -150,6 +160,11 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     // Standstill timer (bottom-right corner)
     if (standstillTimerEnabled && isStandstill && standstillSeconds > 0) {
       drawStandstillTimer(p, surface_rect);
+    }
+
+    // Debug plots overlay (right side, semi-transparent)
+    if (debugPlotsEnabled) {
+      drawDebugPlots(p, surface_rect);
     }
 
     // Bottom Dev UI
@@ -476,6 +491,106 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.drawEllipse(QPoint(cx, cy), 6, 6);
 
   p.restore();
+}
+
+void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
+  // 4-panel debug plot overlay (right side)
+  constexpr int PANEL_W = 420;
+  constexpr int PANEL_H = 100;
+  constexpr int MARGIN = 10;
+  constexpr int LABEL_W = 55;
+  constexpr int N = DebugPlotHistory::SIZE;
+
+  int panel_x = surface_rect.right() - PANEL_W - MARGIN;
+  int panel_y = surface_rect.top() + MARGIN + 20;
+
+  // Helper: draw a single panel with one or two lines
+  auto drawPanel = [&](int y, const QString& title, const QString& unit,
+                       double y_min, double y_max,
+                       const DebugPlotHistory& h0, QColor c0,
+                       const DebugPlotHistory* h1 = nullptr, QColor c1 = {}) {
+    // Panel background
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0, 150));
+    p.drawRoundedRect(panel_x, y, PANEL_W, PANEL_H, 6, 6);
+
+    // Title (top-left, small)
+    p.setFont(InterFont(16, QFont::Normal));
+    p.setPen(QColor(200, 200, 200, 180));
+    p.drawText(QRect(panel_x + 6, y + 2, PANEL_W - 12, 18), Qt::AlignLeft | Qt::AlignVCenter, title);
+
+    // Y-axis labels
+    p.setFont(InterFont(14, QFont::Normal));
+    p.setPen(QColor(180, 180, 180, 150));
+    p.drawText(QRect(panel_x + 2, y + 18, LABEL_W, 16), Qt::AlignRight, QString::number(y_max, 'f', 1));
+    p.drawText(QRect(panel_x + 2, y + PANEL_H - 18, LABEL_W, 16), Qt::AlignRight, QString::number(y_min, 'f', 1));
+
+    // Unit
+    p.setFont(InterFont(12, QFont::Normal));
+    p.setPen(QColor(160, 160, 160, 140));
+    p.drawText(QRect(panel_x + 2, y + PANEL_H / 2 - 8, LABEL_W, 16), Qt::AlignRight, unit);
+
+    // Plot area
+    int plot_x = panel_x + LABEL_W + 4;
+    int plot_w = PANEL_W - LABEL_W - 10;
+    int plot_y = y + 18;
+    int plot_h = PANEL_H - 22;
+
+    // Clipping
+    p.save();
+    p.setClipRect(plot_x, plot_y, plot_w, plot_h);
+
+    // Zero line
+    double zero_norm = -y_min / (y_max - y_min);
+    int zero_y = plot_y + plot_h - (int)(zero_norm * plot_h);
+    if (y_min < 0 && y_max > 0) {
+      p.setPen(QPen(QColor(255, 255, 255, 60), 1, Qt::DashLine));
+      p.drawLine(plot_x, zero_y, plot_x + plot_w, zero_y);
+    }
+
+    // Convert ring buffer to points and draw
+    auto drawLine = [&](const DebugPlotHistory& hist, QColor color, float line_w) {
+      QVector<QPointF> pts;
+      pts.reserve(N);
+      for (int i = 0; i < N; i++) {
+        float val = std::clamp(hist.get(i), (float)y_min, (float)y_max);
+        float norm = (val - (float)y_min) / (float)(y_max - y_min);
+        float px = plot_x + (float)i / (N - 1) * plot_w;
+        float py = plot_y + plot_h - norm * plot_h;
+        pts.append(QPointF(px, py));
+      }
+      p.setPen(QPen(color, line_w));
+      p.setBrush(Qt::NoBrush);
+      p.drawPolyline(pts.data(), pts.size());
+    };
+
+    drawLine(h0, c0, 2.0f);
+    if (h1) drawLine(*h1, c1, 1.5f);
+
+    p.restore();
+  };
+
+  int cur_y = panel_y;
+
+  // Panel 1: 转向角 Steering Angle
+  drawPanel(cur_y, "转向角", "°", -100.f, 100.f,
+            steerHistory, QColor(80, 160, 255),
+            &steerDesHistory, QColor(80, 255, 140));
+  cur_y += PANEL_H + 6;
+
+  // Panel 2: 速度 Speed
+  drawPanel(cur_y, "速度", "km/h", 0.f, 160.f,
+            speedHistory, QColor(80, 160, 255));
+  cur_y += PANEL_H + 6;
+
+  // Panel 3: 加速度 Acceleration
+  drawPanel(cur_y, "加速度", "m/s²", -3.f, 3.f,
+            accelHistory, QColor(80, 160, 255));
+  cur_y += PANEL_H + 6;
+
+  // Panel 4: EPS扭矩
+  drawPanel(cur_y, "EPS扭矩", "", -3000.f, 3000.f,
+            torqueHistory, QColor(255, 180, 60));
 }
 
 void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) {

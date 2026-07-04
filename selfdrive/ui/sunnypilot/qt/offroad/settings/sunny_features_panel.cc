@@ -63,6 +63,13 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       "../assets/offroad/icon_monitoring.png",
       false,
     },
+    {
+      "DebugPlots",
+      tr("调试曲线图"),
+      tr("在屏幕右侧显示实时数据曲线：转向角（蓝=实际/绿=目标）、速度、加速度、EPS扭矩共4个子图。滚动显示最近100帧数据。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
   };
 
   for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {

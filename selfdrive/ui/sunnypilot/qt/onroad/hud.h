@@ -7,8 +7,19 @@
 
 #pragma once
 
+#include <array>
 #include "selfdrive/ui/qt/onroad/hud.h"
 #include "selfdrive/ui/sunnypilot/qt/onroad/developer_ui/developer_ui.h"
+
+struct DebugPlotHistory {
+  static constexpr int SIZE = 100;
+  std::array<float, SIZE> buf = {};
+  int head = 0;
+
+  void push(float v) { buf[head] = v; head = (head + 1) % SIZE; }
+  float get(int i) const { return buf[(head + i) % SIZE]; }
+  int count() const { return SIZE; }
+};
 
 class HudRendererSP : public HudRenderer {
   Q_OBJECT
@@ -31,6 +42,7 @@ private:
   void drawRoadName(QPainter &p, const QRect &surface_rect);
   void drawSteeringArc(QPainter &p, const QRect &surface_rect);
   void drawStandstillTimer(QPainter &p, const QRect &surface_rect);
+  void drawDebugPlots(QPainter &p, const QRect &surface_rect);
 
   bool lead_status;
   float lead_d_rel;
@@ -76,4 +88,10 @@ private:
   bool isStandstill;
   cereal::CarParams::SteerControlType steerControlType;
   cereal::CarControl::Actuators::Reader actuators;
+  bool debugPlotsEnabled;
+  DebugPlotHistory steerHistory;
+  DebugPlotHistory steerDesHistory;
+  DebugPlotHistory speedHistory;
+  DebugPlotHistory accelHistory;
+  DebugPlotHistory torqueHistory;
 };
