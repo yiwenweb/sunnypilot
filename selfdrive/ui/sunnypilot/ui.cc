@@ -56,6 +56,7 @@ void ui_update_params_sp(UIStateSP *s) {
   s->scene.speed_limit = params.getBool("SpeedLimit");
   s->scene.road_name = params.getBool("RoadName");
   s->scene.steering_arc = params.getBool("SteeringArc");
+  s->scene.standstill_timer = params.getBool("StandstillTimer");
 }
 
 DeviceSP::DeviceSP(QObject *parent) : Device(parent) {

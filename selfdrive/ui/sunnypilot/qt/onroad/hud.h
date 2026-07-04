@@ -30,6 +30,7 @@ private:
   void drawSpeedLimit(QPainter &p, const QRect &surface_rect);
   void drawRoadName(QPainter &p, const QRect &surface_rect);
   void drawSteeringArc(QPainter &p, const QRect &surface_rect);
+  void drawStandstillTimer(QPainter &p, const QRect &surface_rect);
 
   bool lead_status;
   float lead_d_rel;
@@ -70,6 +71,9 @@ private:
   float speedLimitAhead;
   QString roadName;
   bool steeringArcEnabled;
+  bool standstillTimerEnabled;
+  int standstillSeconds;
+  bool isStandstill;
   cereal::CarParams::SteerControlType steerControlType;
   cereal::CarControl::Actuators::Reader actuators;
 };

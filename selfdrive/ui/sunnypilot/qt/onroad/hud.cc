@@ -98,6 +98,25 @@ void HudRendererSP::updateState(const UIState &s) {
     roadName.clear();
   }
   steeringArcEnabled = s.scene.steering_arc;
+  standstillTimerEnabled = s.scene.standstill_timer;
+
+  // Standstill timer: track when speed is 0 and count seconds
+  static uint64_t standstill_start = 0;
+  static uint64_t last_standstill_frame = 0;
+  if (speed < 0.5f) {  // nearly stopped
+    if (standstill_start == 0) standstill_start = millis_since_boot();
+    uint64_t now = millis_since_boot();
+    if (now - last_standstill_frame >= 1000) {
+      standstillSeconds = (now - standstill_start) / 1000;
+      last_standstill_frame = now;
+    }
+    isStandstill = true;
+  } else {
+    standstill_start = 0;
+    standstillSeconds = 0;
+    last_standstill_frame = 0;
+    isStandstill = false;
+  }
 }
 
 void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
@@ -126,6 +145,11 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     // Steering arc (bottom)
     if (steeringArcEnabled) {
       drawSteeringArc(p, surface_rect);
+    }
+
+    // Standstill timer (bottom-right corner)
+    if (standstillTimerEnabled && isStandstill && standstillSeconds > 0) {
+      drawStandstillTimer(p, surface_rect);
     }
 
     // Bottom Dev UI
@@ -450,6 +474,42 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.setPen(Qt::NoPen);
   p.setBrush(QColor(255, 255, 255, 150));
   p.drawEllipse(QPoint(cx, cy), 6, 6);
+
+  p.restore();
+}
+
+void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) {
+  // Standstill timer: bottom-right corner, circular badge style
+  int min = standstillSeconds / 60;
+  int sec = standstillSeconds % 60;
+  QString time = (min > 0) ? QString("%1:%2").arg(min).arg(sec, 2, 10, QChar('0'))
+                            : QString("%1s").arg(sec);
+
+  const int badge_size = 80;
+  int cx = surface_rect.right() - UI_BORDER_SIZE - badge_size;
+  int cy = surface_rect.bottom() - UI_BORDER_SIZE - badge_size;
+
+  // Circular background
+  p.save();
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(0, 0, 0, 140));
+  p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
+
+  // Timer icon (⏱)
+  p.setFont(InterFont(24, QFont::Normal));
+  p.setPen(QColor(255, 255, 255, 160));
+  QFontMetrics icon_fm(p.font());
+  QRect icon_rect = icon_fm.boundingRect("⏱");
+  icon_rect.moveCenter(QPoint(cx, cy - 18));
+  p.drawText(icon_rect, Qt::AlignCenter, "⏱");
+
+  // Time text
+  p.setFont(InterFont(28, QFont::Bold));
+  p.setPen(QColor(100, 220, 255, 255));
+  QFontMetrics fm(p.font());
+  QRect time_rect = fm.boundingRect(time);
+  time_rect.moveCenter(QPoint(cx, cy + 15));
+  p.drawText(time_rect, Qt::AlignCenter, time);
 
   p.restore();
 }

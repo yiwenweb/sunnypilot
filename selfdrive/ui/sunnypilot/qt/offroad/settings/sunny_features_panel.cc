@@ -56,6 +56,13 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       "../assets/offroad/icon_monitoring.png",
       false,
     },
+    {
+      "StandstillTimer",
+      tr("停车计时器"),
+      tr("车辆完全停止后，在屏幕右下角显示停车等待时间。红灯停车等场景下查看等待时长。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
   };
 
   for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {
