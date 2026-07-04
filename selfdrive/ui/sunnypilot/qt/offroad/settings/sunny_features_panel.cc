@@ -49,6 +49,13 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       "../assets/offroad/icon_monitoring.png",
       false,
     },
+    {
+      "SteeringArc",
+      tr("转向弧度指示"),
+      tr("在屏幕底部居中显示方向盘转向弧度。绿色表示横向控制激活，灰色表示手动操控。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
   };
 
   for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {

@@ -94,6 +94,7 @@ void HudRendererSP::updateState(const UIState &s) {
     speedLimitValid = false;
     roadName.clear();
   }
+  steeringArcEnabled = s.scene.steering_arc;
 }
 
 void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
@@ -117,6 +118,11 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     // Road name (top center)
     if (roadNameEnabled && !roadName.isEmpty()) {
       drawRoadName(p, surface_rect);
+    }
+
+    // Steering arc (bottom)
+    if (steeringArcEnabled) {
+      drawSteeringArc(p, surface_rect);
     }
 
     // Bottom Dev UI
@@ -385,20 +391,46 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
   int y = surface_rect.top() + 12;
 
   p.save();
-  p.setFont(InterFont(32, QFont::Normal));
-  p.setPen(QColor(255, 255, 255, 180));
-
-  QString displayName = roadName;
-  QFontMetrics fm(p.font());
-
-  // Truncate if too long
-  int max_width = surface_rect.width() - 200;
-  if (fm.horizontalAdvance(displayName) > max_width) {
-    displayName = fm.elidedText(displayName, Qt::ElideRight, max_width);
-  }
-
   QRect text_rect = fm.boundingRect(displayName);
   text_rect.moveCenter(QPoint(surface_rect.center().x(), y + text_rect.height() / 2));
   p.drawText(text_rect, Qt::AlignCenter, displayName);
+  p.restore();
+}
+
+void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
+  // 2026-style steering angle arc at bottom center
+  const int arc_width = 400;
+  const int arc_height = 80;
+  const int margin_bottom = 20;
+  const float max_angle = 90.f;  // degrees
+
+  int cx = surface_rect.center().x();
+  int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
+
+  QRect arc_rect(cx - arc_width / 2, cy - arc_height, arc_width, arc_height * 2);
+
+  // Track background arc
+  p.save();
+  p.setPen(QPen(QColor(255, 255, 255, 50), 8));
+  p.setBrush(Qt::NoBrush);
+  p.drawArc(arc_rect, 45 * 16, 90 * 16);  // 180 degrees arc
+
+  // Steering angle fill
+  float clamped_angle = std::clamp(angleSteers, -max_angle, max_angle);
+  if (std::abs(clamped_angle) > 1.f) {
+    bool is_active = latActive && !steerOverride;
+    QColor arc_color = is_active ? QColor(0, 220, 100, 220) : QColor(180, 180, 180, 180);
+
+    p.setPen(QPen(arc_color, 10));
+    int span = (int)(clamped_angle / max_angle * 90 * 16);
+    int start = 90 * 16 - span;
+    p.drawArc(arc_rect, start, span);
+  }
+
+  // Center indicator dot
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor(255, 255, 255, 150));
+  p.drawEllipse(QPoint(cx, cy), 6, 6);
+
   p.restore();
 }
