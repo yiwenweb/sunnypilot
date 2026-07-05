@@ -96,4 +96,10 @@ private:
   DebugPlotHistory speedHistory;
   DebugPlotHistory accelHistory;
   DebugPlotHistory torqueHistory;
+
+  // MICI-style smoothing filters
+  float smoothSteerDisplay = 0.0f;
+  float smoothSteerDesiredDisplay = 0.0f;
+  float leftBlinkerAlpha = 0.0f;
+  float rightBlinkerAlpha = 0.0f;
 };

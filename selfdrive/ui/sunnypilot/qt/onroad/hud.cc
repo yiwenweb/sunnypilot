@@ -115,6 +115,19 @@ void HudRendererSP::updateState(const UIState &s) {
   standstillTimerEnabled = s.scene.standstill_timer;
   debugPlotsEnabled = s.scene.debug_plots;
 
+  // MICI-style smoothing filters
+  {
+    float raw_display = -angleSteers;
+    float raw_desired = -angleSteersDesired;
+    // Faster response for steering arc (alpha 0.25 ≈ 4-frame settling)
+    smoothSteerDisplay += (raw_display - smoothSteerDisplay) * 0.25f;
+    smoothSteerDesiredDisplay += (raw_desired - smoothSteerDesiredDisplay) * 0.25f;
+
+    // Slower fade for turn signals (alpha 0.12 ≈ 8-frame fade)
+    leftBlinkerAlpha += ((leftBlinker ? 1.0f : 0.0f) - leftBlinkerAlpha) * 0.12f;
+    rightBlinkerAlpha += ((rightBlinker ? 1.0f : 0.0f) - rightBlinkerAlpha) * 0.12f;
+  }
+
   // Push data to debug plot ring buffers
   if (debugPlotsEnabled) {
     steerHistory.push(angleSteers);
@@ -314,16 +327,16 @@ void HudRendererSP::drawBottomDevUI(QPainter &p, int x, int y) {
 
 void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
   // RocketFuel: vertical bar on the left side (ported from sunnypilot 2026)
-  // Green fills UP for acceleration, red fills DOWN for deceleration
+  // MICI-style: gradient color + smooth animation
   const int bar_width = 36;
-  const int bar_height = 470;  // lengthened by ~2/3 from 280
-  const float max_accel = 3.0f;  // m/s^2
+  const int bar_height = 470;
+  const float max_accel = 3.0f;
   const int margin_left = 20;
 
   int track_x = margin_left;
   int track_y = surface_rect.center().y() - bar_height / 2;
 
-  // Background track (dark rounded rect)
+  // Background track
   p.setPen(Qt::NoPen);
   p.setBrush(QColor(0, 0, 0, 100));
   p.drawRoundedRect(track_x, track_y, bar_width, bar_height, bar_width / 2, bar_width / 2);
@@ -333,20 +346,30 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
   p.setPen(QPen(QColor(255, 255, 255, 70), 1));
   p.drawLine(track_x + 4, center_y, track_x + bar_width - 4, center_y);
 
-  // Filled portion
+  // Filled portion with MICI-style gradient
   float accel_val = std::clamp(smoothAEgo, -max_accel, max_accel);
   int fill_height = (int)(std::abs(accel_val) / max_accel * (bar_height / 2 - 4));
 
   if (fill_height > 1) {
+    float abs_ratio = std::abs(accel_val) / max_accel;
     QColor color;
     int fill_y;
+
     if (accel_val >= 0) {
-      // Acceleration: green, fills upward from center
-      color = QColor(0, 210, 90, 200);
+      // Accel: MICI gradient white → green → yellow at high accel
+      float yellow_t = std::clamp((abs_ratio - 0.75f) * 4.0f, 0.0f, 1.0f);
+      int r = (int)(255.0f * (1.0f - yellow_t * 0.2f));
+      int g = (int)(140.0f + 115.0f * (1.0f - yellow_t * 0.7f));
+      int b = (int)(80.0f * (1.0f - yellow_t));
+      color = QColor(r, g, b, 200);
       fill_y = center_y - fill_height;
     } else {
-      // Deceleration: red, fills downward from center
-      color = QColor(230, 55, 55, 200);
+      // Decel: MICI gradient red → orange
+      float orange_t = std::clamp((abs_ratio - 0.75f) * 4.0f, 0.0f, 1.0f);
+      int r = 220 + (int)(35.0f * orange_t);
+      int g = (int)(55.0f * (1.0f - orange_t * 0.8f));
+      int b = (int)(55.0f * (1.0f - orange_t));
+      color = QColor(r, g, b, 200);
       fill_y = center_y;
     }
 
@@ -357,49 +380,55 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
-  // 2026-style turn signal indicators on left and right sides
+  // MICI-style turn signal indicators with smooth fade and rotation pop-in
   const int arrow_size = 55;
   const int margin = 40;
   int cy = surface_rect.center().y();
 
-  auto drawArrow = [&](int cx, int cy, bool pointingLeft, bool active) {
-    if (!active) return;
+  auto drawArrow = [&](int cx, int pointingLeft, float alpha) {
+    if (alpha < 0.01f) return;
 
-    // Glow background
+    int alpha_int = (int)(255 * alpha);
+    int dir = pointingLeft ? -1 : 1;
+
     p.save();
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0, 220, 80, 60));
+
+    // Glow background (fades with alpha)
+    p.setBrush(QColor(0, 220, 80, (int)(60 * alpha)));
     p.drawEllipse(QPoint(cx, cy), arrow_size, arrow_size * 2 / 3);
+
+    // MICI-style: slight rotation pop-in (0 → 30° fade in)
+    float rotation_offset = (1.0f - alpha) * 30.0f * dir;
+
+    p.translate(cx, cy);
+    p.rotate(rotation_offset);
 
     // Arrow body
     QPainterPath arrow;
-    int dir = pointingLeft ? -1 : 1;
 
-    // Triangle points
-    QPointF tip(cx + dir * arrow_size * 0.7, cy);
-    QPointF base1(cx - dir * arrow_size * 0.3, cy - arrow_size * 0.5);
-    QPointF base2(cx - dir * arrow_size * 0.3, cy + arrow_size * 0.5);
+    // Triangle points (relative to origin)
+    QPointF tip(dir * arrow_size * 0.7, 0);
+    QPointF base1(-dir * arrow_size * 0.3, -arrow_size * 0.5);
+    QPointF base2(-dir * arrow_size * 0.3, arrow_size * 0.5);
 
-    // Arrow head (triangle)
     arrow.moveTo(tip);
     arrow.lineTo(base1);
     arrow.lineTo(base2);
     arrow.closeSubpath();
 
-    // Arrow stem (thin rectangle)
-    QRectF stem(cx - dir * arrow_size * 0.6, cy - arrow_size * 0.15,
+    QRectF stem(-dir * arrow_size * 0.6, -arrow_size * 0.15,
                 arrow_size * 0.6, arrow_size * 0.3);
 
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0, 255, 90, 220));
+    p.setBrush(QColor(0, 255, 90, (int)(220 * alpha)));
     p.drawPath(arrow);
     p.drawRoundedRect(stem, 3, 3);
 
     p.restore();
   };
 
-  drawArrow(margin + arrow_size / 2, cy, true, leftBlinker);
-  drawArrow(surface_rect.right() - margin - arrow_size / 2, cy, false, rightBlinker);
+  drawArrow(margin + arrow_size / 2, true, leftBlinkerAlpha);
+  drawArrow(surface_rect.right() - margin - arrow_size / 2, false, rightBlinkerAlpha);
 }
 
 void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
@@ -470,35 +499,32 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
-  // Steering arc: bottom-center, shows actual vs desired steering angle
+  // MICI-style steering arc: gradient color (white→yellow→orange) + smooth filter + dynamic sizing
   const int arc_width = 700;
   const int arc_height = 180;
   const int margin_bottom = 20;
-  const float max_angle = 55.f;         // full scale at 55°
+  const float max_angle = 55.f;
 
   int cx = surface_rect.center().x();
   int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
 
   QRect arc_rect(cx - arc_width / 2, cy - arc_height, arc_width, arc_height * 2);
 
-  // --- Negate angleSteers to match BYD steering sign convention ---
-  float display_angle = -angleSteers;
-  float display_angle_desired = angleSteersDesired;  // unchanged sign
-
-  float clamped_angle = std::clamp(display_angle, -max_angle, max_angle);
-  float clamped_desired = std::clamp(-display_angle_desired, -max_angle, max_angle);
+  // Use smoothed values (already sign-negated in updateState)
+  float clamped_angle = std::clamp(smoothSteerDisplay, -max_angle, max_angle);
+  float clamped_desired = std::clamp(smoothSteerDesiredDisplay, -max_angle, max_angle);
 
   bool is_active = latActive && !steerOverride;
 
   p.save();
   p.setRenderHint(QPainter::Antialiasing);
 
-  // Background arc (semi-transparent track)
+  // Background arc
   p.setPen(QPen(QColor(255, 255, 255, 70), 14));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, 45 * 16, 90 * 16);
 
-  // Tick marks every 10° along the arc
+  // Tick marks (unchanged from before)
   {
     p.setPen(QPen(QColor(255, 255, 255, 40), 2));
     p.setFont(InterFont(16, QFont::Normal));
@@ -510,9 +536,8 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
       int tiy = cy - (int)((arc_height * 2 / 2 - 16) * sin(rad));
       p.drawLine(QPointF(tx, ty), QPointF(tix, tiy));
 
-      // Label: angle value at every 20°
       if ((deg - 45) % 20 == 0) {
-        int label_angle = (deg - 90) * max_angle / 45;  // map 45-135° to -max_angle..+max_angle
+        int label_angle = (deg - 90) * max_angle / 45;
         int lx = cx + (int)((arc_width / 2 + 8) * cos(rad));
         int ly = cy - (int)((arc_height * 2 / 2 + 8) * sin(rad));
         p.setPen(QColor(255, 255, 255, 60));
@@ -522,24 +547,37 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
     }
   }
 
-  // Actual angle fill (green when active, gray when manual)
+  // MICI-style gradient fill: white at center → yellow at 75% → orange at 100%
   {
-    QColor fill_color = is_active ? QColor(0, 220, 100, 240) : QColor(180, 180, 180, 200);
+    float abs_ratio = std::abs(clamped_angle) / max_angle;
+    float yellow_t = std::clamp((abs_ratio - 0.75f) * 4.0f, 0.0f, 1.0f);
+
+    QColor fill_color;
+    if (is_active) {
+      // Gradient: white(255,255,255) → yellow(255,200,0) → orange(255,115,0)
+      int g = (int)(255.0f * (1.0f - yellow_t * 0.55f));
+      int b = (int)(255.0f * (1.0f - yellow_t));
+      fill_color = QColor(255, g, b, 240);
+    } else {
+      fill_color = QColor(180, 180, 180, 200);
+    }
+
     if (std::abs(clamped_angle) > 1.f) {
-      p.setPen(QPen(fill_color, 20, Qt::SolidLine, Qt::RoundCap));
+      // MICI-style dynamic line width: expands at high angles
+      float pen_width = 16.0f + abs_ratio * 8.0f;
+      p.setPen(QPen(fill_color, pen_width, Qt::SolidLine, Qt::RoundCap));
       int span = (int)(clamped_angle / max_angle * 90 * 16);
       int start = 90 * 16 - span;
       p.drawArc(arc_rect, start, span);
     }
   }
 
-  // Desired angle indicator (diamond marker)
+  // Desired angle indicator (diamond marker, using smoothed value)
   if (std::abs(clamped_desired) > 1.f) {
     double target_rad = (90.0 - clamped_desired / max_angle * 45.0) * M_PI / 180.0;
     int mx = cx + (int)((arc_width / 2 - 4) * cos(target_rad));
     int my = cy - (int)((arc_height * 2 / 2 - 4) * sin(target_rad));
 
-    // Diamond shape
     QPolygon diamond;
     diamond << QPoint(mx, my - 10)
             << QPoint(mx + 8, my)
