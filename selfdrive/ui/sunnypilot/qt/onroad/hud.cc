@@ -565,9 +565,10 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
       // MICI-style dynamic line width: expands at high angles
       float pen_width = 16.0f + abs_ratio * 8.0f;
       p.setPen(QPen(fill_color, pen_width, Qt::SolidLine, Qt::RoundCap));
-      int span = (int)(clamped_angle / max_angle * 90 * 16);
-      int start = 90 * 16 - span;
-      p.drawArc(arc_rect, start, span);
+      // The background arc spans 90° total (45° each side). Scale steering so
+      // max_angle reaches the edge instead of doubling past it and going off-screen.
+      int span = (int)(clamped_angle / max_angle * 45 * 16);
+      p.drawArc(arc_rect, 90 * 16, span);
     }
   }
 
