@@ -41,6 +41,20 @@ VIDEO_NAME = "qcamera.ts"
 PATH_SAMPLE_EVERY = 2
 
 
+def _first_or(val, default=0):
+    """取列表第一个元素，否则返回默认值"""
+    if val and len(val) > 0:
+        return val[0]
+    return default
+
+
+def _avg_or(val, default=0.0):
+    """取列表平均值，否则返回默认值"""
+    if val and len(val) > 0:
+        return sum(val) / len(val)
+    return default
+
+
 def _xyz_to_list(xyz):
     """把 capnp XYZTData 的 x/y/z 转成普通 list，并按采样间隔稀疏化"""
     return {
@@ -94,18 +108,57 @@ def extract_car_state(cs):
     return {
         "vEgo": float(cs.vEgo),
         "aEgo": float(cs.aEgo),
+        "vEgoCluster": float(cs.vEgoCluster),
+        "vCruiseCluster": float(cs.vCruiseCluster),
         "steeringAngleDeg": float(cs.steeringAngleDeg),
+        "steeringRateDeg": float(cs.steeringRateDeg),
+        "steeringTorque": float(cs.steeringTorque),
+        "steeringPressed": bool(cs.steeringPressed),
+        "gasPressed": bool(cs.gasPressed),
+        "brakePressed": bool(cs.brakePressed),
+        "leftBlinker": bool(cs.leftBlinker),
+        "rightBlinker": bool(cs.rightBlinker),
+        "standstill": bool(cs.standstill),
+        "gearShifter": str(cs.gearShifter),
+        "doorOpen": bool(cs.doorOpen),
+        "seatbeltUnlatched": bool(cs.seatbeltUnlatched),
+        "canValid": bool(cs.canValid),
         "cruiseState": {
             "available": bool(cr.available),
             "enabled": bool(cr.enabled),
             "speed": float(cr.speed),
+            "speedCluster": float(cr.speedCluster),
+            "standstill": bool(cr.standstill),
         },
     }
 
 
 def extract_controls_state(cs):
+    """提取 controlsState：纵向状态、曲率、横向控制器状态等"""
+    lateral = None
+    # 取 union 中实际被设置的 lateral 控制状态
+    lat = getattr(cs, "lateralControlState", None)
+    if lat is not None:
+        which = lat.which()
+        try:
+            s = getattr(lat, which)
+            lateral = {
+                "active": bool(s.active),
+                "steeringAngleDeg": float(s.steeringAngleDeg),
+                "steeringAngleDesiredDeg": float(s.steeringAngleDesiredDeg),
+                "actualLateralAccel": float(s.actualLateralAccel),
+                "desiredLateralAccel": float(s.desiredLateralAccel),
+                "error": float(s.error),
+                "output": float(s.output),
+            }
+        except Exception:
+            pass
+
     return {
         "longControlState": str(cs.longControlState),
+        "curvature": float(cs.curvature),
+        "desiredCurvature": float(cs.desiredCurvature),
+        "lateralControlState": lateral,
     }
 
 
@@ -118,6 +171,125 @@ def extract_selfdrive_state(ss):
         "alertText2": str(ss.alertText2),
         "experimentalMode": bool(ss.experimentalMode),
     }
+
+
+def extract_device_state(ds):
+    """提取设备状态：CPU温度、网络、空间、功耗等"""
+    ni = getattr(ds, "networkInfo", None)
+    network_info = None
+    if ni is not None:
+        network_info = {
+            "technology": str(ni.technology),
+            "operator": str(ni.operator),
+            "band": str(ni.band),
+            "channel": int(ni.channel),
+            "extra": str(ni.extra),
+            "state": str(ni.state),
+        }
+
+    return {
+        "networkType": str(ds.networkType),
+        "networkStrength": str(ds.networkStrength),
+        "networkInfo": network_info,
+        "started": bool(ds.started),
+        "freeSpacePercent": float(ds.freeSpacePercent),
+        "memoryUsagePercent": int(ds.memoryUsagePercent),
+        "cpuUsagePercent": list(ds.cpuUsagePercent),
+        "cpuTempC": list(ds.cpuTempC),
+        "gpuTempC": list(ds.gpuTempC),
+        "memoryTempC": float(ds.memoryTempC),
+        "maxTempC": float(ds.maxTempC),
+        "thermalStatus": str(ds.thermalStatus),
+        "fanSpeedPercentDesired": int(ds.fanSpeedPercentDesired),
+        "screenBrightnessPercent": int(ds.screenBrightnessPercent),
+        "powerDrawW": float(ds.powerDrawW),
+        "somPowerDrawW": float(ds.somPowerDrawW),
+    }
+
+
+def extract_panda_state(ps):
+    """提取 Panda 状态：车辆连接、电源、线束等"""
+    return {
+        "ignitionLine": bool(ps.ignitionLine),
+        "ignitionCan": bool(ps.ignitionCan),
+        "controlsAllowed": bool(ps.controlsAllowed),
+        "harnessStatus": str(ps.harnessStatus),
+        "pandaType": str(ps.pandaType),
+        "voltage": int(ps.voltage),
+        "current": int(ps.current),
+        "fanPower": int(ps.fanPower),
+        "heartbeatLost": bool(ps.heartbeatLost),
+    }
+
+
+def extract_gps_location(gps):
+    """提取 GPS 位置信息"""
+    return {
+        "latitude": float(gps.latitude),
+        "longitude": float(gps.longitude),
+        "altitude": float(gps.altitude),
+        "speed": float(gps.speed),
+        "bearingDeg": float(gps.bearingDeg),
+        "horizontalAccuracy": float(gps.horizontalAccuracy),
+        "verticalAccuracy": float(gps.verticalAccuracy),
+        "speedAccuracy": float(gps.speedAccuracy),
+        "hasFix": bool(gps.hasFix),
+        "satelliteCount": int(gps.satelliteCount),
+        "source": str(gps.source),
+    }
+
+
+def extract_car_control(cc):
+    """提取 CarControl：控制输出、HUD、期望曲率等"""
+    act = getattr(cc, "actuators", None)
+    actuators = None
+    if act is not None:
+        actuators = {
+            "torque": float(act.torque),
+            "steeringAngleDeg": float(act.steeringAngleDeg),
+            "curvature": float(act.curvature),
+            "accel": float(act.accel),
+            "longControlState": str(act.longControlState),
+            "gas": float(act.gas),
+            "brake": float(act.brake),
+            "speed": float(act.speed),
+        }
+
+    hud = getattr(cc, "hudControl", None)
+    hud_control = None
+    if hud is not None:
+        hud_control = {
+            "speedVisible": bool(hud.speedVisible),
+            "setSpeed": float(hud.setSpeed),
+            "lanesVisible": bool(hud.lanesVisible),
+            "leadVisible": bool(hud.leadVisible),
+            "rightLaneVisible": bool(hud.rightLaneVisible),
+            "leftLaneVisible": bool(hud.leftLaneVisible),
+            "rightLaneDepart": bool(hud.rightLaneDepart),
+            "leftLaneDepart": bool(hud.leftLaneDepart),
+            "leadDistanceBars": int(hud.leadDistanceBars),
+        }
+
+    return {
+        "enabled": bool(cc.enabled),
+        "latActive": bool(cc.latActive),
+        "longActive": bool(cc.longActive),
+        "actuators": actuators,
+        "hudControl": hud_control,
+        "currentCurvature": float(cc.currentCurvature),
+    }
+
+
+def extract_manager_state(ms):
+    """提取 Manager 进程状态，用于判断 CONNECT / SUNNYLINK 等在线状态"""
+    processes = []
+    for proc in ms.processes:
+        processes.append({
+            "name": str(proc.name),
+            "pid": int(proc.pid),
+            "running": bool(proc.running) if hasattr(proc, "running") else True,
+        })
+    return {"processes": processes}
 
 
 def extract_longitudinal_plan(lp):
@@ -159,10 +331,15 @@ def process_segment(seg_dir, out_path=None):
     last_model = None
     last_radar = None
     last_car = None
+    last_car_control = None
     last_controls = None
     last_selfdrive = None
     last_plan = None
     last_calib = None
+    last_device = None
+    last_panda = None
+    last_gps = None
+    last_manager = None
 
     lr = LogReader(qlog)
     for msg in lr:
@@ -175,6 +352,8 @@ def process_segment(seg_dir, out_path=None):
             last_radar = extract_radar_state(msg.radarState)
         elif w == "carState":
             last_car = extract_car_state(msg.carState)
+        elif w == "carControl":
+            last_car_control = extract_car_control(msg.carControl)
         elif w == "controlsState":
             last_controls = extract_controls_state(msg.controlsState)
         elif w == "selfdriveState":
@@ -183,6 +362,15 @@ def process_segment(seg_dir, out_path=None):
             last_plan = extract_longitudinal_plan(msg.longitudinalPlan)
         elif w == "liveCalibration":
             last_calib = extract_live_calibration(msg.liveCalibration)
+        elif w == "deviceState":
+            last_device = extract_device_state(msg.deviceState)
+        elif w == "pandaState":
+            last_panda = extract_panda_state(msg.pandaState)
+        elif w in ("gpsLocation", "gpsLocationExternal"):
+            gps_msg = msg.gpsLocation if w == "gpsLocation" else msg.gpsLocationExternal
+            last_gps = extract_gps_location(gps_msg)
+        elif w == "managerState":
+            last_manager = extract_manager_state(msg.managerState)
 
         # 以 modelV2 为关键帧输出一帧叠加数据
         if w == "modelV2":
@@ -191,10 +379,15 @@ def process_segment(seg_dir, out_path=None):
                 "modelV2": last_model,
                 "radarState": last_radar,
                 "carState": last_car,
+                "carControl": last_car_control,
                 "controlsState": last_controls,
                 "selfdriveState": last_selfdrive,
                 "longitudinalPlan": last_plan,
                 "liveCalibration": last_calib,
+                "deviceState": last_device,
+                "pandaState": last_panda,
+                "gpsLocation": last_gps,
+                "managerState": last_manager,
             })
 
     if not frames:
@@ -217,7 +410,7 @@ def process_segment(seg_dir, out_path=None):
         }
 
     output = {
-        "version": 1,
+        "version": 2,
         "segmentId": seg_dir.name,
         "videoFile": VIDEO_NAME,
         "videoPath": str(video_path) if video_path else None,
