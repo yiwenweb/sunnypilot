@@ -12,15 +12,55 @@ App 通过 SSH 调用本脚本来读写 C3 的 Params 参数。
 """
 import argparse
 import json
+import os
 import sys
 
-sys.path.insert(0, "/data/openpilot")
 
+PARAMS_DIR = "/data/params/d"
+
+
+class SimpleParams:
+    """不依赖 openpilot 库的 Params 轻量实现，直接读写 /data/params/d/ 文件。"""
+
+    def _path(self, key: str) -> str:
+        return os.path.join(PARAMS_DIR, key)
+
+    def get(self, key: str) -> str:
+        try:
+            with open(self._path(key), "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
+        except Exception as e:
+            raise RuntimeError(f"读取 {key} 失败: {e}") from e
+
+    def get_bool(self, key: str) -> bool:
+        return self.get(key) == "1"
+
+    def put(self, key: str, value: str) -> None:
+        os.makedirs(PARAMS_DIR, exist_ok=True)
+        path = self._path(key)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(str(value))
+        except Exception as e:
+            raise RuntimeError(f"写入 {key} 失败: {e}") from e
+
+    def put_bool(self, key: str, value: bool) -> None:
+        self.put(key, "1" if value else "0")
+
+
+# 优先尝试导入 openpilot 的 Params，失败则使用 SimpleParams
+Params = SimpleParams
 try:
-    from common.params import Params
+    sys.path.insert(0, "/data/openpilot")
+    from common.params import Params as _Params
+
+    Params = _Params
 except Exception as e:
-    print(json.dumps({"error": f"无法导入 Params: {e}"}))
-    sys.exit(1)
+    # 使用 SimpleParams，避免依赖 openpilot/zmq
+    pass
+
 
 
 # v1 支持的设置项：key -> (UI 类型, 标题, 描述, 额外元数据)
