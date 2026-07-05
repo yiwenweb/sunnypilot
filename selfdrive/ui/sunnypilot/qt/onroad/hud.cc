@@ -470,39 +470,90 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
-  // 2026-style steering angle arc at bottom center, enlarged and more compact
-  const int arc_width = 600;       // enlarged from 400
-  const int arc_height = 160;      // enlarged from 80
-  const int margin_bottom = 16;    // closer to edge
-  const float max_angle = 55.f;    // more compact: full scale at 55° instead of 90°
+  // Steering arc: bottom-center, shows actual vs desired steering angle
+  const int arc_width = 700;
+  const int arc_height = 180;
+  const int margin_bottom = 20;
+  const float max_angle = 55.f;         // full scale at 55°
 
   int cx = surface_rect.center().x();
   int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
 
   QRect arc_rect(cx - arc_width / 2, cy - arc_height, arc_width, arc_height * 2);
 
-  // Track background arc (thicker, brighter)
+  // --- Negate angleSteers to match BYD steering sign convention ---
+  float display_angle = -angleSteers;
+  float display_angle_desired = angleSteersDesired;  // unchanged sign
+
+  float clamped_angle = std::clamp(display_angle, -max_angle, max_angle);
+  float clamped_desired = std::clamp(-display_angle_desired, -max_angle, max_angle);
+
+  bool is_active = latActive && !steerOverride;
+
   p.save();
-  p.setPen(QPen(QColor(255, 255, 255, 80), 12));
+  p.setRenderHint(QPainter::Antialiasing);
+
+  // Background arc (semi-transparent track)
+  p.setPen(QPen(QColor(255, 255, 255, 70), 14));
   p.setBrush(Qt::NoBrush);
-  p.drawArc(arc_rect, 45 * 16, 90 * 16);  // 180 degrees arc
+  p.drawArc(arc_rect, 45 * 16, 90 * 16);
 
-  // Steering angle fill
-  float clamped_angle = std::clamp(angleSteers, -max_angle, max_angle);
-  if (std::abs(clamped_angle) > 1.f) {
-    bool is_active = latActive && !steerOverride;
-    QColor arc_color = is_active ? QColor(0, 220, 100, 240) : QColor(180, 180, 180, 200);
+  // Tick marks every 10° along the arc
+  {
+    p.setPen(QPen(QColor(255, 255, 255, 40), 2));
+    p.setFont(InterFont(16, QFont::Normal));
+    for (int deg = 45; deg <= 135; deg += 10) {
+      double rad = deg * M_PI / 180.0;
+      int tx = cx + (int)((arc_width / 2 - 8) * cos(rad));
+      int ty = cy - (int)((arc_height * 2 / 2 - 8) * sin(rad));
+      int tix = cx + (int)((arc_width / 2 - 16) * cos(rad));
+      int tiy = cy - (int)((arc_height * 2 / 2 - 16) * sin(rad));
+      p.drawLine(QPointF(tx, ty), QPointF(tix, tiy));
 
-    p.setPen(QPen(arc_color, 16));
-    int span = (int)(clamped_angle / max_angle * 90 * 16);
-    int start = 90 * 16 - span;
-    p.drawArc(arc_rect, start, span);
+      // Label: angle value at every 20°
+      if ((deg - 45) % 20 == 0) {
+        int label_angle = (deg - 90) * max_angle / 45;  // map 45-135° to -max_angle..+max_angle
+        int lx = cx + (int)((arc_width / 2 + 8) * cos(rad));
+        int ly = cy - (int)((arc_height * 2 / 2 + 8) * sin(rad));
+        p.setPen(QColor(255, 255, 255, 60));
+        QRect lr(lx - 16, ly - 10, 32, 20);
+        p.drawText(lr, Qt::AlignCenter, QString::number(std::abs(label_angle)));
+      }
+    }
   }
 
-  // Center indicator dot (larger)
+  // Actual angle fill (green when active, gray when manual)
+  {
+    QColor fill_color = is_active ? QColor(0, 220, 100, 240) : QColor(180, 180, 180, 200);
+    if (std::abs(clamped_angle) > 1.f) {
+      p.setPen(QPen(fill_color, 20, Qt::SolidLine, Qt::RoundCap));
+      int span = (int)(clamped_angle / max_angle * 90 * 16);
+      int start = 90 * 16 - span;
+      p.drawArc(arc_rect, start, span);
+    }
+  }
+
+  // Desired angle indicator (diamond marker)
+  if (std::abs(clamped_desired) > 1.f) {
+    double target_rad = (90.0 - clamped_desired / max_angle * 45.0) * M_PI / 180.0;
+    int mx = cx + (int)((arc_width / 2 - 4) * cos(target_rad));
+    int my = cy - (int)((arc_height * 2 / 2 - 4) * sin(target_rad));
+
+    // Diamond shape
+    QPolygon diamond;
+    diamond << QPoint(mx, my - 10)
+            << QPoint(mx + 8, my)
+            << QPoint(mx, my + 10)
+            << QPoint(mx - 8, my);
+    p.setPen(Qt::NoPen);
+    p.setBrush(is_active ? QColor(255, 255, 255, 220) : QColor(200, 200, 200, 180));
+    p.drawPolygon(diamond);
+  }
+
+  // Center dot
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor(255, 255, 255, 180));
-  p.drawEllipse(QPoint(cx, cy), 10, 10);
+  p.setBrush(QColor(255, 255, 255, 200));
+  p.drawEllipse(QPoint(cx, cy), 8, 8);
 
   p.restore();
 }
@@ -615,7 +666,7 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   QString time = (min > 0) ? QString("%1:%2").arg(min).arg(sec, 2, 10, QChar('0'))
                             : QString("%1s").arg(sec);
 
-  const int badge_size = 180;
+  const int badge_size = 570;
   int cx = surface_rect.center().x() + surface_rect.width() / 4;
   int cy = surface_rect.center().y();
 
@@ -626,19 +677,19 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
 
   // Timer icon (⏱)
-  p.setFont(InterFont(48, QFont::Normal));
+  p.setFont(InterFont(152, QFont::Normal));
   p.setPen(QColor(255, 255, 255, 180));
   QFontMetrics icon_fm(p.font());
   QRect icon_rect = icon_fm.boundingRect("⏱");
-  icon_rect.moveCenter(QPoint(cx, cy - 38));
+  icon_rect.moveCenter(QPoint(cx, cy - 120));
   p.drawText(icon_rect, Qt::AlignCenter, "⏱");
 
   // Time text
-  p.setFont(InterFont(56, QFont::Bold));
+  p.setFont(InterFont(176, QFont::Bold));
   p.setPen(QColor(100, 220, 255, 255));
   QFontMetrics fm(p.font());
   QRect time_rect = fm.boundingRect(time);
-  time_rect.moveCenter(QPoint(cx, cy + 35));
+  time_rect.moveCenter(QPoint(cx, cy + 110));
   p.drawText(time_rect, Qt::AlignCenter, time);
 
   p.restore();
