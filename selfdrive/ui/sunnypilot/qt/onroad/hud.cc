@@ -388,7 +388,6 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
   auto drawArrow = [&](int cx, int pointingLeft, float alpha) {
     if (alpha < 0.01f) return;
 
-    int alpha_int = (int)(255 * alpha);
     int dir = pointingLeft ? -1 : 1;
 
     p.save();
