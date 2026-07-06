@@ -499,9 +499,10 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // MICI-style steering arc: gradient color (white→yellow→orange) + smooth filter + dynamic sizing
-  const int arc_width = 700;
-  const int arc_height = 180;
-  const int margin_bottom = 20;
+  // Enlarged ~1.4x for better visibility on C3 display
+  const int arc_width = 1000;
+  const int arc_height = 260;
+  const int margin_bottom = 30;
   const float max_angle = 55.f;
 
   int cx = surface_rect.center().x();
@@ -519,28 +520,28 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.setRenderHint(QPainter::Antialiasing);
 
   // Background arc
-  p.setPen(QPen(QColor(255, 255, 255, 70), 14));
+  p.setPen(QPen(QColor(255, 255, 255, 70), 20));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, 45 * 16, 90 * 16);
 
-  // Tick marks (unchanged from before)
+  // Tick marks
   {
-    p.setPen(QPen(QColor(255, 255, 255, 40), 2));
-    p.setFont(InterFont(16, QFont::Normal));
+    p.setPen(QPen(QColor(255, 255, 255, 40), 3));
+    p.setFont(InterFont(22, QFont::Normal));
     for (int deg = 45; deg <= 135; deg += 10) {
       double rad = deg * M_PI / 180.0;
-      int tx = cx + (int)((arc_width / 2 - 8) * cos(rad));
-      int ty = cy - (int)((arc_height * 2 / 2 - 8) * sin(rad));
-      int tix = cx + (int)((arc_width / 2 - 16) * cos(rad));
-      int tiy = cy - (int)((arc_height * 2 / 2 - 16) * sin(rad));
+      int tx = cx + (int)((arc_width / 2 - 12) * cos(rad));
+      int ty = cy - (int)((arc_height - 12) * sin(rad));
+      int tix = cx + (int)((arc_width / 2 - 24) * cos(rad));
+      int tiy = cy - (int)((arc_height - 24) * sin(rad));
       p.drawLine(QPointF(tx, ty), QPointF(tix, tiy));
 
       if ((deg - 45) % 20 == 0) {
         int label_angle = (deg - 90) * max_angle / 45;
-        int lx = cx + (int)((arc_width / 2 + 8) * cos(rad));
-        int ly = cy - (int)((arc_height * 2 / 2 + 8) * sin(rad));
+        int lx = cx + (int)((arc_width / 2 + 12) * cos(rad));
+        int ly = cy - (int)((arc_height + 12) * sin(rad));
         p.setPen(QColor(255, 255, 255, 60));
-        QRect lr(lx - 16, ly - 10, 32, 20);
+        QRect lr(lx - 22, ly - 14, 44, 28);
         p.drawText(lr, Qt::AlignCenter, QString::number(std::abs(label_angle)));
       }
     }
@@ -563,7 +564,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
 
     if (std::abs(clamped_angle) > 1.f) {
       // MICI-style dynamic line width: expands at high angles
-      float pen_width = 16.0f + abs_ratio * 8.0f;
+      float pen_width = 22.0f + abs_ratio * 12.0f;
       p.setPen(QPen(fill_color, pen_width, Qt::SolidLine, Qt::RoundCap));
       // The background arc spans 90° total (45° each side). Scale steering so
       // max_angle reaches the edge instead of doubling past it and going off-screen.
@@ -575,14 +576,14 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // Desired angle indicator (diamond marker, using smoothed value)
   if (std::abs(clamped_desired) > 1.f) {
     double target_rad = (90.0 - clamped_desired / max_angle * 45.0) * M_PI / 180.0;
-    int mx = cx + (int)((arc_width / 2 - 4) * cos(target_rad));
-    int my = cy - (int)((arc_height * 2 / 2 - 4) * sin(target_rad));
+    int mx = cx + (int)((arc_width / 2 - 6) * cos(target_rad));
+    int my = cy - (int)((arc_height - 6) * sin(target_rad));
 
     QPolygon diamond;
-    diamond << QPoint(mx, my - 10)
-            << QPoint(mx + 8, my)
-            << QPoint(mx, my + 10)
-            << QPoint(mx - 8, my);
+    diamond << QPoint(mx, my - 14)
+            << QPoint(mx + 11, my)
+            << QPoint(mx, my + 14)
+            << QPoint(mx - 11, my);
     p.setPen(Qt::NoPen);
     p.setBrush(is_active ? QColor(255, 255, 255, 220) : QColor(200, 200, 200, 180));
     p.drawPolygon(diamond);
@@ -591,7 +592,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // Center dot
   p.setPen(Qt::NoPen);
   p.setBrush(QColor(255, 255, 255, 200));
-  p.drawEllipse(QPoint(cx, cy), 8, 8);
+  p.drawEllipse(QPoint(cx, cy), 12, 12);
 
   p.restore();
 }
