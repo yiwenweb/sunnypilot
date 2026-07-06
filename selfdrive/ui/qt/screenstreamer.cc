@@ -120,33 +120,35 @@ void ScreenStreamer::serveTouch(QTcpSocket *socket, const QString &request) {
   serveJson(socket, "{\"ok\":true}");
 }
 
+void ScreenStreamer::setTargetWidget(QWidget *w) {
+  targetWidget_ = w;
+}
+
 void ScreenStreamer::injectTouchEvent(int x, int y, bool pressed) {
-  QWidget *target = QApplication::activeWindow();
-  if (!target) return;
+  if (!targetWidget_) return;
 
   QPointF pos(x, y);
   if (pressed) {
     QMouseEvent *event = new QMouseEvent(
         QEvent::MouseButtonPress, pos,
         Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QApplication::postEvent(target, event);
+    QApplication::postEvent(targetWidget_, event);
   } else {
     QMouseEvent *event = new QMouseEvent(
         QEvent::MouseButtonRelease, pos,
         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-    QApplication::postEvent(target, event);
+    QApplication::postEvent(targetWidget_, event);
   }
 }
 
 void ScreenStreamer::injectMouseMove(int x, int y) {
-  QWidget *target = QApplication::activeWindow();
-  if (!target) return;
+  if (!targetWidget_) return;
 
   QPointF pos(x, y);
   QMouseEvent *event = new QMouseEvent(
       QEvent::MouseMove, pos,
       Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
-  QApplication::postEvent(target, event);
+  QApplication::postEvent(targetWidget_, event);
 }
 
 // ========== 开关切换 ==========
@@ -294,22 +296,24 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "  fetch('/touch?x='+x+'&y='+y+'&action='+action).catch(function(){});\n"
     "}\n"
     "\n"
-    "area.addEventListener('pointerdown',function(e){\n"
+    "img.addEventListener('pointerdown',function(e){\n"
     "  e.preventDefault();\n"
     "  var c=toC3Coords(e.clientX,e.clientY);\n"
-    "  showTouch(e.clientX-area.getBoundingClientRect().left+area.scrollLeft,"
-    "           e.clientY-area.getBoundingClientRect().top+area.scrollTop,true);\n"
+    "  var ar=area.getBoundingClientRect();\n"
+    "  showTouch(e.clientX-ar.left+area.scrollLeft,"
+    "           e.clientY-ar.top+area.scrollTop,true);\n"
     "  sendTouch(c.x,c.y,'press');\n"
     "  touchDown=true; touchStartTime=Date.now();\n"
     "  img.setPointerCapture(e.pointerId);\n"
     "},{passive:false});\n"
     "\n"
-    "area.addEventListener('pointermove',function(e){\n"
+    "img.addEventListener('pointermove',function(e){\n"
     "  if(!touchDown) return;\n"
     "  e.preventDefault();\n"
     "  var c=toC3Coords(e.clientX,e.clientY);\n"
-    "  showTouch(e.clientX-area.getBoundingClientRect().left+area.scrollLeft,"
-    "           e.clientY-area.getBoundingClientRect().top+area.scrollTop,true);\n"
+    "  var ar=area.getBoundingClientRect();\n"
+    "  showTouch(e.clientX-ar.left+area.scrollLeft,"
+    "           e.clientY-ar.top+area.scrollTop,true);\n"
     "  sendTouch(c.x,c.y,'move');\n"
     "},{passive:false});\n"
     "\n"
@@ -319,9 +323,9 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "  sendTouch(c.x,c.y,'release');\n"
     "  touchDown=false;\n"
     "}\n"
-    "area.addEventListener('pointerup',touchEnd);\n"
-    "area.addEventListener('pointercancel',touchEnd);\n"
-    "area.addEventListener('pointerleave',touchEnd);\n"
+    "img.addEventListener('pointerup',touchEnd);\n"
+    "img.addEventListener('pointercancel',touchEnd);\n"
+    "img.addEventListener('pointerleave',touchEnd);\n"
     "</script>\n"
     "</body>\n"
     "</html>\n";

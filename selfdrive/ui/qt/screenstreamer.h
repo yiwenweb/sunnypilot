@@ -22,6 +22,8 @@
 #include <QByteArray>
 #include <QAtomicInt>
 
+class QWidget;
+
 class ScreenStreamer : public QObject {
   Q_OBJECT
 
@@ -34,6 +36,7 @@ public:
   Q_INVOKABLE void setLatestFrame(const QByteArray &jpegData);
   Q_INVOKABLE void setEnabled(bool en);
   Q_INVOKABLE bool isEnabled() const;
+  Q_INVOKABLE void setTargetWidget(QWidget *w);
 
 private slots:
   void onNewConnection();
@@ -53,6 +56,7 @@ private:
   QByteArray latestFrameJpeg;
   int port_ = 8083;
   QAtomicInt enabled_{1};  // 默认开启
+  QWidget *targetWidget_ = nullptr;  // 主线程 widget，用于触控注入
 
   // 统计信息
   int frameCount_ = 0;
