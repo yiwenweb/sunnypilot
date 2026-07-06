@@ -74,7 +74,8 @@ void ScreenStreamer::onNewConnection() {
 }
 
 void ScreenStreamer::serveHtml(QTcpSocket *socket) {
-  // 返回一个 HTML 页面，用 JavaScript 每 120ms 轮询 /frame.jpg
+  // 返回一个 HTML 页面，用 JavaScript 轮询 /frame.jpg
+  // 针对移动端竖屏查看横屏 C3 画面的场景做了适配
   static const char *html =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html; charset=utf-8\r\n"
@@ -83,19 +84,54 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "Access-Control-Allow-Origin: *\r\n"
     "\r\n"
     "<!DOCTYPE html>\n"
-    "<html><head>\n"
+    "<html lang=\"zh\">\n"
+    "<head>\n"
+    "<meta charset=\"UTF-8\">\n"
     "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no\">\n"
-    "<style>html,body{margin:0;padding:0;background:#000;overflow:hidden;"
-    "display:flex;align-items:center;justify-content:center;height:100vh;width:100vw}\n"
-    "img{max-width:100%;max-height:100vh;object-fit:contain}</style>\n"
-    "</head><body>\n"
-    "<img id=\"f\" src=\"/frame.jpg\">\n"
+    "<style>\n"
+    "*{margin:0;padding:0;box-sizing:border-box}\n"
+    "html,body{width:100%;height:100%;overflow:hidden;"
+    "background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,sans-serif}\n"
+    ".wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;"
+    "width:100%;height:100%;position:relative}\n"
+    ".img-area{flex:1;display:flex;align-items:center;justify-content:center;"
+    "width:100%;overflow:hidden;position:relative}\n"
+    "#f{max-width:100%;max-height:100%;object-fit:contain;"
+    "opacity:0;transition:opacity .15s ease}\n"
+    "#f.loaded{opacity:1}\n"
+    ".status{position:absolute;bottom:8px;right:12px;"
+    "color:#475569;font-size:11px;letter-spacing:.5px;pointer-events:none}\n"
+    ".loader{position:absolute;width:28px;height:28px;border:2.5px solid #1e293b;"
+    "border-top-color:#0d9488;border-radius:50%;animation:spin .7s linear infinite}\n"
+    "@keyframes spin{to{transform:rotate(360deg)}}\n"
+    "</style>\n"
+    "</head>\n"
+    "<body>\n"
+    "<div class=\"wrap\">\n"
+    "<div class=\"img-area\">\n"
+    "<div class=\"loader\" id=\"ld\"></div>\n"
+    "<img id=\"f\" src=\"/frame.jpg\" onload=\"this.classList.add('loaded');"
+    "document.getElementById('ld').style.display='none'\">\n"
+    "<div class=\"status\" id=\"st\">C3 LIVE</div>\n"
+    "</div>\n"
+    "</div>\n"
     "<script>\n"
-    "var t=120;\n"
-    "function r(){document.getElementById('f').src='/frame.jpg?_='+Date.now()}\n"
+    "var t=150;\n"
+    "function r(){\n"
+    "var n=new Image();\n"
+    "n.onload=function(){\n"
+    "var f=document.getElementById('f');f.src=n.src;\n"
+    "document.getElementById('st').textContent='C3 LIVE';\n"
+    "};\n"
+    "n.onerror=function(){\n"
+    "document.getElementById('st').textContent='WAITING...';\n"
+    "};\n"
+    "n.src='/frame.jpg?_='+Date.now();\n"
+    "}\n"
     "setInterval(r,t);\n"
     "</script>\n"
-    "</body></html>\n";
+    "</body>\n"
+    "</html>\n";
 
   socket->write(html);
   socket->disconnectFromHost();
