@@ -98,13 +98,6 @@ DevicePanelSP::DevicePanelSP(SettingsWindowSP *parent) : DevicePanel(parent) {
   });
 
   addItem(interactivityTimeout);
-
-  // Screen Stream (视频预览) 开关
-  screenStreamToggle = new ParamControlSP("ScreenStreamEnabled", tr("屏幕实时流"),
-                                          tr("启用后，可通过 Android App 远程查看 C3 屏幕并进行触控操作。\n"
-                                             "关闭可节省 C3 性能，停止视频编码和网络传输。"),
-                                          "", this);
-  addItem(screenStreamToggle);
   
   // Brightness
   brightness = new Brightness();
