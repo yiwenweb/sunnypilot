@@ -91,7 +91,7 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "<style>\n"
     "*{margin:0;padding:0;box-sizing:border-box}\n"
     "html,body{width:100%;height:100%;overflow:hidden;"
-    "background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,sans-serif}\n"
+    "background:#1a1a2e;font-family:-apple-system,BlinkMacSystemFont,sans-serif}\n"
     ".wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;"
     "width:100%;height:100%;position:relative}\n"
     ".img-area{flex:1;display:flex;align-items:center;justify-content:center;"
