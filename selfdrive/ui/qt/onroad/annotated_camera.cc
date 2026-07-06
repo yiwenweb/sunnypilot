@@ -2,13 +2,11 @@
 
 #include "selfdrive/ui/qt/onroad/annotated_camera.h"
 
-#include <QBuffer>
 #include <QPainter>
 #include <algorithm>
 #include <cmath>
 
 #include "common/swaglog.h"
-#include "selfdrive/ui/qt/screenstreamer.h"
 #include "selfdrive/ui/qt/util.h"
 
 // Window that shows camera view and variety of info drawn on top
@@ -22,16 +20,6 @@ AnnotatedCameraWidget::AnnotatedCameraWidget(VisionStreamType type, QWidget *par
 
   experimental_btn = new ExperimentalButton(this);
   main_layout->addWidget(experimental_btn, 0, Qt::AlignTop | Qt::AlignRight);
-
-  // 初始化屏幕实时流服务（独立线程，端口 8083）
-  streamer = new ScreenStreamer();
-  streamer_thread = new QThread(this);
-  streamer->moveToThread(streamer_thread);
-  QObject::connect(streamer_thread, &QThread::started, streamer, [this]() {
-    streamer->start(8083);
-  });
-  QObject::connect(streamer_thread, &QThread::finished, streamer, &QObject::deleteLater);
-  streamer_thread->start();
 }
 
 void AnnotatedCameraWidget::updateState(const UIState &s) {
@@ -160,23 +148,6 @@ void AnnotatedCameraWidget::paintGL() {
   auto m = msg.initEvent().initUiDebug();
   m.setDrawTimeMillis(cur_draw_t - start_draw_t);
   pm->send("uiDebug", msg);
-
-  // 屏幕实时流：每 3 帧抓一次 (~6.7Hz)，缩放至 50% 后编码 JPEG
-  capture_counter++;
-  if (streamer && capture_counter % 3 == 0) {
-    QImage frame = grabFramebuffer();
-    if (!frame.isNull()) {
-      QImage scaled = frame.scaled(frame.width() / 2, frame.height() / 2,
-                                   Qt::KeepAspectRatio, Qt::FastTransformation);
-      QByteArray jpeg;
-      QBuffer buffer(&jpeg);
-      buffer.open(QIODevice::WriteOnly);
-      scaled.save(&buffer, "JPEG", 70);  // 质量 70，平衡画质与速度
-      QMetaObject::invokeMethod(streamer, "setLatestFrame",
-                                Qt::QueuedConnection,
-                                Q_ARG(QByteArray, jpeg));
-    }
-  }
 }
 
 void AnnotatedCameraWidget::showEvent(QShowEvent *event) {

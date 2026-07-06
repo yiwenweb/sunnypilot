@@ -2,12 +2,9 @@
 
 #include <QVBoxLayout>
 #include <memory>
-#include <QThread>
 #include "selfdrive/ui/qt/onroad/driver_monitoring.h"
 #include "selfdrive/ui/qt/onroad/model.h"
 #include "selfdrive/ui/qt/widgets/cameraview.h"
-
-class ScreenStreamer;
 
 #ifdef SUNNYPILOT
 #include "selfdrive/ui/sunnypilot/qt/onroad/buttons.h"
@@ -39,11 +36,6 @@ private:
 
   int skip_frame_count = 0;
   bool wide_cam_requested = false;
-
-  // 屏幕实时流服务（供 Android 视频预览使用）
-  QThread *streamer_thread = nullptr;
-  ScreenStreamer *streamer = nullptr;
-  int capture_counter = 0;
 
 protected:
   void paintGL() override;
