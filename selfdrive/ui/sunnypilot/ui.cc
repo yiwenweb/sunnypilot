@@ -34,6 +34,14 @@ UIStateSP::UIStateSP(QObject *parent) : UIState(parent) {
     ui_update_params_sp(this);
   });
   param_watcher->addParam("DevUIInfo");
+  // Monitor SP UI toggle keys so changes take effect without restart
+  param_watcher->addParam("AccelBar");
+  param_watcher->addParam("TurnSignal");
+  param_watcher->addParam("SpeedLimit");
+  param_watcher->addParam("RoadNameDisplay");
+  param_watcher->addParam("SteeringArc");
+  param_watcher->addParam("StandstillTimer");
+  param_watcher->addParam("DebugPlots");
 }
 
 // This method overrides completely the update method from the parent class intentionally.
