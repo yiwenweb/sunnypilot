@@ -9,6 +9,7 @@
 
 #include <QBuffer>
 #include <QPixmap>
+#include "common/params.h"
 #include "selfdrive/ui/qt/screenstreamer.h"
 
 MainWindowSP::MainWindowSP(QWidget *parent)
@@ -52,6 +53,15 @@ void MainWindowSP::closeSettings() {
 
 void MainWindowSP::captureAndSendFrame() {
   if (!streamer || !isVisible()) return;
+
+  // 同步 ScreenStreamEnabled 参数到 streamer 开关状态
+  bool paramEnabled = Params().getBool("ScreenStreamEnabled");
+  if (paramEnabled != streamer->isEnabled()) {
+    QMetaObject::invokeMethod(streamer, "setEnabled",
+                              Qt::QueuedConnection, Q_ARG(bool, paramEnabled));
+  }
+
+  if (!streamer->isEnabled()) return;
 
   QPixmap screenshot = grab();
   if (screenshot.isNull()) return;

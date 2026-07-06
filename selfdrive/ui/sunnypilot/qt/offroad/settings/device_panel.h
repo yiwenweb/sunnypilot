@@ -34,6 +34,7 @@ private:
   ButtonParamControlSP *toggleDeviceBootMode;
   Brightness *brightness;
   OptionControlSP *interactivityTimeout;
+  ParamControlSP *screenStreamToggle;
 
   const QString alwaysOffroadStyle = R"(
     PushButtonSP {
