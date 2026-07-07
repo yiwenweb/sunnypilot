@@ -242,7 +242,7 @@ void ScreenStreamer::injectTouchEvent(int x, int y, bool pressed) {
   if (!actualWidget) actualWidget = targetWidget_;
 
   // 转换为子控件的本地坐标
-  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPointF(x, y));
+  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPoint(x, y));
 
   if (pressed) {
     QMouseEvent *event = new QMouseEvent(
@@ -263,7 +263,7 @@ void ScreenStreamer::injectMouseMove(int x, int y) {
   QWidget *actualWidget = targetWidget_->childAt(x, y);
   if (!actualWidget) actualWidget = targetWidget_;
 
-  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPointF(x, y));
+  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPoint(x, y));
 
   QMouseEvent *event = new QMouseEvent(
       QEvent::MouseMove, localPos,
