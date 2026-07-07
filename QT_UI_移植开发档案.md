@@ -349,6 +349,7 @@ UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" 
 | 2026-07-04 | **AccelBar 底部加减速横条** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `visuals_panel.cc` | ✅ 代码完成 |
 | 2026-07-04 | **SP Features 设置面板** | `sunny_features_panel.h/cc`(新建) `settings.cc` `SConscript` `icon_sunny_features.svg`(新建) | ✅ 代码完成 |
 | 2026-07-04 | **修复 onroad 崩溃** | `ui.cc` 订阅列表 +`liveMapDataSP` | ✅ 已修复 |
+| 2026-07-07 | **屏幕实时流（ScreenStreaming）** | `screenstreamer.h/cc` `window.h/cc` `sunny_features_panel.cc` | ✅ 已完成 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单
@@ -368,6 +369,86 @@ UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" 
   selfdrive/ui/sunnypilot/qt/offroad/settings/sunny_features_panel.h   # 新面板头文件
   selfdrive/ui/sunnypilot/qt/offroad/settings/sunny_features_panel.cc  # 新面板实现
   sunnypilot/selfdrive/assets/offroad/icon_sunny_features.svg          # 新面板图标
+```
+
+---
+
+### ScreenStreaming 屏幕实时流完整实现
+
+#### 功能概述
+
+在 C3 Qt UI 中嵌入轻量 HTTP 服务器，将 C3 屏幕实时推送到 Android App 的 WebView 中显示，
+并支持反向触控（在手机上点击 → 注入到 C3 UI）。
+
+#### 架构
+
+```
+MainWindowSP (主线程)                    ScreenStreamer (独立 QThread :8083)
+     │                                        │
+     ├─ QScreen::grabWindow(0)                ├─ /stream    MJPEG 流推送（multipart/x-mixed-replace）
+     ├─ scale 960×540                         ├─ /frame.jpg 单帧 JPEG（向后兼容）
+     ├─ QPixmap::save(JPEG)                   ├─ /touch     反向触控注入
+     └─ setLatestFrame(jpeg) ──────────→      ├─ /status    状态查询
+                                              └─ /toggle    开关切换
+
+WebView (Android App):
+  <img src="http://C3_IP:8083/stream">  ← MJPEG 长连接，零 JS 轮询开销
+```
+
+#### 文件清单
+
+```
+修改：
+  selfdrive/ui/qt/screenstreamer.h          # HTTP 服务头文件（MJPEG客户端管理 + 触控注入）
+  selfdrive/ui/qt/screenstreamer.cc         # HTTP 服务实现（/stream /touch /status /frame.jpg）
+  selfdrive/ui/sunnypilot/qt/window.h       # +streamer/streamer_thread/capture_timer 成员
+  selfdrive/ui/sunnypilot/qt/window.cc      # 初始化 ScreenStreamer + 定时抓帧 + 空闲检测
+  selfdrive/ui/sunnypilot/qt/offroad/settings/sunny_features_panel.cc  # ScreenStreamEnabled 开关
+  selfdrive/ui/SConscript                   # +screenstreamer.cc 编译
+```
+
+#### 关键技术点
+
+**1. MJPEG 流推送（`/stream`）**
+- 替代 JS 轮询，浏览器原生 `<img>` 直接接收 `multipart/x-mixed-replace` 流
+- 服务端长连接，每帧自动推送，无需 HTTP 请求开销
+- `pushToAllStreamClients()` 遍历 `streamClients_` QSet，断线自动清理
+
+**2. 反向触控（`childAt` 修复）**
+- HTML 端：`pointerdown/move/up` → `toC3()` 坐标映射（手机像素→C3 1920×1080）
+- C++ 端：`childAt(x,y)` 递归找到坐标下的实际子控件 + `mapFrom()` 坐标转换
+- **关键修复**：不能直接用 `postEvent(targetWidget_, ...)`，必须找到子控件并用 `sendEvent(child, ...)`
+- 之前版本因 `QApplication::activeWindow()` 在 worker 线程返回 nullptr，改为存储 `targetWidget_` 指针
+
+**3. 空闲检测**
+- `lastClientTime_` 记录最后一次 HTTP 请求时间
+- 主线程 300ms 定时器检查：超过 3 秒无客户端 → 跳过 `grabWindow(0)`，零开销
+- 客户端重连后自动恢复
+
+**4. 性能参数**
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 抓帧间隔 | 300ms | ~3.3fps |
+| 分辨率 | 960×540 | C3 1920×1080 的 50% |
+| JPEG 质量 | 70 | 清晰度与文件大小平衡 |
+| 空闲超时 | 3s | 无客户端时自动暂停 |
+| 端口 | 8083 | HTTP 服务端口 |
+
+**5. 已知局限**
+- `grabWindow(0)` 底层走 `eglReadPixels`，Adreno 630 移动 GPU 下约 40-60ms/帧，无法突破
+- V4L2 硬件 JPEG 编码器（骁龙 845 Venus）经评估无实际价值（省 3ms 但有额外开销），已移除
+- 需确保 C3 防火墙放行 8083 端口：`sudo nft add rule ip filter INPUT tcp dport 8083 accept`
+
+#### 使用方式
+
+```bash
+# C3 开启服务（设置 → SP Features → 屏幕实时流）
+# 手机浏览器或 App WebView 访问：
+http://<C3_IP>:8083
+
+# 调试命令
+curl http://<C3_IP>:8083/status   # 查看状态
+curl http://<C3_IP>:8083/toggle   # 切换开关
 ```
 
 ---
