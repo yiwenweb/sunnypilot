@@ -28,9 +28,8 @@ MainWindowSP::MainWindowSP(QWidget *parent)
   homeWindow = dynamic_cast<HomeWindowSP *>(MainWindow::homeWindow);
   settingsWindow = dynamic_cast<SettingsWindowSP *>(MainWindow::settingsWindow);
 
-  // 初始化屏幕实时流服务（独立线程，端口 8083）
+  // 初始化屏幕实时流服务（独立线程，端口 8083，只读预览）
   streamer = new ScreenStreamer();
-  streamer->setTargetWidget(this);
   streamer_thread = new QThread(this);
   streamer->moveToThread(streamer_thread);
   QObject::connect(streamer_thread, &QThread::started, streamer, [this]() {

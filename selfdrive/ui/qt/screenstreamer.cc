@@ -1,23 +1,17 @@
 /**
- * screenstreamer.cc - 屏幕实时流服务实现
+ * screenstreamer.cc - 屏幕实时流服务实现（只读预览）
  *
  * HTTP 端点：
- *   GET /              返回 HTML 页面（触控 + MJPEG 流）
+ *   GET /              返回 HTML 页面（只读 MJPEG 预览）
  *   GET /stream         MJPEG 流推送（multipart/x-mixed-replace，长连接）
  *   GET /frame.jpg     返回最新 JPEG 截图（向后兼容）
- *   GET /touch?x=X&y=Y&action=press|release|move  反向触控注入
  *   GET /toggle        切换开关状态
  *   GET /status        返回 JSON 状态信息
  */
 
 #include "selfdrive/ui/qt/screenstreamer.h"
 
-#include <QApplication>
 #include <QDateTime>
-#include <QMouseEvent>
-#include <QUrl>
-#include <QUrlQuery>
-#include <QWidget>
 
 ScreenStreamer::ScreenStreamer(QObject *parent)
     : QObject(parent) {}
@@ -190,8 +184,6 @@ void ScreenStreamer::onNewConnection() {
         serveMJPEGStream(socket);
       } else if (request.startsWith("GET /frame.jpg")) {
         serveFrameJpeg(socket);
-      } else if (request.startsWith("GET /touch")) {
-        serveTouch(socket, request);
       } else if (request.startsWith("GET /toggle")) {
         serveToggle(socket);
       } else if (request.startsWith("GET /status")) {
@@ -203,76 +195,6 @@ void ScreenStreamer::onNewConnection() {
       }
     });
   }
-}
-
-// ========== 触控注入 ==========
-
-void ScreenStreamer::serveTouch(QTcpSocket *socket, const QString &request) {
-  QString path = request.section(' ', 1, 1);
-  QUrl url("http://localhost" + path);
-  QUrlQuery query(url);
-
-  int x = query.queryItemValue("x").toInt();
-  int y = query.queryItemValue("y").toInt();
-  QString action = query.queryItemValue("action");
-
-  if (action == "press") {
-    injectTouchEvent(x, y, true);
-  } else if (action == "release") {
-    injectTouchEvent(x, y, false);
-  } else if (action == "move") {
-    injectMouseMove(x, y);
-  }
-
-  serveJson(socket, "{\"ok\":true}");
-}
-
-void ScreenStreamer::setTargetWidget(QWidget *w) {
-  targetWidget_ = w;
-}
-
-void ScreenStreamer::injectTouchEvent(int x, int y, bool pressed) {
-  QWidget *target = targetWidget_;
-  if (!target) return;
-
-  // 跨线程安全：通过 invokeMethod 把事件派发切到主线程（target 所在线程）执行。
-  // 1) 不能在工作线程直接 sendEvent 给主线程 widget（UB，可能崩溃或事件丢失）；
-  // 2) 不能用 new QMouseEvent + sendEvent（sendEvent 不释放 event，会内存泄漏）；
-  //    改用栈对象，lambda 结束自动析构。
-  QMetaObject::invokeMethod(target, [target, x, y, pressed]() {
-    QWidget *actualWidget = target->childAt(x, y);
-    if (!actualWidget) actualWidget = target;
-
-    QPointF localPos = actualWidget->mapFrom(target, QPoint(x, y));
-
-    QMouseEvent event(
-        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
-        localPos, localPos,
-        Qt::LeftButton,
-        pressed ? Qt::LeftButton : Qt::NoButton,
-        Qt::NoModifier);
-    QApplication::sendEvent(actualWidget, &event);
-  }, Qt::QueuedConnection);
-}
-
-void ScreenStreamer::injectMouseMove(int x, int y) {
-  QWidget *target = targetWidget_;
-  if (!target) return;
-
-  QMetaObject::invokeMethod(target, [target, x, y]() {
-    QWidget *actualWidget = target->childAt(x, y);
-    if (!actualWidget) actualWidget = target;
-
-    QPointF localPos = actualWidget->mapFrom(target, QPoint(x, y));
-
-    QMouseEvent event(
-        QEvent::MouseMove,
-        localPos, localPos,
-        Qt::NoButton,
-        Qt::LeftButton,
-        Qt::NoModifier);
-    QApplication::sendEvent(actualWidget, &event);
-  }, Qt::QueuedConnection);
 }
 
 int ScreenStreamer::streamClientCount() {
@@ -327,7 +249,7 @@ void ScreenStreamer::serveJson(QTcpSocket *socket, const QString &json) {
   socket->disconnectFromHost();
 }
 
-// ========== HTML 页面（MJPEG 流 + 触控） ==========
+// ========== HTML 页面（只读 MJPEG 预览） ==========
 
 void ScreenStreamer::serveHtml(QTcpSocket *socket) {
   static const char *html =
@@ -345,18 +267,13 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "<style>\n"
     "*{margin:0;padding:0;box-sizing:border-box}\n"
     "html,body{width:100%;height:100%;overflow:hidden;"
-    "background:#1a1a2e;touch-action:none;-webkit-user-select:none;user-select:none}\n"
+    "background:#1a1a2e;-webkit-user-select:none;user-select:none}\n"
     ".wrap{display:flex;align-items:center;justify-content:center;"
     "width:100%;height:100%;position:relative}\n"
-    "#f{max-width:100%;max-height:100%;object-fit:contain;"
-    "touch-action:none;pointer-events:auto}\n"
+    "#f{max-width:100%;max-height:100%;object-fit:contain}\n"
     ".loader{position:absolute;width:28px;height:28px;border:2.5px solid #1e293b;"
     "border-top-color:#0d9488;border-radius:50%;animation:spin .7s linear infinite}\n"
     "@keyframes spin{to{transform:rotate(360deg)}}\n"
-    ".touch-indicator{position:absolute;width:20px;height:20px;border-radius:50%;"
-    "background:rgba(13,148,136,.4);border:2px solid #0d9488;pointer-events:none;"
-    "transform:translate(-50%,-50%);opacity:0;transition:opacity .2s}\n"
-    ".touch-indicator.active{opacity:1}\n"
     "</style>\n"
     "</head>\n"
     "<body>\n"
@@ -364,55 +281,7 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "<div class=\"loader\" id=\"ld\"></div>\n"
     "<img id=\"f\" src=\"/stream\" onload=\"this.style.display='';"
     "document.getElementById('ld').style.display='none'\" style=\"display:none\">\n"
-    "<div class=\"touch-indicator\" id=\"ti\"></div>\n"
     "</div>\n"
-    "<script>\n"
-    "var C3_W=1920,C3_H=1080;\n"
-    "var touchDown=false,lastMove=0,img=document.getElementById('f'),ti=document.getElementById('ti');\n"
-    "\n"
-    "// ===== 触控处理 =====\n"
-    "function toC3(cx,cy){\n"
-    "  var r=img.getBoundingClientRect();\n"
-    "  return{x:Math.round((cx-r.left)/r.width*C3_W),"
-    "          y:Math.round((cy-r.top)/r.height*C3_H)};\n"
-    "}\n"
-    "function showTouch(cx,cy,show){\n"
-    "  var r=document.getElementById('wrap').getBoundingClientRect();\n"
-    "  ti.style.left=(cx-r.left)+'px';ti.style.top=(cy-r.top)+'px';\n"
-    "  ti.className='touch-indicator'+(show?' active':'');\n"
-    "}\n"
-    "function sendTouch(x,y,action){\n"
-    "  fetch('/touch?x='+x+'&y='+y+'&action='+action).catch(function(){});\n"
-    "}\n"
-    "img.addEventListener('pointerdown',function(e){\n"
-    "  e.preventDefault();\n"
-    "  var c=toC3(e.clientX,e.clientY);\n"
-    "  showTouch(e.clientX,e.clientY,true);\n"
-    "  sendTouch(c.x,c.y,'press');\n"
-    "  touchDown=true;\n"
-    "  img.setPointerCapture(e.pointerId);\n"
-    "},{passive:false});\n"
-    "img.addEventListener('pointermove',function(e){\n"
-    "  if(!touchDown) return;\n"
-    "  var now=Date.now();\n"
-    "  if(now-lastMove<50) return;\n"
-    "  lastMove=now;\n"
-    "  e.preventDefault();\n"
-    "  var c=toC3(e.clientX,e.clientY);\n"
-    "  showTouch(e.clientX,e.clientY,true);\n"
-    "  sendTouch(c.x,c.y,'move');\n"
-    "},{passive:false});\n"
-    "function up(e){\n"
-    "  if(!touchDown) return;\n"
-    "  var c=toC3(e.clientX,e.clientY);\n"
-    "  showTouch(0,0,false);\n"
-    "  sendTouch(c.x,c.y,'release');\n"
-    "  touchDown=false;\n"
-    "}\n"
-    "img.addEventListener('pointerup',up);\n"
-    "img.addEventListener('pointercancel',up);\n"
-    "img.addEventListener('pointerleave',up);\n"
-    "</script>\n"
     "</body>\n"
     "</html>\n";
 

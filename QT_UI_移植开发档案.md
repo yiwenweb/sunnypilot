@@ -350,6 +350,8 @@ UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" 
 | 2026-07-04 | **SP Features 设置面板** | `sunny_features_panel.h/cc`(新建) `settings.cc` `SConscript` `icon_sunny_features.svg`(新建) | ✅ 代码完成 |
 | 2026-07-04 | **修复 onroad 崩溃** | `ui.cc` 订阅列表 +`liveMapDataSP` | ✅ 已修复 |
 | 2026-07-07 | **屏幕实时流（ScreenStreaming）** | `screenstreamer.h/cc` `window.h/cc` `sunny_features_panel.cc` | ✅ 已完成 |
+| 2026-07-08 | **删除反向触控（改为只读预览）** | `screenstreamer.h/cc` `window.cc` | ✅ 已完成 |
+| 2026-07-08 | **摄像头流（WebRTC 硬件编码）** | `process_config.py` `params_keys.h` `sunny_features_panel.cc` + App 端 | ✅ 已完成 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单
@@ -449,6 +451,65 @@ http://<C3_IP>:8083
 # 调试命令
 curl http://<C3_IP>:8083/status   # 查看状态
 curl http://<C3_IP>:8083/toggle   # 切换开关
+```
+
+> [!NOTE]
+> **2026-07-08 更新**：反向触控已删除，ScreenStreaming 现为只读预览。
+> 原因：Wayland 下 `grabWindow(0)` 抓不到摄像头图层（`size:0`），且触控注入复杂度高。
+> 现改为「屏幕预览用 ScreenStream（offroad UI），摄像头用 WebRTC（onroad 路况）」双方案并存。
+
+---
+
+### WebRTC 摄像头流（路线 B，硬件编码）
+
+#### 为什么选它
+- 复用 openpilot 官方 `stream_encoderd`（骁龙 845 Venus **硬件 H264 编码**）+ `webrtcd`，几乎零 CPU/GPU 开销
+- 满足「不影响 C3 性能」的硬约束
+- 取舍：**只有摄像头画面，无 HUD/路径/按钮叠加**；仅 onroad 可用
+
+#### 链路
+```
+camerad → VisionIPC → stream_encoderd(V4L硬编H264)
+  → livestreamRoadEncodeData → webrtcd(:5001) → WebRTC → Android App
+```
+
+#### C3 端改动
+```
+system/manager/process_config.py   # +webrtc_stream() 门控函数
+                                   # stream_encoderd/webrtcd 启用条件 notcar → or_(notcar, webrtc_stream)
+common/params_keys.h               # +WebrtcStreamEnabled (PERSISTENT|BACKUP, 默认0)
+sunny_features_panel.cc            # +「摄像头实时流（WebRTC）」开关
+```
+
+- **门控逻辑**：`webrtc_stream = started and params.getBool("WebrtcStreamEnabled")`
+  - 仅 onroad + 用户显式开启才拉起编码器/webrtcd，默认关闭省电
+  - `WebrtcStreamEnabled` 是 `PERSISTENT | BACKUP`，**重启后自动保持上次状态**
+- SP Features 面板的 toggle 会读回该参数，UI 与进程管理器共用同一参数
+
+#### 握手协议（webrtcd, 端口 5001）
+```
+POST http://<C3_IP>:5001/stream
+body: {"sdp": <offer>, "cameras": ["road"], "bridge_services_in": [], "bridge_services_out": []}
+resp: {"sdp": <answer>, "type": "answer"}
+```
+- 摄像头名：`road`(前视) / `wideRoad`(广角) / `driver`(驾驶员)
+- App 端只收视频（recvonly），不需要摄像头权限
+
+#### App 端改动（sunnypilot-android）
+```
+data/repository/VideoStreamRepository.kt   # 新建：SSH 写 WebrtcStreamEnabled 参数
+ui/util/WebrtcHtml.kt                       # 新建：WebView 内嵌 WebRTC 握手页面（零原生依赖）
+ui/screens/VideoScreen.kt                   # 重写：查看方式选择器（屏幕预览/摄像头流）
+```
+- **零新增依赖**：Android WebView 原生支持 `RTCPeerConnection`，不引入 `org.webrtc`
+- 切到「摄像头流」自动开 `WebrtcStreamEnabled`；切回「屏幕预览」或离开页面自动关（省电）
+
+#### 调试
+```bash
+# 确认 onroad 且参数已开时进程在跑
+ps -A | grep -E 'stream_encoderd|webrtcd'
+# 测试握手端点是否响应
+curl http://<C3_IP>:5001/stream -X POST -H 'Content-Type: application/json' -d '{}'
 ```
 
 ---

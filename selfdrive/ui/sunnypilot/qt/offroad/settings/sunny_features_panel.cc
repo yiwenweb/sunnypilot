@@ -73,7 +73,14 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
     {
       "ScreenStreamEnabled",
       tr("屏幕实时流"),
-      tr("启用后，可通过 Android App 远程查看 C3 屏幕并进行触控操作。关闭可节省 C3 性能，停止视频编码和网络传输。"),
+      tr("启用后，可通过 Android App 远程查看 C3 屏幕（offroad 界面预览）。关闭可节省 C3 性能，停止屏幕截图和网络传输。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
+    {
+      "WebrtcStreamEnabled",
+      tr("摄像头实时流（WebRTC）"),
+      tr("启用后，行车时可通过 Android App 观看前置摄像头实时画面（H264 硬件编码，几乎不占用性能）。仅在车辆启动（onroad）时生效，不含 HUD 叠加。"),
       "../assets/offroad/icon_monitoring.png",
       false,
     },
