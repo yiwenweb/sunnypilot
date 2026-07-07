@@ -74,10 +74,13 @@ void MainWindowSP::captureAndSendFrame() {
 
   if (!streamer->isEnabled()) return;
 
-  // 空闲检测：3秒无客户端则零开销跳过
-  qint64 lastClient = streamer->lastClientTime();
-  if (lastClient > 0 && (QDateTime::currentMSecsSinceEpoch() - lastClient) > IDLE_TIMEOUT_MS) {
-    return;
+  // 空闲检测：MJPEG 长连接客户端存在时一直抓帧；
+  // 否则仅服务 /frame.jpg 等短连接，3 秒无请求则暂停抓帧以节省 CPU/GPU。
+  if (streamer->streamClientCount() == 0) {
+    qint64 lastClient = streamer->lastClientTime();
+    if (lastClient > 0 && (QDateTime::currentMSecsSinceEpoch() - lastClient) > IDLE_TIMEOUT_MS) {
+      return;
+    }
   }
 
   // 使用 QScreen::grabWindow(0) 直接读平台帧缓冲

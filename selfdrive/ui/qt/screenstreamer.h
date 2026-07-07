@@ -42,6 +42,7 @@ public:
   Q_INVOKABLE bool isEnabled() const;
   Q_INVOKABLE void setTargetWidget(QWidget *w);
   Q_INVOKABLE qint64 lastClientTime() const;
+  Q_INVOKABLE int streamClientCount() const;
   void touchClient();
 
 signals:
@@ -74,7 +75,7 @@ private:
   QMutex mutex;
   QByteArray latestFrameJpeg;
   int port_ = 8083;
-  QAtomicInt enabled_{1};  // 默认开启
+  QAtomicInt enabled_{0};  // 默认关闭，由 ScreenStreamEnabled 参数控制
   QWidget *targetWidget_ = nullptr;
 
   // MJPEG 流客户端管理

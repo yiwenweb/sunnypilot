@@ -232,40 +232,52 @@ void ScreenStreamer::setTargetWidget(QWidget *w) {
 }
 
 void ScreenStreamer::injectTouchEvent(int x, int y, bool pressed) {
-  if (!targetWidget_) return;
+  QWidget *target = targetWidget_;
+  if (!target) return;
 
-  // 递归查找坐标所在的实际子控件（模拟 Qt 的 hit-test）
-  QWidget *actualWidget = targetWidget_->childAt(x, y);
-  if (!actualWidget) actualWidget = targetWidget_;
+  // 跨线程安全：通过 invokeMethod 把事件派发切到主线程（target 所在线程）执行。
+  // 1) 不能在工作线程直接 sendEvent 给主线程 widget（UB，可能崩溃或事件丢失）；
+  // 2) 不能用 new QMouseEvent + sendEvent（sendEvent 不释放 event，会内存泄漏）；
+  //    改用栈对象，lambda 结束自动析构。
+  QMetaObject::invokeMethod(target, [target, x, y, pressed]() {
+    QWidget *actualWidget = target->childAt(x, y);
+    if (!actualWidget) actualWidget = target;
 
-  // 转换为子控件的本地坐标
-  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPoint(x, y));
+    QPointF localPos = actualWidget->mapFrom(target, QPoint(x, y));
 
-  if (pressed) {
-    QMouseEvent *event = new QMouseEvent(
-        QEvent::MouseButtonPress, localPos,
-        Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(actualWidget, event);
-  } else {
-    QMouseEvent *event = new QMouseEvent(
-        QEvent::MouseButtonRelease, localPos,
-        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-    QApplication::sendEvent(actualWidget, event);
-  }
+    QMouseEvent event(
+        pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease,
+        localPos, localPos,
+        Qt::LeftButton,
+        pressed ? Qt::LeftButton : Qt::NoButton,
+        Qt::NoModifier);
+    QApplication::sendEvent(actualWidget, &event);
+  }, Qt::QueuedConnection);
 }
 
 void ScreenStreamer::injectMouseMove(int x, int y) {
-  if (!targetWidget_) return;
+  QWidget *target = targetWidget_;
+  if (!target) return;
 
-  QWidget *actualWidget = targetWidget_->childAt(x, y);
-  if (!actualWidget) actualWidget = targetWidget_;
+  QMetaObject::invokeMethod(target, [target, x, y]() {
+    QWidget *actualWidget = target->childAt(x, y);
+    if (!actualWidget) actualWidget = target;
 
-  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPoint(x, y));
+    QPointF localPos = actualWidget->mapFrom(target, QPoint(x, y));
 
-  QMouseEvent *event = new QMouseEvent(
-      QEvent::MouseMove, localPos,
-      Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
-  QApplication::sendEvent(actualWidget, event);
+    QMouseEvent event(
+        QEvent::MouseMove,
+        localPos, localPos,
+        Qt::NoButton,
+        Qt::LeftButton,
+        Qt::NoModifier);
+    QApplication::sendEvent(actualWidget, &event);
+  }, Qt::QueuedConnection);
+}
+
+int ScreenStreamer::streamClientCount() const {
+  QMutexLocker locker(&streamMutex_);
+  return streamClients_.size();
 }
 
 // ========== 开关切换 ==========
@@ -356,7 +368,7 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "</div>\n"
     "<script>\n"
     "var C3_W=1920,C3_H=1080;\n"
-    "var touchDown=false,img=document.getElementById('f'),ti=document.getElementById('ti');\n"
+    "var touchDown=false,lastMove=0,img=document.getElementById('f'),ti=document.getElementById('ti');\n"
     "\n"
     "// ===== 触控处理 =====\n"
     "function toC3(cx,cy){\n"
@@ -382,6 +394,9 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "},{passive:false});\n"
     "img.addEventListener('pointermove',function(e){\n"
     "  if(!touchDown) return;\n"
+    "  var now=Date.now();\n"
+    "  if(now-lastMove<50) return;\n"
+    "  lastMove=now;\n"
     "  e.preventDefault();\n"
     "  var c=toC3(e.clientX,e.clientY);\n"
     "  showTouch(e.clientX,e.clientY,true);\n"
