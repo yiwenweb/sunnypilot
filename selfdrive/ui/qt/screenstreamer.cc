@@ -18,6 +18,9 @@
 #include <QUrlQuery>
 #include <QWidget>
 
+// 空闲超时：3秒无客户端连接则暂停抓帧
+static const int IDLE_TIMEOUT_MS = 3000;
+
 ScreenStreamer::ScreenStreamer(QObject *parent)
     : QObject(parent) {}
 
@@ -58,10 +61,6 @@ void ScreenStreamer::setLatestFrame(const QByteArray &jpegData) {
 
 void ScreenStreamer::setEnabled(bool en) {
   enabled_.store(en ? 1 : 0);
-  if (!en) {
-    QMutexLocker locker(&mutex);
-    latestFrameJpeg.clear();
-  }
   qInfo() << "ScreenStreamer:" << (en ? "enabled" : "disabled");
 }
 
@@ -69,7 +68,16 @@ bool ScreenStreamer::isEnabled() const {
   return enabled_.load() == 1;
 }
 
+void ScreenStreamer::touchClient() {
+  lastClientTime_.store(QDateTime::currentMSecsSinceEpoch());
+}
+
+qint64 ScreenStreamer::lastClientTime() const {
+  return lastClientTime_.load();
+}
+
 void ScreenStreamer::onNewConnection() {
+  touchClient();  // 记录客户端活动时间
   while (server && server->hasPendingConnections()) {
     QTcpSocket *socket = server->nextPendingConnection();
     connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
@@ -190,7 +198,7 @@ void ScreenStreamer::serveJson(QTcpSocket *socket, const QString &json) {
   socket->disconnectFromHost();
 }
 
-// ========== HTML 页面（含触控 + 统计信息） ==========
+// ========== HTML 页面（精简版：纯图片 + 触控） ==========
 
 void ScreenStreamer::serveHtml(QTcpSocket *socket) {
   static const char *html =
@@ -208,20 +216,11 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "<style>\n"
     "*{margin:0;padding:0;box-sizing:border-box}\n"
     "html,body{width:100%;height:100%;overflow:hidden;"
-    "background:#1a1a2e;font-family:-apple-system,BlinkMacSystemFont,sans-serif;"
-    "touch-action:none;-webkit-user-select:none;user-select:none}\n"
-    ".wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;"
+    "background:#1a1a2e;touch-action:none;-webkit-user-select:none;user-select:none}\n"
+    ".wrap{display:flex;align-items:center;justify-content:center;"
     "width:100%;height:100%;position:relative}\n"
-    ".img-area{flex:1;display:flex;align-items:center;justify-content:center;"
-    "width:100%;overflow:hidden;position:relative}\n"
-    "#f{max-width:100%;max-height:100%;object-fit:contain;opacity:0;transition:opacity .15s ease;"
+    "#f{max-width:100%;max-height:100%;object-fit:contain;"
     "touch-action:none;pointer-events:auto}\n"
-    "#f.loaded{opacity:1}\n"
-    ".info{position:absolute;top:8px;right:12px;"
-    "color:#94a3b8;font-size:10px;text-align:right;pointer-events:none;"
-    "background:rgba(15,23,42,.7);padding:4px 8px;border-radius:4px;line-height:1.5}\n"
-    ".status{position:absolute;bottom:8px;right:12px;"
-    "color:#475569;font-size:11px;pointer-events:none}\n"
     ".loader{position:absolute;width:28px;height:28px;border:2.5px solid #1e293b;"
     "border-top-color:#0d9488;border-radius:50%;animation:spin .7s linear infinite}\n"
     "@keyframes spin{to{transform:rotate(360deg)}}\n"
@@ -232,100 +231,67 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "</style>\n"
     "</head>\n"
     "<body>\n"
-    "<div class=\"wrap\">\n"
-    "<div class=\"img-area\" id=\"imgArea\">\n"
+    "<div class=\"wrap\" id=\"wrap\">\n"
     "<div class=\"loader\" id=\"ld\"></div>\n"
-    "<img id=\"f\" src=\"/frame.jpg\" onload=\"this.classList.add('loaded');"
-    "document.getElementById('ld').style.display='none'\">\n"
+    "<img id=\"f\" src=\"/frame.jpg\" onload=\"this.style.display='';"
+    "document.getElementById('ld').style.display='none'\" style=\"display:none\">\n"
     "<div class=\"touch-indicator\" id=\"ti\"></div>\n"
-    "<div class=\"info\" id=\"info\">1920×1080 | 0 KB | 0 fps</div>\n"
-    "<div class=\"status\" id=\"st\">C3 LIVE</div>\n"
-    "</div>\n"
     "</div>\n"
     "<script>\n"
-    "var pollMs=150, fpsCounter=0, fpsTimer=0, curFps=0;\n"
-    "var c3W=1920, c3H=1080;\n"
-    "var touchDown=false;\n"
+    "var C3_W=1920,C3_H=1080,POLL_MS=300;\n"
+    "var touchDown=false,img=document.getElementById('f'),ti=document.getElementById('ti');\n"
     "\n"
-    "function r(){\n"
+    "// ===== 图片轮询 =====\n"
+    "function poll(){\n"
     "  var n=new Image();\n"
     "  n.onload=function(){\n"
-    "    var f=document.getElementById('f');f.src=n.src;\n"
-    "    document.getElementById('st').textContent='C3 LIVE';\n"
+    "    img.src=n.src;\n"
+    "    img.style.display='';\n"
+    "    document.getElementById('ld').style.display='none';\n"
     "  };\n"
-    "  n.onerror=function(){\n"
-    "    document.getElementById('st').textContent='WAITING...';\n"
-    "  };\n"
-    "  var x=new XMLHttpRequest();\n"
-    "  x.open('GET','/frame.jpg?_='+Date.now());\n"
-    "  x.responseType='blob';\n"
-    "  x.onload=function(){\n"
-    "    if(this.response){\n"
-    "      var sz=this.response.size;\n"
-    "      fpsCounter++;\n"
-    "      var now=Date.now();\n"
-    "      if(!fpsTimer) fpsTimer=now;\n"
-    "      if(now-fpsTimer>=1000){curFps=fpsCounter;fpsCounter=0;fpsTimer=now}\n"
-    "      document.getElementById('info').textContent=\n"
-    "        c3W+'x'+c3H+' | '+(sz/1024).toFixed(1)+' KB | '+curFps+' fps';\n"
-    "    }\n"
-    "  };\n"
-    "  x.send();\n"
     "  n.src='/frame.jpg?_='+Date.now()+Math.random();\n"
     "}\n"
-    "setInterval(r,pollMs);\n"
+    "setInterval(poll,POLL_MS);\n"
     "\n"
     "// ===== 触控处理 =====\n"
-    "var img=document.getElementById('f');\n"
-    "var ti=document.getElementById('ti');\n"
-    "var area=document.getElementById('imgArea');\n"
-    "\n"
-    "function toC3Coords(clientX,clientY){\n"
+    "function toC3(cx,cy){\n"
     "  var r=img.getBoundingClientRect();\n"
-    "  var rx=(clientX-r.left)/r.width;\n"
-    "  var ry=(clientY-r.top)/r.height;\n"
-    "  return{x:Math.round(rx*c3W),y:Math.round(ry*c3H)};\n"
+    "  return{x:Math.round((cx-r.left)/r.width*C3_W),"
+    "          y:Math.round((cy-r.top)/r.height*C3_H)};\n"
     "}\n"
-    "\n"
-    "function showTouch(x,y,show){\n"
-    "  ti.style.left=x+'px'; ti.style.top=y+'px';\n"
+    "function showTouch(cx,cy,show){\n"
+    "  var r=document.getElementById('wrap').getBoundingClientRect();\n"
+    "  ti.style.left=(cx-r.left)+'px';ti.style.top=(cy-r.top)+'px';\n"
     "  ti.className='touch-indicator'+(show?' active':'');\n"
     "}\n"
-    "\n"
     "function sendTouch(x,y,action){\n"
     "  fetch('/touch?x='+x+'&y='+y+'&action='+action).catch(function(){});\n"
     "}\n"
-    "\n"
     "img.addEventListener('pointerdown',function(e){\n"
     "  e.preventDefault();\n"
-    "  var c=toC3Coords(e.clientX,e.clientY);\n"
-    "  var ar=area.getBoundingClientRect();\n"
-    "  showTouch(e.clientX-ar.left+area.scrollLeft,"
-    "           e.clientY-ar.top+area.scrollTop,true);\n"
+    "  var c=toC3(e.clientX,e.clientY);\n"
+    "  showTouch(e.clientX,e.clientY,true);\n"
     "  sendTouch(c.x,c.y,'press');\n"
-    "  touchDown=true; touchStartTime=Date.now();\n"
+    "  touchDown=true;\n"
     "  img.setPointerCapture(e.pointerId);\n"
     "},{passive:false});\n"
-    "\n"
     "img.addEventListener('pointermove',function(e){\n"
     "  if(!touchDown) return;\n"
     "  e.preventDefault();\n"
-    "  var c=toC3Coords(e.clientX,e.clientY);\n"
-    "  var ar=area.getBoundingClientRect();\n"
-    "  showTouch(e.clientX-ar.left+area.scrollLeft,"
-    "           e.clientY-ar.top+area.scrollTop,true);\n"
+    "  var c=toC3(e.clientX,e.clientY);\n"
+    "  showTouch(e.clientX,e.clientY,true);\n"
     "  sendTouch(c.x,c.y,'move');\n"
     "},{passive:false});\n"
-    "\n"
-    "function touchEnd(e){\n"
-    "  var c=toC3Coords(e.clientX,e.clientY);\n"
+    "function up(e){\n"
+    "  if(!touchDown) return;\n"
+    "  var c=toC3(e.clientX,e.clientY);\n"
     "  showTouch(0,0,false);\n"
     "  sendTouch(c.x,c.y,'release');\n"
     "  touchDown=false;\n"
     "}\n"
-    "img.addEventListener('pointerup',touchEnd);\n"
-    "img.addEventListener('pointercancel',touchEnd);\n"
-    "img.addEventListener('pointerleave',touchEnd);\n"
+    "img.addEventListener('pointerup',up);\n"
+    "img.addEventListener('pointercancel',up);\n"
+    "img.addEventListener('pointerleave',up);\n"
     "</script>\n"
     "</body>\n"
     "</html>\n";

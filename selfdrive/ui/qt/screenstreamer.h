@@ -37,6 +37,8 @@ public:
   Q_INVOKABLE void setEnabled(bool en);
   Q_INVOKABLE bool isEnabled() const;
   Q_INVOKABLE void setTargetWidget(QWidget *w);
+  Q_INVOKABLE qint64 lastClientTime() const;
+  void touchClient();
 
 private slots:
   void onNewConnection();
@@ -62,4 +64,5 @@ private:
   int frameCount_ = 0;
   int lastFrameSize_ = 0;
   qint64 lastFrameTime_ = 0;
+  QAtomicInt lastClientTime_{0};  // 最后客户端连接时间（空闲检测）
 };
