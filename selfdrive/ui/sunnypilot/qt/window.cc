@@ -81,7 +81,6 @@ void MainWindowSP::captureAndSendFrame() {
   }
 
   // 使用 QScreen::grabWindow(0) 直接读平台帧缓冲
-  // 比 QWidget::grab() 更快：不触发 Widget 重绘，不阻塞渲染管线
   QScreen *screen = QGuiApplication::primaryScreen();
   if (!screen) return;
   QPixmap screenshot = screen->grabWindow(0);
@@ -91,13 +90,14 @@ void MainWindowSP::captureAndSendFrame() {
   QPixmap scaled = screenshot.scaled(CAPTURE_WIDTH, CAPTURE_HEIGHT,
                                      Qt::KeepAspectRatio, Qt::FastTransformation);
 
-  // JPEG 编码
   QByteArray jpeg;
   QBuffer buffer(&jpeg);
   buffer.open(QIODevice::WriteOnly);
   scaled.save(&buffer, "JPEG", JPEG_QUALITY);
 
-  // 异步发送到流线程
+  if (jpeg.isEmpty()) return;
+
+  // 异步发送到流线程（MJPEG 内部推送 + 存储最新帧）
   QMetaObject::invokeMethod(streamer, "setLatestFrame",
                             Qt::QueuedConnection, Q_ARG(QByteArray, jpeg));
 }

@@ -2,8 +2,9 @@
  * screenstreamer.cc - 屏幕实时流服务实现
  *
  * HTTP 端点：
- *   GET /              返回 HTML 页面（触控 + 统计信息）
- *   GET /frame.jpg     返回最新的 JPEG 截图
+ *   GET /              返回 HTML 页面（触控 + MJPEG 流）
+ *   GET /stream         MJPEG 流推送（multipart/x-mixed-replace，长连接）
+ *   GET /frame.jpg     返回最新 JPEG 截图（向后兼容）
  *   GET /touch?x=X&y=Y&action=press|release|move  反向触控注入
  *   GET /toggle        切换开关状态
  *   GET /status        返回 JSON 状态信息
@@ -44,6 +45,16 @@ void ScreenStreamer::start(int port) {
 }
 
 void ScreenStreamer::stop() {
+  // 关闭所有 MJPEG 流客户端
+  {
+    QMutexLocker locker(&streamMutex_);
+    for (QTcpSocket *client : streamClients_) {
+      client->close();
+      client->deleteLater();
+    }
+    streamClients_.clear();
+  }
+
   if (server) {
     server->close();
     delete server;
@@ -52,11 +63,16 @@ void ScreenStreamer::stop() {
 }
 
 void ScreenStreamer::setLatestFrame(const QByteArray &jpegData) {
-  QMutexLocker locker(&mutex);
-  latestFrameJpeg = jpegData;
-  lastFrameSize_ = jpegData.size();
-  lastFrameTime_ = QDateTime::currentMSecsSinceEpoch();
-  frameCount_++;
+  {
+    QMutexLocker locker(&mutex);
+    latestFrameJpeg = jpegData;
+    lastFrameSize_ = jpegData.size();
+    lastFrameTime_ = QDateTime::currentMSecsSinceEpoch();
+    frameCount_++;
+  }
+
+  // 推送到所有 MJPEG 流客户端
+  pushToAllStreamClients(jpegData);
 }
 
 void ScreenStreamer::setEnabled(bool en) {
@@ -76,8 +92,95 @@ qint64 ScreenStreamer::lastClientTime() const {
   return lastClientTime_.load();
 }
 
+// ========== MJPEG 流推送 ==========
+
+void ScreenStreamer::pushToAllStreamClients(const QByteArray &jpegData) {
+  QMutexLocker locker(&streamMutex_);
+  if (streamClients_.isEmpty()) return;
+
+  // MJPEG multipart 帧格式
+  QByteArray frame;
+  frame.append("--FRAME\r\n");
+  frame.append("Content-Type: image/jpeg\r\n");
+  frame.append("Content-Length: ");
+  frame.append(QByteArray::number(jpegData.size()));
+  frame.append("\r\n\r\n");
+  frame.append(jpegData);
+  frame.append("\r\n");
+
+  QSet<QTcpSocket*> deadClients;
+  for (QTcpSocket *client : streamClients_) {
+    if (client->state() == QAbstractSocket::ConnectedState) {
+      qint64 written = client->write(frame);
+      if (written < 0) {
+        deadClients.insert(client);
+      }
+    } else {
+      deadClients.insert(client);
+    }
+  }
+
+  // 清理断开的客户端
+  for (QTcpSocket *client : deadClients) {
+    streamClients_.remove(client);
+    client->deleteLater();
+    emit streamClientDisconnected();
+  }
+}
+
+void ScreenStreamer::serveMJPEGStream(QTcpSocket *socket) {
+  // 发送 MJPEG 流响应头
+  static const QByteArray streamHeader =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Type: multipart/x-mixed-replace; boundary=FRAME\r\n"
+      "Connection: keep-alive\r\n"
+      "Cache-Control: no-cache, no-store, must-revalidate\r\n"
+      "Pragma: no-cache\r\n"
+      "Expires: 0\r\n"
+      "Access-Control-Allow-Origin: *\r\n"
+      "\r\n"
+      "--FRAME\r\n";  // 第一个 boundary，让浏览器开始解析
+
+  socket->write(streamHeader);
+
+  // 立即推送最新帧（如果有）
+  {
+    QMutexLocker locker(&mutex);
+    if (!latestFrameJpeg.isEmpty()) {
+      QByteArray initFrame;
+      initFrame.append("Content-Type: image/jpeg\r\n");
+      initFrame.append("Content-Length: ");
+      initFrame.append(QByteArray::number(latestFrameJpeg.size()));
+      initFrame.append("\r\n\r\n");
+      initFrame.append(latestFrameJpeg);
+      initFrame.append("\r\n");
+      socket->write(initFrame);
+    }
+  }
+
+  // 加入 MJPEG 客户端列表
+  {
+    QMutexLocker locker(&streamMutex_);
+    streamClients_.insert(socket);
+    emit streamClientConnected();
+  }
+
+  // 监听客户端断开
+  connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
+    QMutexLocker locker(&streamMutex_);
+    streamClients_.remove(socket);
+    socket->deleteLater();
+    emit streamClientDisconnected();
+  });
+
+  qInfo() << "ScreenStreamer: MJPEG stream client connected (total:"
+          << streamClients_.size() << ")";
+}
+
+// ========== 连接处理 ==========
+
 void ScreenStreamer::onNewConnection() {
-  touchClient();  // 记录客户端活动时间
+  touchClient();
   while (server && server->hasPendingConnections()) {
     QTcpSocket *socket = server->nextPendingConnection();
     connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
@@ -86,7 +189,9 @@ void ScreenStreamer::onNewConnection() {
       QByteArray data = socket->readAll();
       QString request = QString::fromUtf8(data);
 
-      if (request.startsWith("GET /frame.jpg")) {
+      if (request.startsWith("GET /stream")) {
+        serveMJPEGStream(socket);
+      } else if (request.startsWith("GET /frame.jpg")) {
         serveFrameJpeg(socket);
       } else if (request.startsWith("GET /touch")) {
         serveTouch(socket, request);
@@ -100,15 +205,12 @@ void ScreenStreamer::onNewConnection() {
         serveJson(socket, "{\"error\":\"not found\"}");
       }
     });
-
-    connect(socket, &QTcpSocket::disconnected, socket, &QTcpSocket::deleteLater);
   }
 }
 
 // ========== 触控注入 ==========
 
 void ScreenStreamer::serveTouch(QTcpSocket *socket, const QString &request) {
-  // 解析 URL 查询参数
   QString path = request.section(' ', 1, 1);
   QUrl url("http://localhost" + path);
   QUrlQuery query(url);
@@ -135,28 +237,38 @@ void ScreenStreamer::setTargetWidget(QWidget *w) {
 void ScreenStreamer::injectTouchEvent(int x, int y, bool pressed) {
   if (!targetWidget_) return;
 
-  QPointF pos(x, y);
+  // 递归查找坐标所在的实际子控件（模拟 Qt 的 hit-test）
+  QWidget *actualWidget = targetWidget_->childAt(x, y);
+  if (!actualWidget) actualWidget = targetWidget_;
+
+  // 转换为子控件的本地坐标
+  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPointF(x, y));
+
   if (pressed) {
     QMouseEvent *event = new QMouseEvent(
-        QEvent::MouseButtonPress, pos,
+        QEvent::MouseButtonPress, localPos,
         Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QApplication::postEvent(targetWidget_, event);
+    QApplication::sendEvent(actualWidget, event);
   } else {
     QMouseEvent *event = new QMouseEvent(
-        QEvent::MouseButtonRelease, pos,
+        QEvent::MouseButtonRelease, localPos,
         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-    QApplication::postEvent(targetWidget_, event);
+    QApplication::sendEvent(actualWidget, event);
   }
 }
 
 void ScreenStreamer::injectMouseMove(int x, int y) {
   if (!targetWidget_) return;
 
-  QPointF pos(x, y);
+  QWidget *actualWidget = targetWidget_->childAt(x, y);
+  if (!actualWidget) actualWidget = targetWidget_;
+
+  QPointF localPos = actualWidget->mapFrom(targetWidget_, QPointF(x, y));
+
   QMouseEvent *event = new QMouseEvent(
-      QEvent::MouseMove, pos,
+      QEvent::MouseMove, localPos,
       Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
-  QApplication::postEvent(targetWidget_, event);
+  QApplication::sendEvent(actualWidget, event);
 }
 
 // ========== 开关切换 ==========
@@ -176,10 +288,18 @@ void ScreenStreamer::serveStatus(QTcpSocket *socket) {
     qint64 elapsed = QDateTime::currentMSecsSinceEpoch() - lastFrameTime_;
     if (elapsed > 0) fps = 1000 / (int)elapsed;
   }
-  QString json = QString("{\"enabled\":%1,\"fps\":%2,\"size\":%3,\"resolution\":\"960x540\"}")
-                     .arg(isEnabled() ? "true" : "false")
-                     .arg(fps)
-                     .arg(lastFrameSize_);
+  int streamCount = 0;
+  {
+    QMutexLocker slocker(&streamMutex_);
+    streamCount = streamClients_.size();
+  }
+  QString json = QString(
+      "{\"enabled\":%1,\"fps\":%2,\"size\":%3,"
+      "\"resolution\":\"960x540\",\"stream_clients\":%4}")
+      .arg(isEnabled() ? "true" : "false")
+      .arg(fps)
+      .arg(lastFrameSize_)
+      .arg(streamCount);
   serveJson(socket, json);
 }
 
@@ -198,7 +318,7 @@ void ScreenStreamer::serveJson(QTcpSocket *socket, const QString &json) {
   socket->disconnectFromHost();
 }
 
-// ========== HTML 页面（精简版：纯图片 + 触控） ==========
+// ========== HTML 页面（MJPEG 流 + 触控） ==========
 
 void ScreenStreamer::serveHtml(QTcpSocket *socket) {
   static const char *html =
@@ -233,25 +353,13 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
     "<body>\n"
     "<div class=\"wrap\" id=\"wrap\">\n"
     "<div class=\"loader\" id=\"ld\"></div>\n"
-    "<img id=\"f\" src=\"/frame.jpg\" onload=\"this.style.display='';"
+    "<img id=\"f\" src=\"/stream\" onload=\"this.style.display='';"
     "document.getElementById('ld').style.display='none'\" style=\"display:none\">\n"
     "<div class=\"touch-indicator\" id=\"ti\"></div>\n"
     "</div>\n"
     "<script>\n"
-    "var C3_W=1920,C3_H=1080,POLL_MS=300;\n"
+    "var C3_W=1920,C3_H=1080;\n"
     "var touchDown=false,img=document.getElementById('f'),ti=document.getElementById('ti');\n"
-    "\n"
-    "// ===== 图片轮询 =====\n"
-    "function poll(){\n"
-    "  var n=new Image();\n"
-    "  n.onload=function(){\n"
-    "    img.src=n.src;\n"
-    "    img.style.display='';\n"
-    "    document.getElementById('ld').style.display='none';\n"
-    "  };\n"
-    "  n.src='/frame.jpg?_='+Date.now()+Math.random();\n"
-    "}\n"
-    "setInterval(poll,POLL_MS);\n"
     "\n"
     "// ===== 触控处理 =====\n"
     "function toC3(cx,cy){\n"
@@ -300,7 +408,7 @@ void ScreenStreamer::serveHtml(QTcpSocket *socket) {
   socket->disconnectFromHost();
 }
 
-// ========== JPEG 帧服务 ==========
+// ========== JPEG 帧服务（向后兼容：单帧请求） ==========
 
 void ScreenStreamer::serveFrameJpeg(QTcpSocket *socket) {
   if (!isEnabled()) {
