@@ -42,7 +42,7 @@ public:
   Q_INVOKABLE bool isEnabled() const;
   Q_INVOKABLE void setTargetWidget(QWidget *w);
   Q_INVOKABLE qint64 lastClientTime() const;
-  Q_INVOKABLE int streamClientCount() const;
+  Q_INVOKABLE int streamClientCount();
   void touchClient();
 
 signals:

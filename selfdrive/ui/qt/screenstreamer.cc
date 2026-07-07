@@ -275,7 +275,7 @@ void ScreenStreamer::injectMouseMove(int x, int y) {
   }, Qt::QueuedConnection);
 }
 
-int ScreenStreamer::streamClientCount() const {
+int ScreenStreamer::streamClientCount() {
   QMutexLocker locker(&streamMutex_);
   return streamClients_.size();
 }
