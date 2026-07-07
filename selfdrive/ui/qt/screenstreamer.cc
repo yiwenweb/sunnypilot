@@ -19,9 +19,6 @@
 #include <QUrlQuery>
 #include <QWidget>
 
-// 空闲超时：3秒无客户端连接则暂停抓帧
-static const int IDLE_TIMEOUT_MS = 3000;
-
 ScreenStreamer::ScreenStreamer(QObject *parent)
     : QObject(parent) {}
 
