@@ -518,8 +518,8 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.save();
   p.setRenderHint(QPainter::Antialiasing);
 
-  // Background arc（线宽+20%，透明度+20%）
-  p.setPen(QPen(QColor(255, 255, 255, 84), 24));
+  // Background arc（线宽+20%，更透明）
+  p.setPen(QPen(QColor(255, 255, 255, 45), 24));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, (90 - half_span) * 16, (half_span * 2) * 16);
 
