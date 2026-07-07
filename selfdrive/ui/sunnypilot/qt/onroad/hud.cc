@@ -499,18 +499,17 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // MICI-style steering arc: gradient color (white→yellow→orange) + smooth filter + dynamic sizing
-  // Enlarged ~1.4x for better visibility on C3 display
-  const int arc_width = 1000;
-  const int arc_height = 260;
-  const int margin_bottom = 30;
+  const int arc_width = 900;        // -10%
+  const int arc_height = 234;       // -10%
+  const int margin_bottom = 5;      // 弧整体下移
   const float max_angle = 55.f;
+  const int half_span = 54;         // 弧半跨度（°），+20%（原45°）
 
   int cx = surface_rect.center().x();
   int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
 
   QRect arc_rect(cx - arc_width / 2, cy - arc_height, arc_width, arc_height * 2);
 
-  // Use smoothed values (already sign-negated in updateState)
   float clamped_angle = std::clamp(smoothSteerDisplay, -max_angle, max_angle);
   float clamped_desired = std::clamp(smoothSteerDesiredDisplay, -max_angle, max_angle);
 
@@ -519,16 +518,16 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.save();
   p.setRenderHint(QPainter::Antialiasing);
 
-  // Background arc
-  p.setPen(QPen(QColor(255, 255, 255, 70), 20));
+  // Background arc（线宽+20%，透明度+20%）
+  p.setPen(QPen(QColor(255, 255, 255, 84), 24));
   p.setBrush(Qt::NoBrush);
-  p.drawArc(arc_rect, 45 * 16, 90 * 16);
+  p.drawArc(arc_rect, (90 - half_span) * 16, (half_span * 2) * 16);
 
-  // Tick marks
+  // Tick marks（增强可见度：线宽+alpha大幅提升）
   {
-    p.setPen(QPen(QColor(255, 255, 255, 40), 3));
+    p.setPen(QPen(QColor(255, 255, 255, 100), 4));
     p.setFont(InterFont(22, QFont::Normal));
-    for (int deg = 45; deg <= 135; deg += 10) {
+    for (int deg = 90 - half_span; deg <= 90 + half_span; deg += 10) {
       double rad = deg * M_PI / 180.0;
       int tx = cx + (int)((arc_width / 2 - 12) * cos(rad));
       int ty = cy - (int)((arc_height - 12) * sin(rad));
@@ -536,11 +535,11 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
       int tiy = cy - (int)((arc_height - 24) * sin(rad));
       p.drawLine(QPointF(tx, ty), QPointF(tix, tiy));
 
-      if ((deg - 45) % 20 == 0) {
-        int label_angle = (deg - 90) * max_angle / 45;
+      if ((deg - (90 - half_span)) % 20 == 0) {
+        int label_angle = (deg - 90) * (int)max_angle / half_span;
         int lx = cx + (int)((arc_width / 2 + 12) * cos(rad));
         int ly = cy - (int)((arc_height + 12) * sin(rad));
-        p.setPen(QColor(255, 255, 255, 60));
+        p.setPen(QColor(255, 255, 255, 120));
         QRect lr(lx - 22, ly - 14, 44, 28);
         p.drawText(lr, Qt::AlignCenter, QString::number(std::abs(label_angle)));
       }
@@ -554,28 +553,25 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
 
     QColor fill_color;
     if (is_active) {
-      // Gradient: white(255,255,255) → yellow(255,200,0) → orange(255,115,0)
       int g = (int)(255.0f * (1.0f - yellow_t * 0.55f));
       int b = (int)(255.0f * (1.0f - yellow_t));
-      fill_color = QColor(255, g, b, 240);
+      fill_color = QColor(255, g, b, 255);    // +20% → cap 255
     } else {
-      fill_color = QColor(180, 180, 180, 200);
+      fill_color = QColor(180, 180, 180, 240); // +20%
     }
 
     if (std::abs(clamped_angle) > 1.f) {
-      // MICI-style dynamic line width: expands at high angles
-      float pen_width = 22.0f + abs_ratio * 12.0f;
+      // Dynamic line width（+20%）: 26→40px
+      float pen_width = 26.0f + abs_ratio * 14.0f;
       p.setPen(QPen(fill_color, pen_width, Qt::SolidLine, Qt::RoundCap));
-      // The background arc spans 90° total (45° each side). Scale steering so
-      // max_angle reaches the edge instead of doubling past it and going off-screen.
-      int span = (int)(clamped_angle / max_angle * 45 * 16);
+      int span = (int)(clamped_angle / max_angle * half_span * 16);
       p.drawArc(arc_rect, 90 * 16, span);
     }
   }
 
-  // Desired angle indicator (diamond marker, using smoothed value)
+  // Desired angle indicator (diamond marker)
   if (std::abs(clamped_desired) > 1.f) {
-    double target_rad = (90.0 - clamped_desired / max_angle * 45.0) * M_PI / 180.0;
+    double target_rad = (90.0 - clamped_desired / max_angle * half_span) * M_PI / 180.0;
     int mx = cx + (int)((arc_width / 2 - 6) * cos(target_rad));
     int my = cy - (int)((arc_height - 6) * sin(target_rad));
 
@@ -585,13 +581,13 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
             << QPoint(mx, my + 14)
             << QPoint(mx - 11, my);
     p.setPen(Qt::NoPen);
-    p.setBrush(is_active ? QColor(255, 255, 255, 220) : QColor(200, 200, 200, 180));
+    p.setBrush(is_active ? QColor(255, 255, 255, 255) : QColor(200, 200, 200, 216));
     p.drawPolygon(diamond);
   }
 
   // Center dot
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor(255, 255, 255, 200));
+  p.setBrush(QColor(255, 255, 255, 240)); // +20%
   p.drawEllipse(QPoint(cx, cy), 12, 12);
 
   p.restore();
