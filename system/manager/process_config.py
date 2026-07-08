@@ -61,7 +61,18 @@ def only_onroad(started: bool, params: Params, CP: car.CarParams) -> bool:
 def webrtc_stream(started: bool, params: Params, CP: car.CarParams) -> bool:
   # 仅在 onroad 且用户显式开启（WebrtcStreamEnabled）时启动摄像头硬编码 + WebRTC 服务。
   # 默认关闭以避免额外功耗/发热；App 端可通过 SSH 写该参数来按需开启。
-  return started and params.get_bool("WebrtcStreamEnabled")
+  #
+  # 注意：直接读 /data/params/d/ 文件，绕过 params_pyx 白名单。
+  # 运行系统 /data/openpilot 的 params_pyx.so 是预编译的，未注册 WebrtcStreamEnabled，
+  # 用 params.get_bool() 会抛 UnknownKeyName → manager 崩溃 → 卡逗号。
+  # C++ UI 二进制在 panda_build 用新 params_keys.h 编译，ParamControlSP 开关写文件正常。
+  if not started:
+    return False
+  try:
+    with open('/data/params/d/WebrtcStreamEnabled') as f:
+      return f.read().strip() == '1'
+  except (FileNotFoundError, IOError):
+    return False
 
 def only_offroad(started: bool, params: Params, CP: car.CarParams) -> bool:
   return not started
