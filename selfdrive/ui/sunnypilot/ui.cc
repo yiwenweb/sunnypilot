@@ -42,6 +42,8 @@ UIStateSP::UIStateSP(QObject *parent) : UIState(parent) {
   param_watcher->addParam("SteeringArc");
   param_watcher->addParam("StandstillTimer");
   param_watcher->addParam("DebugPlots");
+  param_watcher->addParam("SteerTorqueData");
+  param_watcher->addParam("LaneLineData");
 }
 
 // This method overrides completely the update method from the parent class intentionally.
@@ -66,6 +68,8 @@ void ui_update_params_sp(UIStateSP *s) {
   s->scene.steering_arc = params.getBool("SteeringArc");
   s->scene.standstill_timer = params.getBool("StandstillTimer");
   s->scene.debug_plots = params.getBool("DebugPlots");
+  s->scene.steer_torque_data = params.getBool("SteerTorqueData");
+  s->scene.lane_line_data = params.getBool("LaneLineData");
 }
 
 DeviceSP::DeviceSP(QObject *parent) : Device(parent) {

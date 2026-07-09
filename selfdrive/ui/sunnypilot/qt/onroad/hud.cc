@@ -59,6 +59,15 @@ void HudRendererSP::updateState(const UIState &s) {
   steerControlType = car_params.getSteerControlType();
   actuators = car_control.getActuators();
   torqueLateral = steerControlType == cereal::CarParams::SteerControlType::TORQUE;
+
+  // TorqueState: controller output torque (Nm) for BYD torque-based systems
+  if (lat_ctrl.isTorqueState()) {
+    const auto ts = lat_ctrl.getTorqueState();
+    torqueStateOutput = ts.getOutput();
+    torqueStateSaturated = ts.getSaturated();
+  } else {
+    torqueStateOutput = 0.0f;
+  }
   angleSteers = car_state.getSteeringAngleDeg();
   // steeringAngleDesiredDeg lives inside the lateralControlState union and only
   // exists for pid/angle/lqr/indi controllers. Torque control (e.g. BYD) has no
@@ -114,6 +123,8 @@ void HudRendererSP::updateState(const UIState &s) {
   steeringArcEnabled = s.scene.steering_arc;
   standstillTimerEnabled = s.scene.standstill_timer;
   debugPlotsEnabled = s.scene.debug_plots;
+  steerTorqueDataEnabled = s.scene.steer_torque_data;
+  laneLineDataEnabled = s.scene.lane_line_data;
 
   // MICI-style smoothing filters
   {
@@ -135,6 +146,15 @@ void HudRendererSP::updateState(const UIState &s) {
     speedHistory.push(vEgo * (is_metric ? MS_TO_KPH : MS_TO_MPH));
     accelHistory.push(aEgo);
     torqueHistory.push(steeringTorqueEps);
+  }
+
+  // Lane line distances (body-center to left/right lane line, c₀ in meters)
+  if (laneLineDataEnabled) {
+    const auto model = sm["modelV2"].getModelV2();
+    const auto &lane_lines = model.getLaneLines();
+    const auto &lane_line_probs = model.getLaneLineProbs();
+    leftLaneDist = (lane_line_probs[1] > 0.5f) ? lane_lines[1].getC0() : 0.0f;
+    rightLaneDist = (lane_line_probs[2] > 0.5f) ? lane_lines[2].getC0() : 0.0f;
   }
 
   // Standstill timer: track when speed is 0 and count seconds
@@ -189,7 +209,17 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
       drawStandstillTimer(p, surface_rect);
     }
 
-    // Debug plots overlay (right side, semi-transparent)
+    // Steering torque comparison box (top-left, below set speed)
+    if (steerTorqueDataEnabled) {
+      drawSteerTorqueData(p, surface_rect);
+    }
+
+    // Lane line distance box (top-left, below steerTorqueData)
+    if (laneLineDataEnabled) {
+      drawLaneLineData(p, surface_rect);
+    }
+
+    // Debug plots overlay (left side, semi-transparent)
     if (debugPlotsEnabled) {
       drawDebugPlots(p, surface_rect);
     }
@@ -728,4 +758,114 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   p.drawText(time_rect, Qt::AlignCenter, time);
 
   p.restore();
+}
+
+void HudRendererSP::drawSteerTorqueData(QPainter &p, const QRect &surface_rect) {
+  // Box below the set-speed box (aligned left), 172×204
+  const int box_w = 172;
+  const int box_h = 204;
+  const int margin_left = 60;
+  const int box_x = margin_left;
+  const int box_y = 280;  // 45 + 204 + 31 gap
+
+  // Draw box
+  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
+  p.setBrush(QColor(0, 0, 0, 166));
+  p.drawRoundedRect(box_x, box_y, box_w, box_h, 32, 32);
+
+  // Title line
+  p.setPen(QColor(255, 255, 255, 200));
+  p.setFont(InterFont(26, QFont::DemiBold));
+  QRect title_rect(box_x, box_y + 10, box_w, 34);
+  p.drawText(title_rect, Qt::AlignHCenter | Qt::AlignVCenter, "\u626d\u77e9 Nm");
+
+  // Divider line
+  p.setPen(QPen(QColor(255, 255, 255, 60), 1));
+  int div_y = box_y + 52;
+  p.drawLine(box_x + 20, div_y, box_x + box_w - 20, div_y);
+
+  // Model output line
+  p.setFont(InterFont(28, QFont::Normal));
+  p.setPen(QColor(160, 200, 255, 230));
+  QRect model_label(box_x, box_y + 60, box_w, 30);
+  p.drawText(model_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u6a21");
+
+  QString model_str = QString::number(torqueStateOutput, 'f', 1);
+  QColor model_color = Qt::white;
+  if (torqueStateSaturated) model_color = QColor(255, 200, 60);  // amber = saturated
+  p.setPen(model_color);
+  p.setFont(InterFont(42, QFont::Bold));
+  QRect model_val(box_x, box_y + 90, box_w, 45);
+  p.drawText(model_val, Qt::AlignHCenter | Qt::AlignVCenter, model_str);
+
+  // Small MAX label if saturated
+  if (torqueStateSaturated) {
+    p.setFont(InterFont(18, QFont::Bold));
+    p.setPen(QColor(255, 140, 0, 230));
+    QRect sat_label(box_x + box_w / 2 + 30, box_y + 90, 40, 25);
+    p.drawText(sat_label, Qt::AlignLeft | Qt::AlignBottom, "MAX");
+  }
+
+  // Actual EPS line
+  p.setFont(InterFont(28, QFont::Normal));
+  p.setPen(QColor(160, 255, 180, 230));
+  QRect eps_label(box_x, box_y + 144, box_w, 30);
+  p.drawText(eps_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u5b9e");
+
+  float eps_torque = steeringTorqueEps;
+  QString eps_str = QString::number(std::fabs(eps_torque), 'f', 1);
+  QColor eps_color = Qt::white;
+  p.setPen(eps_color);
+  p.setFont(InterFont(42, QFont::Bold));
+  QRect eps_val(box_x, box_y + 170, box_w, 45);
+  p.drawText(eps_val, Qt::AlignHCenter | Qt::AlignVCenter, eps_str);
+}
+
+void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
+  // Box below SteerTorqueData, 172×204
+  const int box_w = 172;
+  const int box_h = 204;
+  const int margin_left = 60;
+  const int box_x = margin_left;
+  const int box_y = 515;  // 280 + 204 + 31 gap
+
+  // Draw box
+  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
+  p.setBrush(QColor(0, 0, 0, 166));
+  p.drawRoundedRect(box_x, box_y, box_w, box_h, 32, 32);
+
+  // Title line
+  p.setPen(QColor(255, 255, 255, 200));
+  p.setFont(InterFont(26, QFont::DemiBold));
+  QRect title_rect(box_x, box_y + 10, box_w, 34);
+  p.drawText(title_rect, Qt::AlignHCenter | Qt::AlignVCenter, "\u8f66\u9053\u8ddd m");
+
+  // Divider
+  p.setPen(QPen(QColor(255, 255, 255, 60), 1));
+  int div_y = box_y + 52;
+  p.drawLine(box_x + 20, div_y, box_x + box_w - 20, div_y);
+
+  // Left lane line
+  p.setFont(InterFont(28, QFont::Normal));
+  p.setPen(QColor(160, 200, 255, 230));
+  QRect left_label(box_x, box_y + 60, box_w, 30);
+  p.drawText(left_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u5de6");
+
+  QString left_str = (leftLaneDist != 0.0f) ? QString::number(std::fabs(leftLaneDist), 'f', 2) : "-";
+  p.setPen(Qt::white);
+  p.setFont(InterFont(42, QFont::Bold));
+  QRect left_val(box_x, box_y + 90, box_w, 45);
+  p.drawText(left_val, Qt::AlignHCenter | Qt::AlignVCenter, left_str);
+
+  // Right lane line
+  p.setFont(InterFont(28, QFont::Normal));
+  p.setPen(QColor(160, 255, 180, 230));
+  QRect right_label(box_x, box_y + 128, box_w, 30);
+  p.drawText(right_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u53f3");
+
+  QString right_str = (rightLaneDist != 0.0f) ? QString::number(std::fabs(rightLaneDist), 'f', 2) : "-";
+  p.setPen(Qt::white);
+  p.setFont(InterFont(42, QFont::Bold));
+  QRect right_val(box_x, box_y + 158, box_w, 45);
+  p.drawText(right_val, Qt::AlignHCenter | Qt::AlignVCenter, right_str);
 }

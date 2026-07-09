@@ -84,6 +84,20 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       "../assets/offroad/icon_monitoring.png",
       false,
     },
+    {
+      "SteerTorqueData",
+      tr("转向扭矩监控"),
+      tr("在定速巡航方块下方显示模型输出扭矩命令和 EPS 实际扭矩对比。模型扭矩触及上限时数值变橙并显示 MAX 标记。仅 BYD 等 Torque 控制车型有效。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
+    {
+      "LaneLineData",
+      tr("车道线距离"),
+      tr("在左上角显示车辆中心到左侧和右侧车道线的距离（米）。车道线模型置信度低时显示横线。"),
+      "../assets/offroad/icon_monitoring.png",
+      false,
+    },
   };
 
   for (auto &[param, title, desc, icon, needs_restart] : toggle_defs) {

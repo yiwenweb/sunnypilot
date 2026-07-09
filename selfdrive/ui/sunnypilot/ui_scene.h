@@ -16,4 +16,6 @@ typedef struct UISceneSP : UIScene {
   bool steering_arc = false;
   bool standstill_timer = false;
   bool debug_plots = false;
+  bool steer_torque_data = false;
+  bool lane_line_data = false;
 } UISceneSP;
