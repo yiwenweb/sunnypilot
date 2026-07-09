@@ -296,6 +296,20 @@ def _lead_active(lead, v_ego):
     return tailgate, stationary, slow
 
 
+def _segment_is_plausible(seg_stats):
+    """Basic sanity check — discard segments where physics don't make sense。
+
+    常见「不可能」数据:
+      - 平均速度 > 150 km/h（普通公路/高速不可能持续超过）
+      - 有里程但时长 < 1 秒（积分噪声）
+    """
+    dur_h = seg_stats.get("durationMinutes", 0) / 60.0
+    dist = seg_stats.get("totalDistanceKm", 0)
+    if dur_h > 0 and dist / dur_h > 150:
+        return False
+    return True
+
+
 def process_segment(seg_dir, accum_by_date, seg_date):
     """Parse one segment's qlog, accumulate into per-date dict.
 
@@ -364,7 +378,7 @@ def process_segment(seg_dir, accum_by_date, seg_date):
         acc.record_engaged_transition(engaged, ts_ns)
 
     seg_stats = acc.to_daily_drive_stats()
-    if seg_stats["totalDistanceKm"] > 0:
+    if seg_stats["totalDistanceKm"] > 0 and _segment_is_plausible(seg_stats):
         date_key = seg_stats["date"]
         if date_key not in accum_by_date:
             accum_by_date[date_key] = {k: 0 for k in seg_stats if k != "date"}
