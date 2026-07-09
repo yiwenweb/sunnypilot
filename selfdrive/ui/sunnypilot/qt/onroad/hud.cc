@@ -150,12 +150,22 @@ void HudRendererSP::updateState(const UIState &s) {
   }
 
   // Lane line distances (body-center to left/right lane line, c₀ in meters)
-  if (laneLineDataEnabled) {
+  // Guard: modelV2 may be an empty/uninitialized message on the first frames
+  // after entering onroad; accessing laneLines[1]/[2] before data arrives
+  // triggers a capnp out-of-range → UI SIGABRT → manager reboot loop (stuck logo).
+  if (laneLineDataEnabled && sm.rcv_frame("modelV2") > 0) {
     const auto model = sm["modelV2"].getModelV2();
     const auto &lane_lines = model.getLaneLines();
     const auto &lane_line_probs = model.getLaneLineProbs();
-    leftLaneDist   = (lane_line_probs[1] > 0.5f) ? lane_lines[1].getY()[0] : 0.0f;
-    rightLaneDist  = (lane_line_probs[2] > 0.5f) ? lane_lines[2].getY()[0] : 0.0f;
+    if (lane_lines.size() >= 3 && lane_line_probs.size() >= 3) {
+      const auto &left_y = lane_lines[1].getY();
+      const auto &right_y = lane_lines[2].getY();
+      leftLaneDist  = (lane_line_probs[1] > 0.5f && left_y.size()  > 0) ? left_y[0]  : 0.0f;
+      rightLaneDist = (lane_line_probs[2] > 0.5f && right_y.size() > 0) ? right_y[0] : 0.0f;
+    } else {
+      leftLaneDist = 0.0f;
+      rightLaneDist = 0.0f;
+    }
   }
 
   // Standstill timer: track when speed is 0 and count seconds
