@@ -354,6 +354,55 @@ reboot
 - `PERSISTENT` — 持久化保存
 - `BACKUP` — 备份时包含
 
+### ⚠️ 参数持久化陷阱（重要，避免开关重启失效）
+
+**根因**：`Params::clearAll()`（`common/params.cc`）在遍历 `/data/params/d/` 时会执行：
+
+```cpp
+auto it = keys.find(de->d_name);
+if (it == keys.end() || (it->second.flags & key_flag)) {
+  unlink(...);   // 文件名不在 keys 表 → 无视 flag 直接删掉
+}
+```
+
+`manager.py` 每次启动会连续调用 4 次 `clear_all`（`CLEAR_ON_MANAGER_START` / `CLEAR_ON_ONROAD_TRANSITION` / `CLEAR_ON_OFFROAD_TRANSITION` / `CLEAR_ON_IGNITION_ON`），未注册的 key 会被全部清掉。
+
+**核心陷阱：`common/params_pyx.so` 是预编译进 staging-tici 的二进制**
+
+| 谁调 `Params` | 走的 keys 表来源 |
+|------|------|
+| C++ UI（`ui` 二进制） | 编译期链接的 `params_keys.h` — 走 `sunnypilot1/qt-dev`，随 UI 重编而更新 |
+| Python `manager.py` / `process_config.py` | `common/params_pyx.so` 里静态链接的 keys map — **预编译进 `sunnypilot/staging-tici` 仓库**，`git pull` 不会自动重编 |
+
+即使运行系统 `/data/openpilot/common/params_keys.h` 已经补齐 key，manager 侧仍然读的是 `.so` 里旧的白名单——只改 `.h` 无效。
+
+**表现**：UI 侧点开关能存进 `/data/params/d/<Key>` → 重启 manager → `.so` 内 `keys.find()` 返 `end()` → `unlink` 删除 → UI 再读到空 → 开关变回关。
+
+**排查口诀**：开关不能保持上次状态 → 用二进制字符串扫 `/data/openpilot/common/params_pyx.so`，看 key 是否在里面：
+```bash
+strings /data/openpilot/common/params_pyx.so | grep -E 'AccelBar|SteerTorqueData'
+```
+无输出即缺失。
+
+**修复流程（新增 UI 参数时）**：
+
+```
+1. sunnypilot1/common/params_keys.h  +  key                     # UI 端能读
+2. sunnypilot1/selfdrive/ui/sunnypilot/qt/offroad/settings/...  # UI 面板
+3. C3 上重新编 params_pyx.so                                      # ⭐ 关键步骤
+   cd /data/panda_build
+   git checkout yiwen/qt-dev -- common/params_keys.h common/params_pyx.pyx
+   scons -j4 common/params_pyx.so
+4. 停 manager/ui 进程，替换 UI 二进制 + 替换 .so
+   sudo pkill -f manager; sudo pkill -f "selfdrive/ui/ui"; sleep 3
+   cp /data/panda_build/selfdrive/ui/ui        /data/openpilot/selfdrive/ui/ui
+   cp /data/panda_build/common/params_pyx.so   /data/openpilot/common/params_pyx.so
+5. reboot
+6. （可选，半永久）把新 .so scp 回桌面 sunnypilot/，commit + push staging-tici
+```
+
+---
+
 ### ⚠️ 消息服务订阅指南（重要，避免 onroad 崩溃）
 
 任何在 UI 中**读取新 cereal 消息服务**的功能（如 `liveMapDataSP`、`carControlSP` 等），
@@ -373,6 +422,41 @@ UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" 
 
 ---
 
+### ⚠️ capnp 消息未初始化守卫（重要，避免 onroad 越界崩溃）
+
+**坑**：在 HUD 里直接读 `modelV2` 等 cereal 消息的 List 字段（如 `laneLines[i]` / `laneLineProbs[i]`）
+时，**进 onroad 头几帧消息还没到**，capnp reader 里的 List 是长度 0。此时下标访问 `[1]`/`[2]` 会
+**越界** → 抛异常/SIGABRT → UI 崩 → manager 反复重启失败 → **卡逗号 logo**。
+
+**崩溃特征**：启动正常、进摄像头（onroad）页面瞬间崩溃、反复重启，与「服务未订阅」崩溃表现一致，
+但根因不同（这里是 capnp List 越界，不是 `std::map::at()` 抛异常）。
+
+**正确写法**（对照 `qt/onroad/model.cc` 官方守卫）：
+
+```cpp
+if (laneLineDataEnabled && sm.rcv_frame("modelV2") > 0) {        // ① 消息到过才继续
+  const auto model = sm["modelV2"].getModelV2();
+  const auto &lane_lines = model.getLaneLines();
+  const auto &lane_line_probs = model.getLaneLineProbs();
+  if (lane_lines.size() >= 3 && lane_line_probs.size() >= 3) {    // ② List 长度检查
+    const auto &left_y = lane_lines[1].getY();
+    const auto &right_y = lane_lines[2].getY();
+    leftLaneDist  = (lane_line_probs[1] > 0.5f && left_y.size()  > 0) ? left_y[0]  : 0.0f;  // ③ 内层 length 检查
+    rightLaneDist = (lane_line_probs[2] > 0.5f && right_y.size() > 0) ? right_y[0] : 0.0f;
+  }
+}
+```
+
+**三层守卫口诀**：
+1. `sm.rcv_frame("服务名") > 0` — 该消息至少收过一帧才读
+2. `xxx.size() >= N` — capnp List 长度检查，杜绝 `[i]` 越界
+3. 嵌套 List（如 `getY()`）也要再查 `size() > 0` 才能取 `[0]`
+
+**真实案例**：2026-07-09 加 `LaneLineData` 车道线距离时，原代码无条件读 `modelV2.laneLines[1]/[2]`，
+上车进摄像头即崩。加三层守卫后修复（commit：`fix(hud): guard LaneLineData reads against uninitialized modelV2`）。
+
+---
+
 ## 八、移植记录
 
 | 日期 | 功能 | 文件改动 | 状态 |
@@ -385,6 +469,7 @@ UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" 
 | 2026-07-08 | **摄像头流（WebRTC 硬件编码）** | `process_config.py` `params_keys.h` `sunny_features_panel.cc` + App 端 | ✅ 已完成 |
 | 2026-07-09 | **SteerTorqueData 转向扭矩监控** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ✅ 已完成 |
 | 2026-07-09 | **LaneLineData 车道线距离** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ✅ 已完成 |
+| 2026-07-09 | **修复 LaneLineData 导致 onroad 崩溃** | `hud.cc` 加三层 capnp 守卫（`rcv_frame>0` + List 长度检查 + 内层 `getY()` 长度） | ✅ 已修复 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单
