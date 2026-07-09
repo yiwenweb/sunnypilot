@@ -76,7 +76,7 @@ TAKEOVER_EVENTS = {"pedalPressed", "steerOverride", "gasPressedOverride", "steer
 class SegmentAccum:
     __slots__ = ("total_m", "assisted_m", "first_ns", "last_ns",
                  "events", "prev_engaged", "prev_engaged_ns",
-                 "start_ns", "segment_date")
+                 "start_ns", "segment_date", "_last_cs")
 
     def __init__(self, date_str):
         self.segment_date = date_str
