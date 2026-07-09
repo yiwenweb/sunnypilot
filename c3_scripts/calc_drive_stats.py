@@ -74,60 +74,41 @@ TAKEOVER_EVENTS = {"pedalPressed", "steerOverride", "gasPressedOverride", "steer
 # Per-segment accumulator
 # ---------------------------------------------------------------------------
 class SegmentAccum:
-    __slots__ = ("total_m", "assisted_m", "first_ns", "last_ns",
-                 "events", "prev_engaged", "prev_engaged_ns",
-                 "start_ns", "segment_date", "_last_cs")
+    __slots__ = ("total_m", "assisted_m", "start_ns", "last_ns",
+                 "events", "segment_date")
 
     def __init__(self, date_str):
         self.segment_date = date_str
         self.total_m = 0.0
         self.assisted_m = 0.0
-        self.first_ns = None
+        self.start_ns = None
         self.last_ns = None
         self.events = {}      # event_name → count
-        self.prev_engaged = False
-        self.prev_engaged_ns = None
-        self.start_ns = None
 
-    def register_car_state(self, cs, ts_ns):
-        """Integrate distance from vEgo (m/s) × dt."""
-        v_ego = cs.vEgo
-        engaged = cs.cruiseState.enabled
-        self._integrate(v_ego, engaged, ts_ns)
-
-    def register_selfdrive_state(self, ss, cs, ts_ns):
-        """Integrate using selfdriveState.enabled (newer openpilot)."""
-        v_ego = cs.vEgo if cs else 0.0
-        engaged = ss.enabled
-        self._integrate(v_ego, engaged, ts_ns)
-
-    def _integrate(self, v_ego, engaged, ts_ns):
+    def integrate(self, v_ego, engaged, ts_ns):
+        """Integrate distance from vEgo (m/s) × dt — called once per carState frame."""
         if self.start_ns is None:
             self.start_ns = ts_ns
             self.last_ns = ts_ns
-            self.prev_engaged = engaged
             return
 
         dt_s = (ts_ns - self.last_ns) * 1e-9
         if dt_s <= 0 or dt_s > 5.0:
             # Clamp: skip absurd gaps (>5 sec = likely ignition cycle boundary)
             self.last_ns = ts_ns
-            self.prev_engaged = engaged
             return
 
-        avg_v = v_ego
-        ds_m = avg_v * dt_s
+        ds_m = v_ego * dt_s
         self.total_m += ds_m
         if engaged:
             self.assisted_m += ds_m
 
         self.last_ns = ts_ns
-        self.prev_engaged = engaged
 
     def register_event(self, event_name):
         self.events[event_name] = self.events.get(event_name, 0) + 1
 
-    def compute_duration_min(self):
+    def duration_min(self):
         if self.start_ns is None or self.last_ns is None:
             return 0
         return int((self.last_ns - self.start_ns) * 1e-9 / 60)
@@ -152,7 +133,7 @@ class SegmentAccum:
             "totalDistanceKm": round(self.total_m / 1000.0, 1),
             "assistedDistanceKm": round(self.assisted_m / 1000.0, 1),
             "manualDistanceKm": round(manual_m / 1000.0, 1),
-            "durationMinutes": self.compute_duration_min(),
+            "durationMinutes": self.duration_min(),
             "takeovers": takeover_count,
             "collisionWarning": col_warn,
             "tailgating": 0,            # TODO: derive from lead distance
@@ -176,14 +157,23 @@ def find_qlog(seg_dir):
 def parse_segment_date(seg_dir_name):
     """
     Segment dir name: <start_timestamp>--<route_hash>--<seg_idx>
-    The timestamp is a Unix epoch (seconds).
+    The start_timestamp is a Unix epoch in either decimal or hexadecimal.
     """
     try:
         ts_str = seg_dir_name.split("--")[0]
-        ts = int(ts_str)
+        ts = None
+        for base in (10, 16):
+            try:
+                ts = int(ts_str, base)
+                break
+            except ValueError:
+                continue
+        if ts is None or ts < 1000000000:
+            # 小于 2001 年的时间戳视为无效（例如十六进制模拟数据 0x3f、或 0）
+            return None
         dt = datetime.fromtimestamp(ts, tz=timezone.utc)
         return dt.strftime("%Y-%m-%d")
-    except (ValueError, IndexError):
+    except (ValueError, IndexError, OSError):
         return None
 
 
@@ -193,36 +183,39 @@ def process_segment(seg_dir, accum_by_date):
     if qlog is None:
         raise FileNotFoundError(f"未找到 qlog: {seg_dir}")
 
-    seg_date = parse_segment_date(os.path.basename(seg_dir))
-    if seg_date is None:
-        seg_date = "unknown"
-
+    seg_date = parse_segment_date(os.path.basename(seg_dir)) or "unknown"
     acc = SegmentAccum(seg_date)
+
+    v_ego = 0.0
+    engaged = False
 
     lr = LogReader(qlog)
     for msg in lr:
         w = msg.which()
         ts_ns = msg.logMonoTime
 
-        # Track the most recent carState for vEgo
         if w == "carState":
             cs = msg.carState
-            if hasattr(cs, 'vEgo'):
-                acc.register_car_state(cs, ts_ns)
+            if hasattr(cs, "vEgo"):
+                v_ego = cs.vEgo
+            # engaged 兜底来源：cruiseState.enabled（carControl 优先覆盖）
+            cs_en = getattr(cs, "cruiseState", None)
+            if cs_en is not None and hasattr(cs_en, "enabled"):
+                engaged = cs_en.enabled
+            # 每帧只积分一次，vEgo 取本帧真实速度
+            acc.integrate(v_ego, engaged, ts_ns)
 
-        # Track engaged from selfdriveState (newer) or carControl
-        if w == "selfdriveState":
-            ss = msg.selfdriveState
-            # Re-use last carState for vEgo if available; use 0 as fallback
-            acc.register_selfdrive_state(ss, getattr(acc, '_last_cs', None), ts_ns)
-
-        if w == "carControl":
+        elif w == "carControl":
             cc = msg.carControl
-            v_ego = getattr(acc, '_last_v_ego', 0.0)
-            if hasattr(cc, 'enabled'):
-                acc._integrate(v_ego, cc.enabled, ts_ns)
+            if hasattr(cc, "enabled"):
+                engaged = cc.enabled
 
-        # Parse carEvents
+        elif w == "selfdriveState":
+            ss = msg.selfdriveState
+            if hasattr(ss, "enabled"):
+                engaged = ss.enabled
+
+        # Parse carEvents (legacy location)
         if w == "carEvents":
             for ev in msg.carEvents:
                 try:
@@ -232,9 +225,10 @@ def process_segment(seg_dir, accum_by_date):
                 if name in EVENT_MAP:
                     acc.register_event(name)
 
+        # Parse selfdriveState.events (newer location)
         if w == "selfdriveState":
             ss = msg.selfdriveState
-            if hasattr(ss, 'events'):
+            if hasattr(ss, "events"):
                 for ev in ss.events:
                     try:
                         name = str(ev.name)
@@ -242,10 +236,6 @@ def process_segment(seg_dir, accum_by_date):
                         continue
                     if name in EVENT_MAP:
                         acc.register_event(name)
-
-        # Keep last carState around for selfdriveState integration
-        if w == "carState":
-            acc._last_cs = msg.carState
 
     seg_stats = acc.to_daily_drive_stats()
     if seg_stats["totalDistanceKm"] > 0:
