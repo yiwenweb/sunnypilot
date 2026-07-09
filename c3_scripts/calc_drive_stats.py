@@ -37,7 +37,7 @@ import sys
 import os
 import json
 import glob
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 sys.path.insert(0, "/data/openpilot")
 
@@ -71,14 +71,10 @@ EVENT_MAP = {
     "preLaneChangeLeft":  "laneChangeAssist",
     "preLaneChangeRight": "laneChangeAssist",
     "startup":            "startReminder",
-    "pedalPressed":       "takeovers",
-    "steerOverride":      "takeovers",
-    "gasPressedOverride": "takeovers",
-    "steerDisengage":     "takeovers",
 }
 
-# Events that represent a user takeover (engaged → disengaged)
-TAKEOVER_EVENTS = {"pedalPressed", "steerOverride", "gasPressedOverride", "steerDisengage"}
+# 接管次数改由 SegmentAccum.record_engaged_transition() 用 engaged 跳变计算，
+# 不再依赖 pedalPressed/steerOverride 等每帧刷新的事件。
 
 # 需要从 radarState lead 推导的指标
 LEAD_EVENTS = {"tailgating", "leadCarStationary", "leadCarSlow"}
@@ -89,7 +85,8 @@ LEAD_EVENTS = {"tailgating", "leadCarStationary", "leadCarSlow"}
 # ---------------------------------------------------------------------------
 class SegmentAccum:
     __slots__ = ("total_m", "assisted_m", "assisted_duration_s", "max_v_ego",
-                 "start_ns", "last_ns", "events", "edge_state", "segment_date")
+                 "start_ns", "last_ns", "events", "edge_state", "segment_date",
+                 "takeover_count", "_last_engaged", "_last_ts")
 
     def __init__(self, date_str):
         self.segment_date = date_str
@@ -101,6 +98,9 @@ class SegmentAccum:
         self.last_ns = None
         self.events = {}          # event_name → count (rising-edge)
         self.edge_state = {}      # event_name → last active bool
+        self.takeover_count = 0   # 真实接管：engaged → disengaged 跳变次数
+        self._last_engaged = None
+        self._last_ts = None
 
     def integrate(self, v_ego, engaged, ts_ns):
         """Integrate distance from vEgo (m/s) × dt — called once per carState frame."""
@@ -136,6 +136,18 @@ class SegmentAccum:
             self.events[key] = self.events.get(key, 0) + 1
         self.edge_state[key] = active
 
+    def record_engaged_transition(self, engaged, ts_ns):
+        """Count a takeover as a rising→falling transition of engaged state.
+
+        One count per frame boundary (deduped by ts_ns) so rapid message
+        interleaving cannot double-count.
+        """
+        if self._last_ts != ts_ns:
+            if self._last_engaged is not None and self._last_engaged and not engaged:
+                self.takeover_count += 1
+            self._last_engaged = engaged
+            self._last_ts = ts_ns
+
     def register_event(self, event_name):
         self.events[event_name] = self.events.get(event_name, 0) + 1
 
@@ -148,8 +160,8 @@ class SegmentAccum:
         """Convert segment accumulator to a per-day stats dict (additive)."""
         manual_m = max(0.0, self.total_m - self.assisted_m)
 
-        # Count takeovers from tracked events
-        takeover_count = sum(self.events.get(e, 0) for e in TAKEOVER_EVENTS)
+        # 接管次数 = engaged → disengaged 真实跳变（见 record_engaged_transition）
+        takeover_count = self.takeover_count
 
         # Count other event types
         col_warn = self.events.get("fcw", 0) + self.events.get("stockFcw", 0)
@@ -228,13 +240,15 @@ def _lead_active(lead, v_ego):
     return tailgate, stationary, slow
 
 
-def process_segment(seg_dir, accum_by_date):
-    """Parse one segment's qlog, accumulate into per-date dict."""
+def process_segment(seg_dir, accum_by_date, seg_date):
+    """Parse one segment's qlog, accumulate into per-date dict.
+
+    seg_date 由调用方从目录名解析后传入（便于在打开文件前做日期过滤）。
+    """
     qlog = find_qlog(seg_dir)
     if qlog is None:
         raise FileNotFoundError(f"未找到 qlog: {seg_dir}")
 
-    seg_date = parse_segment_date(os.path.basename(seg_dir)) or "unknown"
     acc = SegmentAccum(seg_date)
 
     v_ego = 0.0
@@ -290,6 +304,9 @@ def process_segment(seg_dir, accum_by_date):
             acc.register_edge("leadCarStationary", stationary)
             acc.register_edge("leadCarSlow", slow)
 
+        # 记录 engaged 状态跳变（用于接管计数），每帧按 ts_ns 去重
+        acc.record_engaged_transition(engaged, ts_ns)
+
     seg_stats = acc.to_daily_drive_stats()
     if seg_stats["totalDistanceKm"] > 0:
         date_key = seg_stats["date"]
@@ -324,6 +341,14 @@ def compute_safety_score(daily):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="C3 驾驶统计计算")
+    parser.add_argument("--days", type=int, default=30,
+                        help="仅统计最近 N 天的 segment（默认 30）")
+    parser.add_argument("--all", action="store_true",
+                        help="忽略日期过滤，处理全部 segment")
+    args = parser.parse_args()
+
     seg_dirs = sorted(
         d for d in glob.glob(os.path.join(REALDATA, "*--*"))
         if os.path.isdir(d)
@@ -333,13 +358,26 @@ def main():
         print(json.dumps([]))
         return
 
+    # 日期过滤：从目录名解析 segment 日期，过期/无效的在打开文件前跳过，
+    # 这样不会为全部 realdata 逐段解析而耗费数十秒。
+    now = datetime.now(tz=timezone.utc)
+    cutoff = (now - timedelta(days=args.days)).strftime("%Y-%m-%d")
+
     # Accumulate by date
     accum_by_date = {}
     ok = 0
+    skipped = 0
     for d in seg_dirs:
         seg_name = os.path.basename(d)
+        seg_date = parse_segment_date(seg_name)
+        if seg_date is None:
+            skipped += 1
+            continue                       # 时间戳无效 / 合成数据
+        if not args.all and seg_date < cutoff:
+            skipped += 1
+            continue                       # 超出天数窗口
         try:
-            process_segment(d, accum_by_date)
+            process_segment(d, accum_by_date, seg_date)
             ok += 1
         except Exception as e:
             print(f"跳过 {seg_name}: {e}", file=sys.stderr)
@@ -360,8 +398,8 @@ def main():
         results.append(daily)
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
-    if ok < len(seg_dirs):
-        print(f"警告: {len(seg_dirs) - ok}/{len(seg_dirs)} 个 segment 处理失败", file=sys.stderr)
+    if ok + skipped < len(seg_dirs):
+        print(f"警告: {len(seg_dirs) - ok - skipped}/{len(seg_dirs)} 个 segment 处理失败", file=sys.stderr)
 
 
 if __name__ == "__main__":
