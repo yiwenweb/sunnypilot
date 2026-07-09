@@ -73,8 +73,9 @@ EVENT_MAP = {
     "startup":            "startReminder",
 }
 
-# 接管次数改由 SegmentAccum.record_engaged_transition() 用 engaged 跳变计算，
-# 不再依赖 pedalPressed/steerOverride 等每帧刷新的事件。
+# 接管次数由 SegmentAccum.record_engaged_transition() 计算，
+# 仅当 engaged 连续持续 ≥2 秒后 disengage 才计数一次接管，
+# 以此过滤 ACC 临时断开等噪声。不再使用 pedalPressed 等每帧刷新的事件。
 
 # 需要从 radarState lead 推导的指标
 LEAD_EVENTS = {"tailgating", "leadCarStationary", "leadCarSlow"}
@@ -84,9 +85,9 @@ LEAD_EVENTS = {"tailgating", "leadCarStationary", "leadCarSlow"}
 # Per-segment accumulator
 # ---------------------------------------------------------------------------
 class SegmentAccum:
-    __slots__ = ("total_m", "assisted_m", "assisted_duration_s", "max_v_ego",
+    __slots__ = ("total_m", "assisted_m", "assisted_duration_s", "max_v_ego", "driving_time_s",
                  "start_ns", "last_ns", "events", "edge_state", "segment_date",
-                 "takeover_count", "_last_engaged", "_last_ts")
+                 "takeover_count", "_last_engaged", "_last_ts", "_engage_ts")
 
     def __init__(self, date_str):
         self.segment_date = date_str
@@ -94,13 +95,15 @@ class SegmentAccum:
         self.assisted_m = 0.0
         self.assisted_duration_s = 0.0
         self.max_v_ego = 0.0
+        self.driving_time_s = 0.0    # 实际积分累计时长（代替 logMonoTime 跨度）
         self.start_ns = None
         self.last_ns = None
         self.events = {}          # event_name → count (rising-edge)
         self.edge_state = {}      # event_name → last active bool
-        self.takeover_count = 0   # 真实接管：engaged → disengaged 跳变次数
+        self.takeover_count = 0   # 真实接管：engaged 持续 ≥2s 后 disengage 才计数
         self._last_engaged = None
         self._last_ts = None
+        self._engage_ts = None    # 最近一次 engagement 开始的 ts_ns
 
     def integrate(self, v_ego, engaged, ts_ns):
         """Integrate distance from vEgo (m/s) × dt — called once per carState frame."""
@@ -116,6 +119,7 @@ class SegmentAccum:
             return
 
         ds_m = v_ego * dt_s
+        self.driving_time_s += dt_s    # 实际行驶秒数
         self.total_m += ds_m
         if engaged:
             self.assisted_m += ds_m
@@ -137,14 +141,20 @@ class SegmentAccum:
         self.edge_state[key] = active
 
     def record_engaged_transition(self, engaged, ts_ns):
-        """Count a takeover as a rising→falling transition of engaged state.
+        """Count a takeover only when engaged was continuously true for ≥2 s.
 
-        One count per frame boundary (deduped by ts_ns) so rapid message
-        interleaving cannot double-count.
+        'logMonoTime' is boot time (not wall clock), but within a single
+        segment the monotonic span is proportional to real time.  This 2 s
+        hysteresis filters out noise / brief ACC disengagements that are
+        not actual driver takeovers.
         """
         if self._last_ts != ts_ns:
-            if self._last_engaged is not None and self._last_engaged and not engaged:
-                self.takeover_count += 1
+            if engaged and (self._last_engaged is None or not self._last_engaged):
+                self._engage_ts = ts_ns         # rising edge → note when engagement started
+            elif not engaged and self._last_engaged:
+                elapsed = (ts_ns - self._engage_ts) * 1e-9 if self._engage_ts is not None else 0.0
+                if elapsed >= 2.0:              # only count if engaged lasted ≥ 2 s
+                    self.takeover_count += 1
             self._last_engaged = engaged
             self._last_ts = ts_ns
 
@@ -152,15 +162,14 @@ class SegmentAccum:
         self.events[event_name] = self.events.get(event_name, 0) + 1
 
     def duration_min(self):
-        if self.start_ns is None or self.last_ns is None:
-            return 0
-        return int((self.last_ns - self.start_ns) * 1e-9 / 60)
+        """驾驶时长 = 实际积分累计的秒数（不靠 logMonoTime 跨度）。"""
+        return int(self.driving_time_s / 60)
 
     def to_daily_drive_stats(self):
         """Convert segment accumulator to a per-day stats dict (additive)."""
         manual_m = max(0.0, self.total_m - self.assisted_m)
 
-        # 接管次数 = engaged → disengaged 真实跳变（见 record_engaged_transition）
+        # 接管次数 = engaged 持续 ≥2s 后 disengage 才算一次（见 record_engaged_transition）
         takeover_count = self.takeover_count
 
         # Count other event types
