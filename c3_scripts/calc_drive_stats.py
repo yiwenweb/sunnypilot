@@ -303,7 +303,8 @@ def main():
         results.append(daily)
 
     print(json.dumps(results, ensure_ascii=False, indent=2))
-    print(f"处理完成: {ok}/{len(seg_dirs)} 个 segment", file=sys.stderr)
+    if ok < len(seg_dirs):
+        print(f"警告: {len(seg_dirs) - ok}/{len(seg_dirs)} 个 segment 处理失败", file=sys.stderr)
 
 
 if __name__ == "__main__":
