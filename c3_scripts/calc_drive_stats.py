@@ -19,6 +19,8 @@ C3 端驾驶统计计算脚本。
       "assistedDistanceKm": 38.1,
       "manualDistanceKm": 7.1,
       "durationMinutes": 62,
+      "assistedDurationMinutes": 51,
+      "maxSpeedKmh": 112.3,
       "takeovers": 3,
       "collisionWarning": 0,
       "tailgating": 2,
@@ -49,6 +51,13 @@ except Exception as e:
 REALDATA = "/data/media/0/realdata"
 QLOG_NAMES = ("qlog.zst", "qlog.bz2", "qlog")
 
+# 跟车/前车判定阈值
+TAILGATE_DIST_M = 8.0        # 跟车距离 < 8m 视为过近
+TAILGATE_MIN_EGO_MS = 3.0    # 自身车速需 > 3m/s
+LEAD_STATIONARY_MS = 0.5     # 前车速度 < 0.5m/s 视为静止
+LEAD_SLOW_MS = 3.0           # 前车速度 < 3m/s 视为龟速
+LEAD_SLOW_GAP_MS = 1.0       # 且自身比前车快 > 1m/s
+
 # ---------------------------------------------------------------------------
 # Event name → DriveStats field mapping
 # (Enum strings from cereal/log.capnp EventName)
@@ -65,25 +74,33 @@ EVENT_MAP = {
     "pedalPressed":       "takeovers",
     "steerOverride":      "takeovers",
     "gasPressedOverride": "takeovers",
+    "steerDisengage":     "takeovers",
 }
 
 # Events that represent a user takeover (engaged → disengaged)
 TAKEOVER_EVENTS = {"pedalPressed", "steerOverride", "gasPressedOverride", "steerDisengage"}
 
+# 需要从 radarState lead 推导的指标
+LEAD_EVENTS = {"tailgating", "leadCarStationary", "leadCarSlow"}
+
+
 # ---------------------------------------------------------------------------
 # Per-segment accumulator
 # ---------------------------------------------------------------------------
 class SegmentAccum:
-    __slots__ = ("total_m", "assisted_m", "start_ns", "last_ns",
-                 "events", "segment_date")
+    __slots__ = ("total_m", "assisted_m", "assisted_duration_s", "max_v_ego",
+                 "start_ns", "last_ns", "events", "edge_state", "segment_date")
 
     def __init__(self, date_str):
         self.segment_date = date_str
         self.total_m = 0.0
         self.assisted_m = 0.0
+        self.assisted_duration_s = 0.0
+        self.max_v_ego = 0.0
         self.start_ns = None
         self.last_ns = None
-        self.events = {}      # event_name → count
+        self.events = {}          # event_name → count (rising-edge)
+        self.edge_state = {}      # event_name → last active bool
 
     def integrate(self, v_ego, engaged, ts_ns):
         """Integrate distance from vEgo (m/s) × dt — called once per carState frame."""
@@ -102,8 +119,22 @@ class SegmentAccum:
         self.total_m += ds_m
         if engaged:
             self.assisted_m += ds_m
+            self.assisted_duration_s += dt_s
+        if v_ego > self.max_v_ego:
+            self.max_v_ego = v_ego
 
         self.last_ns = ts_ns
+
+    def register_edge(self, key, active):
+        """Count only on rising edge (active: False→True).
+
+        onroadEvents / lead status persist across many frames, so without
+        edge detection a single event would be counted dozens of times.
+        """
+        was = self.edge_state.get(key, False)
+        if active and not was:
+            self.events[key] = self.events.get(key, 0) + 1
+        self.edge_state[key] = active
 
     def register_event(self, event_name):
         self.events[event_name] = self.events.get(event_name, 0) + 1
@@ -134,14 +165,18 @@ class SegmentAccum:
             "assistedDistanceKm": round(self.assisted_m / 1000.0, 1),
             "manualDistanceKm": round(manual_m / 1000.0, 1),
             "durationMinutes": self.duration_min(),
+            "assistedDurationMinutes": int(self.assisted_duration_s / 60),
+            "maxSpeedKmh": round(self.max_v_ego * 3.6, 1),
             "takeovers": takeover_count,
             "collisionWarning": col_warn,
-            "tailgating": 0,            # TODO: derive from lead distance
-            "leadCarStationary": 0,      # TODO: derive from lead vEgo
+            "tailgating": self.events.get("tailgating", 0),
+            "leadCarStationary": self.events.get("leadCarStationary", 0),
             "leadCarEmergencyBrake": aeb_cnt,
-            "leadCarSlow": 0,            # TODO: derive from lead vRel
+            "leadCarSlow": self.events.get("leadCarSlow", 0),
             "startReminder": startup_cnt,
             "laneChangeAssist": lc_cnt,
+            "maxSegmentDistanceKm": round(self.total_m / 1000.0, 1),
+            "longestSegmentMinutes": self.duration_min(),
             "safetyScore": 0,            # computed later in aggregation
         }
 
@@ -175,6 +210,22 @@ def parse_segment_date(seg_dir_name):
         return dt.strftime("%Y-%m-%d")
     except (ValueError, IndexError, OSError):
         return None
+
+
+def _lead_active(lead, v_ego):
+    """Return (tailgate, stationary, slow) booleans for one lead."""
+    if lead is None:
+        return False, False, False
+    status = getattr(lead, "status", False)
+    if not status:
+        return False, False, False
+    d_rel = getattr(lead, "dRel", 1e9)
+    v_lead = getattr(lead, "vLead", 0.0)
+
+    tailgate = d_rel < TAILGATE_DIST_M and v_ego > TAILGATE_MIN_EGO_MS
+    stationary = v_lead < LEAD_STATIONARY_MS
+    slow = v_lead < LEAD_SLOW_MS and v_ego > v_lead + LEAD_SLOW_GAP_MS
+    return tailgate, stationary, slow
 
 
 def process_segment(seg_dir, accum_by_date):
@@ -215,38 +266,44 @@ def process_segment(seg_dir, accum_by_date):
             if hasattr(ss, "enabled"):
                 engaged = ss.enabled
 
-        # Parse carEvents (legacy location)
-        if w == "carEvents":
-            for ev in msg.carEvents:
+        # 事件来源：顶层 onroadEvents（carEvents / selfdriveState.events 已废弃）
+        elif w == "onroadEvents":
+            cur = set()
+            for ev in msg.onroadEvents:
                 try:
-                    name = str(ev.name)
+                    cur.add(str(ev.name))
                 except Exception:
                     continue
-                if name in EVENT_MAP:
-                    acc.register_event(name)
+            for name in EVENT_MAP:
+                acc.register_edge(name, name in cur)
 
-        # Parse selfdriveState.events (newer location)
-        if w == "selfdriveState":
-            ss = msg.selfdriveState
-            if hasattr(ss, "events"):
-                for ev in ss.events:
-                    try:
-                        name = str(ev.name)
-                    except Exception:
-                        continue
-                    if name in EVENT_MAP:
-                        acc.register_event(name)
+        # 前车指标来源：radarState.leadOne / leadTwo
+        elif w == "radarState":
+            rs = msg.radarState
+            tailgate = stationary = slow = False
+            for lead in (getattr(rs, "leadOne", None), getattr(rs, "leadTwo", None)):
+                t, s, sl = _lead_active(lead, v_ego)
+                tailgate = tailgate or t
+                stationary = stationary or s
+                slow = slow or sl
+            acc.register_edge("tailgating", tailgate)
+            acc.register_edge("leadCarStationary", stationary)
+            acc.register_edge("leadCarSlow", slow)
 
     seg_stats = acc.to_daily_drive_stats()
     if seg_stats["totalDistanceKm"] > 0:
         date_key = seg_stats["date"]
         if date_key not in accum_by_date:
             accum_by_date[date_key] = {k: 0 for k in seg_stats if k != "date"}
+        daily = accum_by_date[date_key]
         for k, v in seg_stats.items():
             if k == "date":
                 continue
-            if isinstance(v, (int, float)):
-                accum_by_date[date_key][k] = accum_by_date[date_key].get(k, 0) + v
+            # 以下字段取「单 segment 最大值」，其余按日累加
+            if k in ("maxSpeedKmh", "maxSegmentDistanceKm", "longestSegmentMinutes"):
+                daily[k] = max(daily.get(k, 0), v)
+            elif isinstance(v, (int, float)):
+                daily[k] = daily.get(k, 0) + v
 
 
 def compute_safety_score(daily):
