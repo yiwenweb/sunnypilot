@@ -60,6 +60,12 @@ void HudRendererSP::updateState(const UIState &s) {
   actuators = car_control.getActuators();
   torqueLateral = steerControlType == cereal::CarParams::SteerControlType::TORQUE;
 
+  angleSteers = car_state.getSteeringAngleDeg();
+  // steeringAngleDesiredDeg lives inside the lateralControlState union and only
+  // exists for pid/angle/lqr/indi controllers. Torque control (e.g. BYD) has no
+  // such field, so read it conditionally and fall back to 0.
+  const auto lat_ctrl = cs.getLateralControlState();
+
   // TorqueState: controller output torque (Nm) for BYD torque-based systems
   if (lat_ctrl.isTorqueState()) {
     const auto ts = lat_ctrl.getTorqueState();
@@ -68,11 +74,6 @@ void HudRendererSP::updateState(const UIState &s) {
   } else {
     torqueStateOutput = 0.0f;
   }
-  angleSteers = car_state.getSteeringAngleDeg();
-  // steeringAngleDesiredDeg lives inside the lateralControlState union and only
-  // exists for pid/angle/lqr/indi controllers. Torque control (e.g. BYD) has no
-  // such field, so read it conditionally and fall back to 0.
-  const auto lat_ctrl = cs.getLateralControlState();
   if (lat_ctrl.isPidState()) {
     angleSteersDesired = lat_ctrl.getPidState().getSteeringAngleDesiredDeg();
   } else if (lat_ctrl.isAngleState()) {
@@ -153,8 +154,8 @@ void HudRendererSP::updateState(const UIState &s) {
     const auto model = sm["modelV2"].getModelV2();
     const auto &lane_lines = model.getLaneLines();
     const auto &lane_line_probs = model.getLaneLineProbs();
-    leftLaneDist = (lane_line_probs[1] > 0.5f) ? lane_lines[1].getC0() : 0.0f;
-    rightLaneDist = (lane_line_probs[2] > 0.5f) ? lane_lines[2].getC0() : 0.0f;
+    leftLaneDist   = (lane_line_probs[1] > 0.5f) ? lane_lines[1].getY()[0] : 0.0f;
+    rightLaneDist  = (lane_line_probs[2] > 0.5f) ? lane_lines[2].getY()[0] : 0.0f;
   }
 
   // Standstill timer: track when speed is 0 and count seconds
