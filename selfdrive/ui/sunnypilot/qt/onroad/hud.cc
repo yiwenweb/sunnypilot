@@ -816,11 +816,11 @@ void HudRendererSP::drawSteerTorqueData(QPainter &p, const QRect &surface_rect) 
     p.drawText(max_rect, Qt::AlignRight | Qt::AlignTop, "MAX");
   }
 
-  // Line 2: 实际 <value>
+  // Line 2: 实际 <value>° (actual steering angle, not EPS torque)
   QString eps_lbl = tr("实际");
   p.setFont(InterFont(30, QFont::Normal));
   int lbl2_w = p.fontMetrics().horizontalAdvance(eps_lbl);
-  QString eps_str = QString::number(std::fabs(steeringTorqueEps), 'f', 1);
+  QString eps_str = QString::number(angleSteers, 'f', 1) + "°";
   p.setFont(InterFont(42, QFont::Bold));
   int val2_w = p.fontMetrics().horizontalAdvance(eps_str);
   int total2_w = lbl2_w + gap + val2_w;
