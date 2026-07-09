@@ -201,13 +201,19 @@ def find_qlog(seg_dir):
     return None
 
 
-def parse_segment_date(seg_dir_name):
+def parse_segment_date(seg_dir):
+    """返回 segment 的日期字符串(YYYY-MM-DD)，或 None。
+
+    优先级：
+      1. 文件夹名里的起始时间戳 <start_ts>--<route>--<idx>。
+         仅当它像真实的 Unix 时间戳(>= 2010 年)时才采用。
+      2. 兜底：从 qlog 内容里读第一条消息的 logMonoTime。
+         这能处理「文件夹被重命名、丢失原始时间戳」的备份数据
+         （例如 00000000、00000001…… 这种序号命名）。
     """
-    Segment dir name: <start_timestamp>--<route_hash>--<seg_idx>
-    The start_timestamp is a Unix epoch in either decimal or hexadecimal.
-    """
+    seg_name = os.path.basename(seg_dir)
     try:
-        ts_str = seg_dir_name.split("--")[0]
+        ts_str = seg_name.split("--")[0]
         ts = None
         for base in (10, 16):
             try:
@@ -215,13 +221,23 @@ def parse_segment_date(seg_dir_name):
                 break
             except ValueError:
                 continue
-        if ts is None or ts < 1000000000:
-            # 小于 2001 年的时间戳视为无效（例如十六进制模拟数据 0x3f、或 0）
-            return None
-        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
-        return dt.strftime("%Y-%m-%d")
+        if ts is not None and ts >= 1262304000:   # 2010-01-01
+            return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
     except (ValueError, IndexError, OSError):
-        return None
+        pass
+
+    # 文件夹名无有效时间戳 → 读 qlog 首条消息的真实时间作为兜底
+    try:
+        qlog = find_qlog(seg_dir)
+        if qlog is not None:
+            for msg in LogReader(qlog):
+                ts_ns = msg.logMonoTime
+                if ts_ns and ts_ns >= 1262304000_000_000_000:   # 2010
+                    return datetime.fromtimestamp(ts_ns / 1e9, tz=timezone.utc).strftime("%Y-%m-%d")
+                break
+    except Exception:
+        pass
+    return None
 
 
 def _lead_active(lead, v_ego):
@@ -369,7 +385,7 @@ def main():
     skipped = 0
     for d in seg_dirs:
         seg_name = os.path.basename(d)
-        seg_date = parse_segment_date(seg_name)
+        seg_date = parse_segment_date(d)
         if seg_date is None:
             skipped += 1
             continue                       # 时间戳无效 / 合成数据
