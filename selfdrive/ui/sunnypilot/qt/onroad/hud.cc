@@ -812,7 +812,8 @@ void HudRendererSP::drawSteerTorqueData(QPainter &p, const QRect &surface_rect) 
   if (torqueStateSaturated) {
     p.setFont(InterFont(18, QFont::Bold));
     p.setPen(QColor(255, 140, 0, 230));
-    p.drawText(box_x + box_size.width() - 14, box_y + 12, Qt::AlignRight | Qt::AlignTop, "MAX");
+    QRect max_rect(box_x, box_y, box_size.width() - 14, 30);
+    p.drawText(max_rect, Qt::AlignRight | Qt::AlignTop, "MAX");
   }
 
   // Line 2: 实际 <value>
