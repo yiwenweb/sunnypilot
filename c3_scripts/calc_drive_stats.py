@@ -201,15 +201,54 @@ def find_qlog(seg_dir):
     return None
 
 
+def _read_date_from_qlog(qlog):
+    """读取 qlog 中真正的录制日期。
+
+    logMonoTime 是开机以来的纳秒数(boot time)，不是 Unix 时间，
+    所以不能直接用它算日期。正确做法：
+      1. 找 clocksState.wallTimeNanos（设备墙钟时间）
+      2. 找 gpsLocationExternal.timestamp（GPS 时间）
+      3. 都找不到时回退到文件的 mtime（至少接近录制日期）
+    前两条最多扫描前 5000 条消息避免太慢。
+    """
+    try:
+        lr = LogReader(qlog)
+        for i, msg in enumerate(lr):
+            if i >= 5000:
+                break
+            w = msg.which()
+            ts_ns = None
+            if w == "clocksState":
+                cs = msg.clocksState
+                if hasattr(cs, "wallTimeNanos"):
+                    ts_ns = cs.wallTimeNanos
+            elif w == "gpsLocationExternal":
+                gps = msg.gpsLocationExternal
+                if hasattr(gps, "timestamp"):
+                    ts_ns = int(gps.timestamp * 1e9)
+            if ts_ns is not None and ts_ns >= 1262304000_000_000_000:
+                return datetime.fromtimestamp(ts_ns / 1e9, tz=timezone.utc).strftime("%Y-%m-%d")
+    except Exception:
+        pass
+
+    # 最后回退：文件修改时间（大部份备份会保留 mtime）
+    try:
+        mtime = os.path.getmtime(qlog)
+        if mtime >= 1262304000:      # 2010-01-01
+            return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    return None
+
+
 def parse_segment_date(seg_dir):
     """返回 segment 的日期字符串(YYYY-MM-DD)，或 None。
 
     优先级：
       1. 文件夹名里的起始时间戳 <start_ts>--<route>--<idx>。
          仅当它像真实的 Unix 时间戳(>= 2010 年)时才采用。
-      2. 兜底：从 qlog 内容里读第一条消息的 logMonoTime。
-         这能处理「文件夹被重命名、丢失原始时间戳」的备份数据
-         （例如 00000000、00000001…… 这种序号命名）。
+      2. 兜底：从 qlog 内容读墙钟时间（clocksState / gpsLocation）。
+      3. 最后回退到文件修改时间。
     """
     seg_name = os.path.basename(seg_dir)
     try:
@@ -226,17 +265,9 @@ def parse_segment_date(seg_dir):
     except (ValueError, IndexError, OSError):
         pass
 
-    # 文件夹名无有效时间戳 → 读 qlog 首条消息的真实时间作为兜底
-    try:
-        qlog = find_qlog(seg_dir)
-        if qlog is not None:
-            for msg in LogReader(qlog):
-                ts_ns = msg.logMonoTime
-                if ts_ns and ts_ns >= 1262304000_000_000_000:   # 2010
-                    return datetime.fromtimestamp(ts_ns / 1e9, tz=timezone.utc).strftime("%Y-%m-%d")
-                break
-    except Exception:
-        pass
+    qlog = find_qlog(seg_dir)
+    if qlog is not None:
+        return _read_date_from_qlog(qlog)
     return None
 
 
@@ -363,10 +394,12 @@ def main():
                         help="仅统计最近 N 天的 segment（默认 30）")
     parser.add_argument("--all", action="store_true",
                         help="忽略日期过滤，处理全部 segment")
+    parser.add_argument("--src", type=str, default=REALDATA,
+                        help="指定 realdata 目录（默认 /data/media/0/realdata）")
     args = parser.parse_args()
 
     seg_dirs = sorted(
-        d for d in glob.glob(os.path.join(REALDATA, "*--*"))
+        d for d in glob.glob(os.path.join(args.src, "*--*"))
         if os.path.isdir(d)
     )
 
