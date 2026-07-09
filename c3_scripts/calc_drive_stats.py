@@ -293,6 +293,12 @@ def main():
     for date_str in sorted(accum_by_date.keys(), reverse=True):
         daily = accum_by_date[date_str]
         daily["date"] = date_str
+        # 消除多 segment 累加产生的浮点误差（如 9.999999999999998 → 10.0）
+        for k, v in daily.items():
+            if k == "date":
+                continue
+            if isinstance(v, float):
+                daily[k] = round(v, 1)
         daily["safetyScore"] = compute_safety_score(daily)
         results.append(daily)
 
