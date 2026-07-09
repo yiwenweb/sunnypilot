@@ -267,7 +267,7 @@ int HudRendererSP::drawRightDevUIElement(QPainter &p, int x, int y, const QStrin
   drawText(p, x, y, label);
 
   p.setFont(InterFont(30 * 2, QFont::Bold));
-  y += 65;
+  y += 55;
   drawText(p, x, y, value, color);
 
   p.setFont(InterFont(28, QFont::Bold));
@@ -282,7 +282,7 @@ int HudRendererSP::drawRightDevUIElement(QPainter &p, int x, int y, const QStrin
     p.restore();
   }
 
-  return 130;
+  return 108;
 }
 
 void HudRendererSP::drawRightDevUI(QPainter &p, int x, int y) {
@@ -342,37 +342,41 @@ int HudRendererSP::drawBottomDevUIElement(QPainter &p, int x, int y, const QStri
 void HudRendererSP::drawBottomDevUI(QPainter &p, int x, int y) {
   int rw = 90;
 
-  UiElement aEgoElement = DeveloperUi::getAEgo(aEgo);
-  rw += drawBottomDevUIElement(p, rw, y, aEgoElement.value, aEgoElement.label, aEgoElement.units, aEgoElement.color);
+  // Order reversed vs. original to spread static positions (anti burn-in).
+  // Sizes unchanged; only the sequence of items is swapped.
+  UiElement altitudeElement = DeveloperUi::getAltitude(gpsAccuracy, altitude);
+  rw += drawBottomDevUIElement(p, rw, y, altitudeElement.value, altitudeElement.label, altitudeElement.units, altitudeElement.color);
+
+  if (torqueLateral && torquedUseParams) {
+    UiElement latAccelFactorFilteredElement = DeveloperUi::getLatAccelFactorFiltered(latAccelFactorFiltered, liveValid);
+    rw += drawBottomDevUIElement(p, rw, y, latAccelFactorFilteredElement.value, latAccelFactorFilteredElement.label, latAccelFactorFilteredElement.units, latAccelFactorFilteredElement.color);
+
+    UiElement frictionCoefficientFilteredElement = DeveloperUi::getFrictionCoefficientFiltered(frictionCoefficientFiltered, liveValid);
+    rw += drawBottomDevUIElement(p, rw, y, frictionCoefficientFilteredElement.value, frictionCoefficientFilteredElement.label, frictionCoefficientFilteredElement.units, frictionCoefficientFilteredElement.color);
+  } else {
+    UiElement bearingDegElement = DeveloperUi::getBearingDeg(bearingAccuracyDeg, bearingDeg);
+    rw += drawBottomDevUIElement(p, rw, y, bearingDegElement.value, bearingDegElement.label, bearingDegElement.units, bearingDegElement.color);
+
+    UiElement steeringTorqueEpsElement = DeveloperUi::getSteeringTorqueEps(steeringTorqueEps);
+    rw += drawBottomDevUIElement(p, rw, y, steeringTorqueEpsElement.value, steeringTorqueEpsElement.label, steeringTorqueEpsElement.units, steeringTorqueEpsElement.color);
+  }
 
   UiElement vEgoLeadElement = DeveloperUi::getVEgoLead(lead_status, lead_v_rel, vEgo, is_metric, speedUnit);
   rw += drawBottomDevUIElement(p, rw, y, vEgoLeadElement.value, vEgoLeadElement.label, vEgoLeadElement.units, vEgoLeadElement.color);
 
-  if (torqueLateral && torquedUseParams) {
-    UiElement frictionCoefficientFilteredElement = DeveloperUi::getFrictionCoefficientFiltered(frictionCoefficientFiltered, liveValid);
-    rw += drawBottomDevUIElement(p, rw, y, frictionCoefficientFilteredElement.value, frictionCoefficientFilteredElement.label, frictionCoefficientFilteredElement.units, frictionCoefficientFilteredElement.color);
-
-    UiElement latAccelFactorFilteredElement = DeveloperUi::getLatAccelFactorFiltered(latAccelFactorFiltered, liveValid);
-    rw += drawBottomDevUIElement(p, rw, y, latAccelFactorFilteredElement.value, latAccelFactorFilteredElement.label, latAccelFactorFilteredElement.units, latAccelFactorFilteredElement.color);
-  } else {
-    UiElement steeringTorqueEpsElement = DeveloperUi::getSteeringTorqueEps(steeringTorqueEps);
-    rw += drawBottomDevUIElement(p, rw, y, steeringTorqueEpsElement.value, steeringTorqueEpsElement.label, steeringTorqueEpsElement.units, steeringTorqueEpsElement.color);
-
-    UiElement bearingDegElement = DeveloperUi::getBearingDeg(bearingAccuracyDeg, bearingDeg);
-    rw += drawBottomDevUIElement(p, rw, y, bearingDegElement.value, bearingDegElement.label, bearingDegElement.units, bearingDegElement.color);
-  }
-
-  UiElement altitudeElement = DeveloperUi::getAltitude(gpsAccuracy, altitude);
-  rw += drawBottomDevUIElement(p, rw, y, altitudeElement.value, altitudeElement.label, altitudeElement.units, altitudeElement.color);
+  UiElement aEgoElement = DeveloperUi::getAEgo(aEgo);
+  rw += drawBottomDevUIElement(p, rw, y, aEgoElement.value, aEgoElement.label, aEgoElement.units, aEgoElement.color);
 }
 
 void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
   // RocketFuel: vertical bar on the left side (ported from sunnypilot 2026)
   // MICI-style: gradient color + smooth animation
   const int bar_width = 36;
-  const int bar_height = 470;
+  const int bar_height = 560;   // a bit longer
   const float max_accel = 3.0f;
-  const int margin_left = 20;
+  // Tucked to the far left so it never overlaps the set-speed / data boxes
+  // (metric set-speed box left edge = 46, imperial = 60; bar right edge = 42)
+  const int margin_left = 6;
 
   int track_x = margin_left;
   int track_y = surface_rect.center().y() - bar_height / 2;
@@ -772,111 +776,109 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
 }
 
 void HudRendererSP::drawSteerTorqueData(QPainter &p, const QRect &surface_rect) {
-  // Box below the set-speed box (aligned left), 172×204
-  const int box_w = 172;
-  const int box_h = 204;
-  const int margin_left = 60;
-  const int box_x = margin_left;
+  // Box below the set-speed box, SAME size & alignment as the MAX set-speed box
+  const QSize default_size = {172, 204};
+  QSize box_size = is_metric ? QSize(200, 204) : default_size;
+  const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
   const int box_y = 280;  // 45 + 204 + 31 gap
 
   // Draw box
   p.setPen(QPen(QColor(255, 255, 255, 75), 6));
   p.setBrush(QColor(0, 0, 0, 166));
-  p.drawRoundedRect(box_x, box_y, box_w, box_h, 32, 32);
+  p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), 32, 32);
 
-  // Title line
-  p.setPen(QColor(255, 255, 255, 200));
-  p.setFont(InterFont(26, QFont::DemiBold));
-  QRect title_rect(box_x, box_y + 10, box_w, 34);
-  p.drawText(title_rect, Qt::AlignHCenter | Qt::AlignVCenter, "\u626d\u77e9 Nm");
+  int cx = box_x + box_size.width() / 2;
+  const int gap = 10;
 
-  // Divider line
-  p.setPen(QPen(QColor(255, 255, 255, 60), 1));
-  int div_y = box_y + 52;
-  p.drawLine(box_x + 20, div_y, box_x + box_w - 20, div_y);
-
-  // Model output line
-  p.setFont(InterFont(28, QFont::Normal));
-  p.setPen(QColor(160, 200, 255, 230));
-  QRect model_label(box_x, box_y + 60, box_w, 30);
-  p.drawText(model_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u6a21");
-
+  // Line 1: 模型 <value>
+  QString model_lbl = tr("模型");
+  p.setFont(InterFont(30, QFont::Normal));
+  int lbl_w = p.fontMetrics().horizontalAdvance(model_lbl);
+  QColor model_color = torqueStateSaturated ? QColor(255, 200, 60) : Qt::white;  // amber = saturated
   QString model_str = QString::number(torqueStateOutput, 'f', 1);
-  QColor model_color = Qt::white;
-  if (torqueStateSaturated) model_color = QColor(255, 200, 60);  // amber = saturated
-  p.setPen(model_color);
   p.setFont(InterFont(42, QFont::Bold));
-  QRect model_val(box_x, box_y + 90, box_w, 45);
-  p.drawText(model_val, Qt::AlignHCenter | Qt::AlignVCenter, model_str);
+  int val_w = p.fontMetrics().horizontalAdvance(model_str);
+  int total_w = lbl_w + gap + val_w;
+  int start_x = cx - total_w / 2;
+  int line1_y = box_y + 72;
+  p.setFont(InterFont(30, QFont::Normal));
+  p.setPen(QColor(160, 200, 255, 230));
+  p.drawText(start_x, line1_y, model_lbl);
+  p.setFont(InterFont(42, QFont::Bold));
+  p.setPen(model_color);
+  p.drawText(start_x + lbl_w + gap, line1_y, model_str);
 
-  // Small MAX label if saturated
+  // MAX marker (top-right) if saturated
   if (torqueStateSaturated) {
     p.setFont(InterFont(18, QFont::Bold));
     p.setPen(QColor(255, 140, 0, 230));
-    QRect sat_label(box_x + box_w / 2 + 30, box_y + 90, 40, 25);
-    p.drawText(sat_label, Qt::AlignLeft | Qt::AlignBottom, "MAX");
+    p.drawText(box_x + box_size.width() - 14, box_y + 12, Qt::AlignRight | Qt::AlignTop, "MAX");
   }
 
-  // Actual EPS line
-  p.setFont(InterFont(28, QFont::Normal));
-  p.setPen(QColor(160, 255, 180, 230));
-  QRect eps_label(box_x, box_y + 144, box_w, 30);
-  p.drawText(eps_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u5b9e");
-
-  float eps_torque = steeringTorqueEps;
-  QString eps_str = QString::number(std::fabs(eps_torque), 'f', 1);
-  QColor eps_color = Qt::white;
-  p.setPen(eps_color);
+  // Line 2: 实际 <value>
+  QString eps_lbl = tr("实际");
+  p.setFont(InterFont(30, QFont::Normal));
+  int lbl2_w = p.fontMetrics().horizontalAdvance(eps_lbl);
+  QString eps_str = QString::number(std::fabs(steeringTorqueEps), 'f', 1);
   p.setFont(InterFont(42, QFont::Bold));
-  QRect eps_val(box_x, box_y + 170, box_w, 45);
-  p.drawText(eps_val, Qt::AlignHCenter | Qt::AlignVCenter, eps_str);
+  int val2_w = p.fontMetrics().horizontalAdvance(eps_str);
+  int total2_w = lbl2_w + gap + val2_w;
+  int start2_x = cx - total2_w / 2;
+  int line2_y = box_y + 152;
+  p.setFont(InterFont(30, QFont::Normal));
+  p.setPen(QColor(160, 255, 180, 230));
+  p.drawText(start2_x, line2_y, eps_lbl);
+  p.setFont(InterFont(42, QFont::Bold));
+  p.setPen(Qt::white);
+  p.drawText(start2_x + lbl2_w + gap, line2_y, eps_str);
 }
 
 void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
-  // Box below SteerTorqueData, 172×204
-  const int box_w = 172;
-  const int box_h = 204;
-  const int margin_left = 60;
-  const int box_x = margin_left;
+  // Box below SteerTorqueData, SAME size & alignment as the MAX set-speed box
+  const QSize default_size = {172, 204};
+  QSize box_size = is_metric ? QSize(200, 204) : default_size;
+  const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
   const int box_y = 515;  // 280 + 204 + 31 gap
 
   // Draw box
   p.setPen(QPen(QColor(255, 255, 255, 75), 6));
   p.setBrush(QColor(0, 0, 0, 166));
-  p.drawRoundedRect(box_x, box_y, box_w, box_h, 32, 32);
+  p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), 32, 32);
 
-  // Title line
-  p.setPen(QColor(255, 255, 255, 200));
-  p.setFont(InterFont(26, QFont::DemiBold));
-  QRect title_rect(box_x, box_y + 10, box_w, 34);
-  p.drawText(title_rect, Qt::AlignHCenter | Qt::AlignVCenter, "\u8f66\u9053\u8ddd m");
+  int cx = box_x + box_size.width() / 2;
+  const int gap = 10;
 
-  // Divider
-  p.setPen(QPen(QColor(255, 255, 255, 60), 1));
-  int div_y = box_y + 52;
-  p.drawLine(box_x + 20, div_y, box_x + box_w - 20, div_y);
-
-  // Left lane line
-  p.setFont(InterFont(28, QFont::Normal));
+  // Line 1: 左边 <value>m
+  QString left_lbl = tr("左边");
+  p.setFont(InterFont(30, QFont::Normal));
+  int lbl_w = p.fontMetrics().horizontalAdvance(left_lbl);
+  QString left_str = (leftLaneDist != 0.0f) ? QString::number(std::fabs(leftLaneDist), 'f', 2) + "m" : "-";
+  p.setFont(InterFont(42, QFont::Bold));
+  int val_w = p.fontMetrics().horizontalAdvance(left_str);
+  int total_w = lbl_w + gap + val_w;
+  int start_x = cx - total_w / 2;
+  int line1_y = box_y + 72;
+  p.setFont(InterFont(30, QFont::Normal));
   p.setPen(QColor(160, 200, 255, 230));
-  QRect left_label(box_x, box_y + 60, box_w, 30);
-  p.drawText(left_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u5de6");
-
-  QString left_str = (leftLaneDist != 0.0f) ? QString::number(std::fabs(leftLaneDist), 'f', 2) : "-";
-  p.setPen(Qt::white);
+  p.drawText(start_x, line1_y, left_lbl);
   p.setFont(InterFont(42, QFont::Bold));
-  QRect left_val(box_x, box_y + 90, box_w, 45);
-  p.drawText(left_val, Qt::AlignHCenter | Qt::AlignVCenter, left_str);
+  p.setPen(Qt::white);
+  p.drawText(start_x + lbl_w + gap, line1_y, left_str);
 
-  // Right lane line
-  p.setFont(InterFont(28, QFont::Normal));
+  // Line 2: 右边 <value>m
+  QString right_lbl = tr("右边");
+  p.setFont(InterFont(30, QFont::Normal));
+  int lbl2_w = p.fontMetrics().horizontalAdvance(right_lbl);
+  QString right_str = (rightLaneDist != 0.0f) ? QString::number(std::fabs(rightLaneDist), 'f', 2) + "m" : "-";
+  p.setFont(InterFont(42, QFont::Bold));
+  int val2_w = p.fontMetrics().horizontalAdvance(right_str);
+  int total2_w = lbl2_w + gap + val2_w;
+  int start2_x = cx - total2_w / 2;
+  int line2_y = box_y + 152;
+  p.setFont(InterFont(30, QFont::Normal));
   p.setPen(QColor(160, 255, 180, 230));
-  QRect right_label(box_x, box_y + 128, box_w, 30);
-  p.drawText(right_label, Qt::AlignHCenter | Qt::AlignVCenter, "\u53f3");
-
-  QString right_str = (rightLaneDist != 0.0f) ? QString::number(std::fabs(rightLaneDist), 'f', 2) : "-";
-  p.setPen(Qt::white);
+  p.drawText(start2_x, line2_y, right_lbl);
   p.setFont(InterFont(42, QFont::Bold));
-  QRect right_val(box_x, box_y + 158, box_w, 45);
-  p.drawText(right_val, Qt::AlignHCenter | Qt::AlignVCenter, right_str);
+  p.setPen(Qt::white);
+  p.drawText(start2_x + lbl2_w + gap, line2_y, right_str);
 }

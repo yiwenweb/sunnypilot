@@ -648,23 +648,24 @@ curl http://<C3_IP>:5001/stream -X POST -H 'Content-Type: application/json' -d '
    - 右：`modelV2.laneLines[2].c0`（米）
    - 车道线置信度（`laneLineProbs`）低于 0.5 时显示 "-"
 
-#### 布局（左上角，定速巡航方块下方）
+#### 布局（左上角，定速巡航方块下方，与 MAX 定速方块同尺寸、垂直排列）
 
 ```
-┌─────────────┐  ← 定速巡航方块 (y=45, 172×204)
+┌─────────────┐  ← 定速巡航方块 (y=45, 公制200×204 / 英制172×204)
 ├─────────────┤
-│ 扭矩 Nm     │  ← SteerTorqueData (y=280)
-│ ─────────── │
-│  模  x.x     │
-│  实  x.x     │
+│  模型 0.0    │  ← SteerTorqueData (y=280，无标题)
+│  实际 0.0    │
 └─────────────┘
 ├─────────────┤  ← 间距 31px
-│ 车道距 m     │  ← LaneLineData (y=515)
-│ ─────────── │
-│  左  x.xx    │
-│  右  x.xx    │
+│  左边 0.0m   │  ← LaneLineData (y=515，无标题)
+│  右边 0.0m   │
 └─────────────┘
+   ▲ 最左侧加速指示条 (AccelBar) 已左移到 x=6，右边缘 42，与方框(左边缘46)不重叠
 ```
+
+**尺寸同步说明（关键）**：原代码把两个新方框硬编码成 172×204，但在公制（km/h，中国是公制）模式下
+MAX 定速方块实际是 **200×204**（`qt/onroad/hud.cc:drawSetSpeed()` 中 `is_metric ? QSize(200,204):default_size`），
+所以旧方框看起来「小一圈」。现已改为复用同一套尺寸公式，与定速方块完全一致。
 
 > **空间验证**：与 DebugPlots（顶部4面板，透明）在位置上不冲突，仅当 DebugPlots 打开时左上区轻微重叠，但后者为半透明背景，不影响可读性。
 
@@ -699,7 +700,9 @@ curl http://<C3_IP>:5001/stream -X POST -H 'Content-Type: application/json' -d '
 
 #### 关键实现点
 
-- **方块尺寸**：172×204，圆角 32，左对齐 `x=60`，颜色与定速巡航方块一致（白边 + 半透明黑底）
+- **方块尺寸**：与 MAX 定速方块完全同步（`is_metric ? 200×204 : 172×204`），圆角 32，左对齐方式与定速方块一致（`x = 60 + (172 - box_w)/2`），颜色一致（白边 + 半透明黑底）
+- **内容布局**：删除标题行。扭矩框两行 `模型 <v>` / `实际 <v>`；车道框两行 `左边 <v>m` / `右边 <v>m`（数值 0 时显示 `-`）
+- **AccelBar 加速条**：`margin_left` 由 20 改 6（右边缘 42），`bar_height` 由 470 加到 560，彻底避开左上角方框
 - **Saturated 处理**：`torqueState.saturated` 为真 → 模型扭矩数值变 `QColor(255,200,60)` 橙色 + 显示 "MAX"
 - **LaneLine 置信度过滤**：`lane_line_probs[i] > 0.5f` 才取 `c0`，否则填 0 → 显示 "-"
 - **开关 toggle**：SP Features 面板的 `ParamControlSP`，中文标题「转向扭矩监控」「车道线距离」
@@ -735,6 +738,172 @@ export PYTHONPATH=/data/openpilot
 python tools/replay/replay.py "<route名>" &
 selfdrive/ui/ui.py
 ```
+
+### C3 不上车验证 onroad UI（uiview 假 onroad）
+
+**用途**：改完 UI (hud/ui.cc/AccelBar 等) 后，不想装车 / 不想去车库，就在办公桌上验证：
+- 编译产物 `ui` 二进制不崩
+- HUD 各元素（车道线、行车规划、转向扭矩、车道距离等）能正常渲染
+- 相关消息生产者（modeld、camerad、locationd、calibrationd）是否正常出数据
+
+**原理**：`selfdrive/debug/uiview.py` 手动 pub 一份 `deviceState.started=True` + `pandaStates.ignitionLine=True`，让所有 `only_onroad` 触发的进程（modeld / camerad / calibrationd / plannerd / dmonitoringmodeld / ui）以为在开车状态启动。
+
+**具体用法**：
+
+```bash
+# 前置：必须在 offroad 状态（打开 C3、没有真车激活）
+ssh comma@<C3_IP>
+cd /data/openpilot
+
+# 方式 A：前台跑，直接看 UI（C3 屏幕会亮起来显示 onroad 界面）
+/usr/local/venv/bin/python /data/openpilot/selfdrive/debug/uiview.py
+# Ctrl+C 结束，所有子进程会被 stop 掉
+
+# 方式 B：后台跑 + 自动采样 cereal，快速判断 modeld 有没有出数据
+timeout 20 /usr/local/venv/bin/python /data/openpilot/selfdrive/debug/uiview.py > /tmp/uiview.log 2>&1 &
+UI_PID=$!
+sleep 8   # 等 modeld 起来 + 首帧
+/usr/local/venv/bin/python <<'EOF'
+import cereal.messaging as m, time
+sm = m.SubMaster(['modelV2','cameraOdometry','livePose','liveCalibration','carState'])
+seen = {k:0 for k in ['modelV2','cameraOdometry','livePose','liveCalibration','carState']}
+t0 = time.time()
+while time.time()-t0 < 10:
+    sm.update(200)
+    for k in seen:
+        if sm.updated[k]: seen[k]+=1
+for k,v in seen.items(): print(f'  {k:18s} received={v}')
+if seen['liveCalibration']: print('  calPerc   =', sm['liveCalibration'].calPerc)
+if seen['livePose']:        print('  posenetOK =', sm['livePose'].posenetOK)
+EOF
+kill $UI_PID 2>/dev/null; wait $UI_PID 2>/dev/null
+tail -25 /tmp/uiview.log
+```
+
+**判读**：
+
+| 指标 | 健康值 | 异常说明 |
+|---|---|---|
+| `modelV2` | 15~20 Hz（10 秒采 150~200 帧） | 0 → modeld 没跑起来或崩了，看 uiview.log 尾部 traceback |
+| `cameraOdometry` | 同上 | 0 → 车道线消失、标定不推进的直接原因 |
+| `livePose` | 15~20 Hz | 0 → locationd 没跑 |
+| `liveCalibration` | 4 Hz | calibrationd 独立运行，通常不会为 0 |
+| `carState` | **0** | 正常。uiview 不 pub carState，等真上车 boardd 才有 |
+| `posenetOK` | True | False → posenet nan，一般 modeld 崩带出来的 |
+| `inputsOK` | **False** | 正常。缺 carState 导致 inputsOK 不满足，不影响 UI 验证 |
+
+**常见现象**：
+
+- 相机冷启会打印几行 `spectra.cc: VIDIOC_CAM_CONTROL error: op_code 266 - errno 19` → 一次性 warmup 错，之后 `vision stream set up` 就恢复，可以忽略
+- 首启 modeld 前几百帧会 `skipping model eval. Dropped N frames` → 相机流还没稳定，是正常的
+- 前台跑时 C3 屏幕会亮起 onroad 界面（黑底 + 车道线 + HUD），可以肉眼直接看新加的 hud 元素是否正确渲染
+
+**收尾**：
+```bash
+# 前台模式：Ctrl+C
+# 后台模式：kill $UI_PID
+# 保险起见把残留清一下
+pkill -f uiview.py
+pkill -f modeld
+```
+
+### C3 存储挂载后模型文件排查（NVMe 挂载踩坑）
+
+**症状（全部同时发生）**：
+- onroad 车道线消失
+- 中间行车规划消失
+- 标定进度一直 0，重新标定不生效
+- 激活时报 "posenet speed invalid, speed error: nan m/s"
+
+**根因**：`/data/media` 挂载了 NVMe 后，原 `/data/media/0/models/` 下的 `.pkl` 模型文件被空挂载点覆盖。但 `ModelManager_ActiveBundle` params 里 `status=cached` 是历史记录，不会自动重新校验文件是否真实存在。onroad 时 `modeld_tinygrad` 找不到 pkl 立即崩溃循环，`modelV2` / `cameraOdometry` 全没了 → 一连串下游消息断链。
+
+**四个症状同一根因关系**：
+
+```
+modeld 崩溃
+  ├─ 无 modelV2.laneLines       → UI 车道线消失
+  ├─ 无 modelV2.position        → UI 行车规划消失
+  └─ 无 cameraOdometry
+        ├─ locationd 无法算 posenet_stds → posenetOK=False → posenet nan
+        └─ calibrationd 滤波器无法推进 → calPerc 一直 0
+```
+
+**核心判定**：
+- 症状全部是 `modelV2` / `cameraOdometry` 的**消费者**表现，问题一定在**生产者** modeld
+- 与 UI 代码改动**物理上无关**，UI 只是消费者，消费者写坏不会让生产者停产
+
+**排查诊断脚本**（离线状态跑）：
+
+```bash
+cd /data/openpilot && {
+echo "===== [1] 检查 Model runner & bundle ====="
+cat /data/params/d/ModelRunnerTypeCache; echo
+/usr/local/venv/bin/python -c "
+import json
+b = json.load(open('/data/params/d/ModelManager_ActiveBundle'))
+print('bundle:', b['displayName'], 'runner=', b['runner'])
+for m in b['models']:
+    print(' ', m['type'], '->', m['artifact']['fileName'])
+"
+
+echo; echo "===== [2] 检查模型文件真实存在性 ====="
+ls -la /data/media/0/models/
+
+echo; echo "===== [3] sha256 校验 bundle 内所有文件 ====="
+/usr/local/venv/bin/python <<'EOF'
+import json, hashlib, os
+b = json.load(open('/data/params/d/ModelManager_ActiveBundle'))
+root = '/data/media/0/models'
+for m in b['models']:
+    for kind in ('artifact','metadata'):
+        a = m[kind]; fn, want = a['fileName'], a['downloadUri']['sha256']
+        p = os.path.join(root, fn)
+        if not os.path.exists(p):
+            print(f"  MISSING  {fn}"); continue
+        h = hashlib.sha256()
+        with open(p,'rb') as fp:
+            for c in iter(lambda: fp.read(65536), b''): h.update(c)
+        mark = 'OK ' if h.hexdigest().lower()==want.lower() else 'BAD'
+        print(f"  {mark}  {fn}  size={os.path.getsize(p)}")
+EOF
+}
+```
+
+**修复方式（触发重下）**：
+
+```bash
+# 1. 清掉坏文件（如果有）
+rm -f /data/media/0/models/driving_*_tinygrad.pkl
+
+# 2. 触发下载：把 bundle index 写进 DownloadIndex 参数
+/usr/local/venv/bin/python -c "
+from openpilot.common.params import Params
+Params().put('ModelManager_DownloadIndex', 87)  # 87 = 当前 ActiveBundle 的 index，看步骤 [1] 输出
+"
+
+# 3. 起 models_manager 前台跑（下载 vision pkl 会 30 秒以上，别用 timeout 30 截断）
+/usr/local/venv/bin/python -m openpilot.sunnypilot.models.manager > /tmp/mm.log 2>&1 &
+MM_PID=$!
+
+# 4. 轮询大小判断结束（DownloadIndex 被自动删除 = 完成）
+for i in $(seq 1 60); do
+    sleep 5
+    ps=$(stat -c %s /data/media/0/models/driving_policy_cgwm_tinygrad.pkl 2>/dev/null || echo 0)
+    vs=$(stat -c %s /data/media/0/models/driving_vision_cgwm_tinygrad.pkl 2>/dev/null || echo 0)
+    idx=$(cat /data/params/d/ModelManager_DownloadIndex 2>/dev/null || echo "-")
+    echo "  t=${i}0s  policy=${ps}B  vision=${vs}B  DownloadIndex=${idx}"
+    [ "$idx" = "-" ] && break
+done
+kill $MM_PID 2>/dev/null; wait $MM_PID 2>/dev/null
+
+# 5. 再校验一次 sha256，全 OK 后 reboot 或直接跑 uiview 验证
+```
+
+**要点**：
+- **`timeout` 别设太短**：vision pkl 一般 40+ MB，网慢时下载 60~120 秒是正常的。设 30 会截断成损坏文件，hash 校验挂
+- **判定下载完成看 `ModelManager_DownloadIndex`**：manager 处理完（成功或失败）会把它 remove
+- **`status=cached` 只是历史记录**，不检查文件真实存在。挂载存储后一定要 sha256 校验一遍
+- 挂载 `/data/media` 会盖掉 `/data/media/0/models/` 和 `/data/media/0/realdata/`，前者是模型，后者是行车日志。挂载前如果有数据要**先备份或改挂载点**
 
 ---
 
