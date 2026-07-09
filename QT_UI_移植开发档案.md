@@ -40,32 +40,59 @@ sunnypilot1/    ←git绑定→  /data/panda_build/     编译工厂
 ### 远程仓库关系
 
 ```
-官方上游:  https://github.com/sunnypilot/sunnypilot.git   (remote: origin)
-个人仓库:  https://github.com/yiwenweb/sunnypilot.git      (remote: yiwen)
+官方上游:  https://github.com/sunnypilot/sunnypilot.git
+个人仓库:  https://github.com/yiwenweb/sunnypilot.git
 ```
 
-### 桌面 sunnypilot1 配置
+### 远端名速查表
+
+| 位置 | 远端名 | 指向仓库 | 用途 |
+|---|---|---|---|
+| 桌面 sunnypilot/ | `origin` | yiwenweb/sunnypilot.git | 推送 staging-tici |
+| 桌面 sunnypilot1/ | `origin` | sunnypilot/sunnypilot.git | 只读 |
+| 桌面 sunnypilot1/ | `yiwen` | yiwenweb/sunnypilot.git | 推送 qt-dev |
+| C3 /data/openpilot/ | `myrepo` | yiwenweb/sunnypilot.git | 拉取 staging-tici |
+| C3 /data/openpilot/ | `upstream` | sunnypilot/sunnypilot.git | 只读 |
+| C3 /data/panda_build/ | `yiwen` | yiwenweb/sunnypilot.git | 拉取 qt-dev（编译） |
+| C3 /data/panda_build/ | `origin` | sunnypilot/sunnypilot.git | 只读 |
+
+> ⚠️ **关键**：C3 上 `/data/openpilot/` 的远端名是 **`myrepo`**（不是 `origin`），这是历史遗留命名。拉取时用 `git pull myrepo staging-tici`。
+
+### 桌面 sunnypilot/ 配置（运行系统源码）
+
+```powershell
+origin → https://github.com/yiwenweb/sunnypilot.git       # 个人，推送
+分支: staging-tici
+```
+
+### 桌面 sunnypilot1/ 配置（编译工厂源码）
 
 ```powershell
 origin → https://github.com/sunnypilot/sunnypilot.git     # 官方，只读
 yiwen  → https://github.com/yiwenweb/sunnypilot.git       # 个人，推送
-
 分支: qt-dev  (基于 master-tici 创建)
 ```
 
-```powershell
-cd C:\Users\yiwen\Desktop\1\sunnypilot1
-git remote add yiwen https://github.com/yiwenweb/sunnypilot.git
-git checkout -b qt-dev
-git push yiwen qt-dev
-```
-
-### C3 /data/panda_build 配置
+### C3 /data/openpilot/ 配置（运行系统）
 
 ```bash
-cd /data/panda_build
-git remote add yiwen https://github.com/yiwenweb/sunnypilot.git
-git fetch yiwen qt-dev
+myrepo   → https://github.com/yiwenweb/sunnypilot.git     # 个人仓库
+upstream → https://github.com/sunnypilot/sunnypilot.git   # 官方上游
+分支: staging-tici
+```
+
+**拉取运行系统更新**：
+```bash
+cd /data/openpilot
+git pull myrepo staging-tici
+```
+
+### C3 /data/panda_build/ 配置（编译工厂）
+
+```bash
+origin → https://github.com/sunnypilot/sunnypilot.git     # 官方上游
+yiwen  → https://github.com/yiwenweb/sunnypilot.git       # 个人仓库
+分支: master-tici（始终留在此分支）
 ```
 
 **C3 上的 /data/panda_build 始终留在 master-tici 分支**，通过 `git checkout yiwen/qt-dev -- <文件>` 拉取单个改动的文件进行编译。
@@ -151,6 +178,8 @@ selfdrive/ui/
 | 盲点检测警告 | `BlindSpot` (bool) | `sunnypilot/qt/onroad/model.cc` | ✅ |
 | 开发者 UI（右侧5指标） | `DevUIInfo` (1或2) | `sunnypilot/qt/onroad/hud.cc:drawRightDevUI()` | ✅ |
 | 开发者 UI（底部5-6指标） | `DevUIInfo` (2) | `sunnypilot/qt/onroad/hud.cc:drawBottomDevUI()` | ✅ |
+| **SteerTorqueData 转向扭矩监控** | `SteerTorqueData` (bool) | `sunnypilot/qt/onroad/hud.cc:drawSteerTorqueData()` | ✅ 已完成 |
+| **LaneLineData 车道线距离** | `LaneLineData` (bool) | `sunnypilot/qt/onroad/hud.cc:drawLaneLineData()` | ✅ 已完成 |
 | 动态实验模式按钮 | — | `sunnypilot/qt/onroad/buttons.cc` | ✅ |
 | Sunnylink 侧边栏状态 | — | `sunnypilot/qt/sidebar.cc` | ✅ |
 | 驾驶员监控 | — | `qt/onroad/driver_monitoring.cc` | ✅ |
@@ -169,6 +198,8 @@ selfdrive/ui/
 | Cruise 纵向控制 | `sunnypilot/qt/offroad/settings/longitudinal_panel.cc` | ✅ |
 | **Visuals 视觉** | `sunnypilot/qt/offroad/settings/visuals_panel.cc` | ✅ |
 | **★ SP Features 移植特性** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新建 |
+| — | **SteerTorqueData 转向扭矩监控** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
+| — | **LaneLineData 车道线距离** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
 | OSM 地图 | `sunnypilot/qt/offroad/settings/osm_panel.cc` | ✅ |
 | Trips 行程 | `sunnypilot/qt/offroad/settings/trips_panel.cc` | ✅ |
 | Vehicle 车辆 | `sunnypilot/qt/offroad/settings/vehicle_panel.cc` | ✅ |
@@ -352,6 +383,8 @@ UIStateSP::UIStateSP() 里的 sm = std::make_unique<SubMaster>({... "服务名" 
 | 2026-07-07 | **屏幕实时流（ScreenStreaming）** | `screenstreamer.h/cc` `window.h/cc` `sunny_features_panel.cc` | ✅ 已完成 |
 | 2026-07-08 | **删除反向触控（改为只读预览）** | `screenstreamer.h/cc` `window.cc` | ✅ 已完成 |
 | 2026-07-08 | **摄像头流（WebRTC 硬件编码）** | `process_config.py` `params_keys.h` `sunny_features_panel.cc` + App 端 | ✅ 已完成 |
+| 2026-07-09 | **SteerTorqueData 转向扭矩监控** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ✅ 已完成 |
+| 2026-07-09 | **LaneLineData 车道线距离** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ✅ 已完成 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单
@@ -513,6 +546,86 @@ curl http://<C3_IP>:5001/stream -X POST -H 'Content-Type: application/json' -d '
 ```
 
 ---
+
+### SteerTorqueData + LaneLineData（HUD 叠加，2026-07-09）
+
+#### 功能概述
+
+在定速巡航方块下方新增两个可独立开关的 HUD 叠加方块，用于调试/监控：
+
+1. **SteerTorqueData（转向扭矩监控）**：显示模型输出扭矩命令 vs EPS 实际扭矩
+   - 上半部：`torqueState.output`（模型扭矩命令，单位 Nm）
+   - 下半部：`steeringTorqueEps`（EPS 实际扭矩，取绝对值，单位 Nm）
+   - 扭矩饱和（`torqueState.saturated`）时数值变橙色并显示 "MAX" 标记
+   - **仅 Torque 控制车型有效**（BYD 18唐 DM 走 torque 路径，`angleSteersDesired` 不可用）
+2. **LaneLineData（车道线距离）**：显示车辆中心到左/右车道线的横向距离
+   - 左：`modelV2.laneLines[1].c0`（米）
+   - 右：`modelV2.laneLines[2].c0`（米）
+   - 车道线置信度（`laneLineProbs`）低于 0.5 时显示 "-"
+
+#### 布局（左上角，定速巡航方块下方）
+
+```
+┌─────────────┐  ← 定速巡航方块 (y=45, 172×204)
+├─────────────┤
+│ 扭矩 Nm     │  ← SteerTorqueData (y=280)
+│ ─────────── │
+│  模  x.x     │
+│  实  x.x     │
+└─────────────┘
+├─────────────┤  ← 间距 31px
+│ 车道距 m     │  ← LaneLineData (y=515)
+│ ─────────── │
+│  左  x.xx    │
+│  右  x.xx    │
+└─────────────┘
+```
+
+> **空间验证**：与 DebugPlots（顶部4面板，透明）在位置上不冲突，仅当 DebugPlots 打开时左上区轻微重叠，但后者为半透明背景，不影响可读性。
+
+#### 数据通路
+
+| 数据 | 来源 | 订阅状态 |
+|------|------|---------|
+| `torqueState` | `controlsState.LateralControlsState.torqueState` | `controlsState` 已在 SubMaster → **无需额外注册** |
+| `steeringTorqueEps` | `carState`（`HudRenderer::updateState` 已读取） | 同 `controlsState` |
+| `laneLines[1]/[2].c0` | `modelV2.laneLines` | `modelV2` 已在 SubMaster |
+| `laneLineProbs` | `modelV2.laneLineProbs` | 同 `modelV2` |
+
+> **注意**：`torqueState` 是 `controlsState` 内部的 union 字段，不需要单独在 SubMaster 订阅；
+> 读取时通过 `cs.getLateralControlsState().getTorqueState().getOutput()` 访问（SP 分支的 `ControlsState` 已包含该 union，需用 `isTorqueState()` 判断类型）。
+
+#### 文件改动清单
+
+```
+修改：
+  common/params_keys.h                                        # +SteerTorqueData, +LaneLineData 参数键 (PERSISTENT|BACKUP, 默认0)
+  selfdrive/ui/sunnypilot/ui_scene.h                         # +steer_torque_data, +lane_line_data 场景字段
+  selfdrive/ui/sunnypilot/ui.cc                              # +param_watcher 注册 + ui_update_params_sp() 读取
+  selfdrive/ui/sunnypilot/qt/onroad/hud.h                    # +torqueStateOutput/torqueStateSaturated 成员
+                                                            # +steerTorqueDataEnabled/laneLineDataEnabled 开关
+                                                            # +leftLaneDist/rightLaneDist 成员
+                                                            # +drawSteerTorqueData()/drawLaneLineData() 方法声明
+  selfdrive/ui/sunnypilot/qt/onroad/hud.cc                   # updateState: 读 torqueState + laneLines
+                                                            # draw(): 条件调用两个新绘制方法
+                                                            # +drawSteerTorqueData()/drawLaneLineData() 实现
+  selfdrive/ui/sunnypilot/qt/offroad/settings/sunny_features_panel.cc  # +2 toggle 定义（中文标题+描述）
+```
+
+#### 关键实现点
+
+- **方块尺寸**：172×204，圆角 32，左对齐 `x=60`，颜色与定速巡航方块一致（白边 + 半透明黑底）
+- **Saturated 处理**：`torqueState.saturated` 为真 → 模型扭矩数值变 `QColor(255,200,60)` 橙色 + 显示 "MAX"
+- **LaneLine 置信度过滤**：`lane_line_probs[i] > 0.5f` 才取 `c0`，否则填 0 → 显示 "-"
+- **开关 toggle**：SP Features 面板的 `ParamControlSP`，中文标题「转向扭矩监控」「车道线距离」
+
+#### Git
+
+```
+commit 967298be51  (qt-dev)
+分支: sunnypilot1/qt-dev → yiwen remote → C3 /data/panda_build
+URL: https://github.com/yiwenweb/sunnypilot/commit/967298be51
+```
 
 ## 九、调试技巧
 
