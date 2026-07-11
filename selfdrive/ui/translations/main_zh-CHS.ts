@@ -885,163 +885,47 @@ Firehose Mode allows you to maximize your training data uploads to improve openp
 </context>
 <context>
     <name>ModelsPanel</name>
-    <message>
-        <source>Current Model</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>SELECT</source>
-        <translation>选择</translation>
-    </message>
-    <message>
-        <source>Clear Model Cache</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>CLEAR</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Driving Model</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Navigation Model</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Vision Model</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Policy Model</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Live Learning Steer Delay</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Adjust Software Delay</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Adjust the software delay when Live Learning Steer Delay is toggled off.
-The default software delay value is 0.2</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>  %1 - %2</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>downloaded</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>ready</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>from cache</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>  download failed - %1</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>  pending - %1</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Fetching models...</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Select a Model</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Default</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Model download has started in the background.</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>We STRONGLY suggest you to reset calibration.</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Would you like to do that now?</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Reset Calibration</source>
-        <translation>重置设备校准</translation>
-    </message>
-    <message>
-        <source>Driving Model Selector</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>This will delete ALL downloaded models from the cache&lt;br/&gt;&lt;u&gt;except the currently active model&lt;/u&gt;.&lt;br/&gt;&lt;br/&gt;Are you sure you want to continue?</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Clear Cache</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Warning: You are on a metered connection!</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Continue</source>
-        <translation>继续</translation>
-    </message>
-    <message>
-        <source>on Metered</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>取消</translation>
-    </message>
-    <message>
-        <source>Refresh Model List</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>REFRESH</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Fetching Latest Models</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Enable this for the car to learn and adapt its steering response time. Disable to use a fixed steering response time. Keeping this on provides the stock openpilot experience.</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Live Steer Delay:</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Actuator Delay:</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Software Delay:</source>
-        <translation></translation>
-    </message>
-    <message>
-        <source>Total Delay:</source>
-        <translation></translation>
-    </message>
+    <message><source>Current Model</source><translation>当前模型</translation></message>
+    <message><source>SELECT</source><translation>选择</translation></message>
+    <message><source>Clear Model Cache</source><translation>清除模型缓存</translation></message>
+    <message><source>CLEAR</source><translation>清除</translation></message>
+    <message><source>Driving Model</source><translation>驾驶模型</translation></message>
+    <message><source>Navigation Model</source><translation>导航模型</translation></message>
+    <message><source>Vision Model</source><translation>视觉模型</translation></message>
+    <message><source>Policy Model</source><translation>策略模型</translation></message>
+    <message><source>Live Learning Steer Delay</source><translation>实时学习转向延迟</translation></message>
+    <message><source>Adjust Software Delay</source><translation>调整软件延迟</translation></message>
+    <message><source>Adjust the software delay when Live Learning Steer Delay is toggled off.
+The default software delay value is 0.2</source><translation>关闭实时学习转向延迟时，调整软件延迟值。
+默认软件延迟值为 0.2</translation></message>
+    <message><source>  %1 - %2</source><translation>  %1 - %2</translation></message>
+    <message><source>downloaded</source><translation>已下载</translation></message>
+    <message><source>ready</source><translation>就绪</translation></message>
+    <message><source>from cache</source><translation>来自缓存</translation></message>
+    <message><source>  download failed - %1</source><translation>  下载失败 - %1</translation></message>
+    <message><source>  pending - %1</source><translation>  等待中 - %1</translation></message>
+    <message><source>Fetching models...</source><translation>正在获取模型列表…</translation></message>
+    <message><source>Select a Model</source><translation>选择模型</translation></message>
+    <message><source>Default</source><translation>默认</translation></message>
+    <message><source>Model download has started in the background.</source><translation>模型已在后台开始下载。</translation></message>
+    <message><source>We STRONGLY suggest you to reset calibration.</source><translation>我们强烈建议您重置校准。</translation></message>
+    <message><source>Would you like to do that now?</source><translation>是否立即执行？</translation></message>
+    <message><source>Reset Calibration</source><translation>重置设备校准</translation></message>
+    <message><source>Driving Model Selector</source><translation>驾驶模型选择器</translation></message>
+    <message><source>This will delete ALL downloaded models from the cache&lt;br/&gt;&lt;u&gt;except the currently active model&lt;/u&gt;.&lt;br/&gt;&lt;br/&gt;Are you sure you want to continue?</source><translation>此操作将删除缓存中的所有已下载模型，&lt;br/&gt;&lt;u&gt;当前正在使用的模型除外&lt;/u&gt;。&lt;br/&gt;&lt;br/&gt;确定要继续吗？</translation></message>
+    <message><source>Clear Cache</source><translation>清除缓存</translation></message>
+    <message><source>Warning: You are on a metered connection!</source><translation>警告：当前为按流量计费的网络！</translation></message>
+    <message><source>Continue</source><translation>继续</translation></message>
+    <message><source>on Metered</source><translation>按流量计费</translation></message>
+    <message><source>Cancel</source><translation>取消</translation></message>
+    <message><source>Refresh Model List</source><translation>刷新模型列表</translation></message>
+    <message><source>REFRESH</source><translation>刷新</translation></message>
+    <message><source>Fetching Latest Models</source><translation>正在获取最新模型</translation></message>
+    <message><source>Enable this for the car to learn and adapt its steering response time. Disable to use a fixed steering response time. Keeping this on provides the stock openpilot experience.</source><translation>启用以让车辆学习和自适应转向响应时间。禁用则使用固定转向响应时间。保持开启可提供原版 openpilot 体验。</translation></message>
+    <message><source>Live Steer Delay:</source><translation>实时转向延迟：</translation></message>
+    <message><source>Actuator Delay:</source><translation>执行器延迟：</translation></message>
+    <message><source>Software Delay:</source><translation>软件延迟：</translation></message>
+    <message><source>Total Delay:</source><translation>总延迟：</translation></message>
 </context>
 <context>
     <name>MultiOptionDialog</name>
