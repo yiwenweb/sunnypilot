@@ -107,47 +107,48 @@
     <name>AutoLaneChangeTimer</name>
     <message>
         <source>Auto Lane Change by Blinker</source>
-        <translation></translation>
+        <translation>转向灯自动变道</translation>
     </message>
     <message>
         <source>Set a timer to delay the auto lane change operation when the blinker is used. No nudge on the steering wheel is required to auto lane change if a timer is set. Default is Nudge.
 Please use caution when using this feature. Only use the blinker when traffic and road conditions permit.</source>
-        <translation></translation>
+        <translation>设置延迟时间，使用转向灯时延迟自动变道操作。设置延迟后无需轻推方向盘即可自动变道。默认为轻推模式。
+使用此功能时请谨慎。仅在交通和路况允许时使用转向灯。</translation>
     </message>
     <message>
         <source>s</source>
-        <translation></translation>
+        <translation>秒</translation>
     </message>
     <message>
         <source>Off</source>
-        <translation></translation>
+        <translation>关闭</translation>
     </message>
     <message>
         <source>Nudge</source>
-        <translation></translation>
+        <translation>轻推</translation>
     </message>
     <message>
         <source>Nudgeless</source>
-        <translation></translation>
+        <translation>无需轻推</translation>
     </message>
 </context>
 <context>
     <name>Brightness</name>
     <message>
         <source>Brightness</source>
-        <translation></translation>
+        <translation>亮度</translation>
     </message>
     <message>
         <source>Overrides the brightness of the device.</source>
-        <translation></translation>
+        <translation>覆盖设备的亮度设置。</translation>
     </message>
     <message>
         <source>Auto (Dark)</source>
-        <translation></translation>
+        <translation>自动（暗）</translation>
     </message>
     <message>
         <source>Auto</source>
-        <translation></translation>
+        <translation>自动</translation>
     </message>
 </context>
 <context>
@@ -173,7 +174,7 @@ Please use caution when using this feature. Only use the blinker when traffic an
     </message>
     <message>
         <source>You must accept the Terms and Conditions in order to use sunnypilot.</source>
-        <translation></translation>
+        <translation>您必须接受条款和条件才能使用 sunnypilot。</translation>
     </message>
 </context>
 <context>
@@ -204,35 +205,36 @@ Please use caution when using this feature. Only use the blinker when traffic an
     </message>
     <message>
         <source>On this car, sunnypilot defaults to the car&apos;s built-in ACC instead of openpilot&apos;s longitudinal control. Enable this to switch to openpilot longitudinal control. Enabling Experimental mode is recommended when enabling openpilot longitudinal control alpha.</source>
-        <translation></translation>
+        <translation>在此车辆上，sunnypilot 默认使用车辆自带的 ACC 而非 openpilot 纵向控制。启用以切换到 openpilot 纵向控制。建议启用 openpilot 纵向控制 Alpha 时同时启用实验模式。</translation>
     </message>
 </context>
 <context>
     <name>DeveloperPanelSP</name>
     <message>
         <source>Show Advanced Controls</source>
-        <translation></translation>
+        <translation>显示高级控制</translation>
     </message>
     <message>
         <source>Toggle visibility of advanced sunnypilot controls.
 This only toggles the visibility of the controls; it does not toggle the actual control enabled/disabled state.</source>
-        <translation></translation>
+        <translation>切换 sunnypilot 高级控制的可见性。
+此操作仅切换控制的可见性，不会改变实际的启用/禁用状态。</translation>
     </message>
     <message>
         <source>Enable GitHub runner service</source>
-        <translation></translation>
+        <translation>启用 GitHub Runner 服务</translation>
     </message>
     <message>
         <source>Enables or disables the github runner service.</source>
-        <translation></translation>
+        <translation>启用或禁用 GitHub Runner 服务。</translation>
     </message>
     <message>
         <source>Enable Quickboot Mode</source>
-        <translation></translation>
+        <translation>启用快速启动模式</translation>
     </message>
     <message>
         <source>Error Log</source>
-        <translation></translation>
+        <translation>错误日志</translation>
     </message>
     <message>
         <source>VIEW</source>
@@ -240,15 +242,15 @@ This only toggles the visibility of the controls; it does not toggle the actual 
     </message>
     <message>
         <source>View the error log for sunnypilot crashes.</source>
-        <translation></translation>
+        <translation>查看 sunnypilot 崩溃的错误日志。</translation>
     </message>
     <message>
         <source>When toggled on, this creates a prebuilt file to allow accelerated boot times. When toggled off, it immediately removes the prebuilt file so compilation of locally edited cpp files can be made. &lt;br&gt;&lt;br&gt;&lt;b&gt;To edit C++ files locally on device, you MUST first turn off this toggle so the changes can recompile.&lt;/b&gt;</source>
-        <translation></translation>
+        <translation>启用后，将创建预编译文件以加速启动。关闭后，会立即删除预编译文件，以便本地编辑的 C++ 文件可以重新编译。&lt;br&gt;&lt;br&gt;&lt;b&gt;要在设备上本地编辑 C++ 文件，必须先关闭此开关，更改才能重新编译。&lt;/b&gt;</translation>
     </message>
     <message>
         <source>Quickboot mode requires updates to be disabled.&lt;br&gt;Enable &apos;Disable Updates&apos; in the Software panel first.</source>
-        <translation></translation>
+        <translation>快速启动模式需要先禁用更新。&lt;br&gt;请先在软件面板中启用“禁用更新”。</translation>
     </message>
 </context>
 <context>
@@ -419,26 +421,26 @@ Steering lag calibration is complete.</source>
     </message>
     <message>
         <source>Review the rules, features, and limitations of sunnypilot</source>
-        <translation></translation>
+        <translation>查看 sunnypilot 的规则、功能和限制</translation>
     </message>
     <message>
         <source>sunnypilot requires the device to be mounted within 4° left or right and within 5° up or 9° down.</source>
-        <translation></translation>
+        <translation>sunnypilot 要求设备安装角度在左右 4° 以内，上下 5° 以内（或下方 9° 以内）。</translation>
     </message>
 </context>
 <context>
     <name>DevicePanelSP</name>
     <message>
         <source>Quiet Mode</source>
-        <translation></translation>
+        <translation>安静模式</translation>
     </message>
     <message>
         <source>Driver Camera Preview</source>
-        <translation></translation>
+        <translation>驾驶员摄像头预览</translation>
     </message>
     <message>
         <source>Training Guide</source>
-        <translation></translation>
+        <translation>新手指南</translation>
     </message>
     <message>
         <source>Regulatory</source>
@@ -446,11 +448,11 @@ Steering lag calibration is complete.</source>
     </message>
     <message>
         <source>Language</source>
-        <translation></translation>
+        <translation>语言</translation>
     </message>
     <message>
         <source>Reset Settings</source>
-        <translation></translation>
+        <translation>重置设置</translation>
     </message>
     <message>
         <source>Are you sure you want to review the training guide?</source>
@@ -466,16 +468,17 @@ Steering lag calibration is complete.</source>
     </message>
     <message>
         <source>Wake-Up Behavior</source>
-        <translation></translation>
+        <translation>唤醒行为</translation>
     </message>
     <message>
         <source>Interactivity Timeout</source>
-        <translation></translation>
+        <translation>交互超时</translation>
     </message>
     <message>
         <source>Apply a custom timeout for settings UI.
 This is the time after which settings UI closes automatically if user is not interacting with the screen.</source>
-        <translation></translation>
+        <translation>为设置界面设置自定义超时时间。
+超过此时间用户未与屏幕交互，设置界面将自动关闭。</translation>
     </message>
     <message>
         <source>Reboot</source>
@@ -487,27 +490,27 @@ This is the time after which settings UI closes automatically if user is not int
     </message>
     <message>
         <source>Offroad Mode</source>
-        <translation></translation>
+        <translation>离线模式</translation>
     </message>
     <message>
         <source>Are you sure you want to exit Always Offroad mode?</source>
-        <translation></translation>
+        <translation>确定要退出始终离线模式吗？</translation>
     </message>
     <message>
         <source>Confirm</source>
-        <translation></translation>
+        <translation>确认</translation>
     </message>
     <message>
         <source>Are you sure you want to enter Always Offroad mode?</source>
-        <translation></translation>
+        <translation>确定要进入始终离线模式吗？</translation>
     </message>
     <message>
         <source>Disengage to Enter Always Offroad Mode</source>
-        <translation></translation>
+        <translation>取消控制以进入始终离线模式</translation>
     </message>
     <message>
         <source>Are you sure you want to reset all sunnypilot settings to default? Once the settings are reset, there is no going back.</source>
-        <translation></translation>
+        <translation>确定要将所有 sunnypilot 设置恢复为默认值吗？重置后无法撤销。</translation>
     </message>
     <message>
         <source>Reset</source>
@@ -515,54 +518,54 @@ This is the time after which settings UI closes automatically if user is not int
     </message>
     <message>
         <source>The reset cannot be undone. You have been warned.</source>
-        <translation></translation>
+        <translation>重置操作无法撤销。已警告您。</translation>
     </message>
     <message>
         <source>Exit Always Offroad</source>
-        <translation></translation>
+        <translation>退出始终离线</translation>
     </message>
     <message>
         <source>Always Offroad</source>
-        <translation></translation>
+        <translation>始终离线</translation>
     </message>
     <message>
         <source>⁍ Default: Device will boot/wake-up normally &amp; will be ready to engage.</source>
-        <translation></translation>
+        <translation>⁍ 默认：设备正常启动/唤醒，即可准备启用。</translation>
     </message>
     <message>
         <source>⁍ Offroad: Device will be in Always Offroad mode after boot/wake-up.</source>
-        <translation></translation>
+        <translation>⁍ 离线：设备启动/唤醒后将处于始终离线模式。</translation>
     </message>
     <message>
         <source>Controls state of the device after boot/sleep.</source>
-        <translation></translation>
+        <translation>控制设备启动/休眠后的状态。</translation>
     </message>
 </context>
 <context>
     <name>DriveStats</name>
     <message>
         <source>Drives</source>
-        <translation></translation>
+        <translation>行程数</translation>
     </message>
     <message>
         <source>Hours</source>
-        <translation></translation>
+        <translation>小时</translation>
     </message>
     <message>
         <source>ALL TIME</source>
-        <translation></translation>
+        <translation>所有时间</translation>
     </message>
     <message>
         <source>PAST WEEK</source>
-        <translation></translation>
+        <translation>过去一周</translation>
     </message>
     <message>
         <source>KM</source>
-        <translation></translation>
+        <translation>公里</translation>
     </message>
     <message>
         <source>Miles</source>
-        <translation></translation>
+        <translation>英里</translation>
     </message>
 </context>
 <context>
@@ -626,11 +629,13 @@ This is the time after which settings UI closes automatically if user is not int
         <source>sunnypilot learns to drive by watching humans, like you, drive.
 
 Firehose Mode allows you to maximize your training data uploads to improve openpilot&apos;s driving models. More data means bigger models, which means better Experimental Mode.</source>
-        <translation></translation>
+        <translation>sunnypilot 通过观察像您一样的人类驾驶来学习。
+
+Firehose 模式可最大化您的训练数据上传量，以改进 openpilot 的驾驶模型。更多数据意味着更大的模型，即更好的实验模式。</translation>
     </message>
     <message>
         <source>For maximum effectiveness, bring your device inside and connect to a good USB-C adapter and Wi-Fi weekly.&lt;br&gt;&lt;br&gt;Firehose Mode can also work while you&apos;re driving if connected to a hotspot or unlimited SIM card.&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Frequently Asked Questions&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;i&gt;Does it matter how or where I drive?&lt;/i&gt; Nope, just drive as you normally would.&lt;br&gt;&lt;br&gt;&lt;i&gt;Do all of my segments get pulled in Firehose Mode?&lt;/i&gt; No, we selectively pull a subset of your segments.&lt;br&gt;&lt;br&gt;&lt;i&gt;What&apos;s a good USB-C adapter?&lt;/i&gt; Any fast phone or laptop charger should be fine.&lt;br&gt;&lt;br&gt;&lt;i&gt;Does it matter which software I run?&lt;/i&gt; Yes, only upstream sunnypilot (and particular forks) are able to be used for training.</source>
-        <translation></translation>
+        <translation>为达到最佳效果，请每周将设备拿进室内，连接到优质的 USB-C 充电器和 Wi-Fi。&lt;br&gt;&lt;br&gt;如果连接到热点或无限制 SIM 卡，Firehose 模式也可在驾驶时运行。&lt;br&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;常见问题&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;i&gt;我的驾驶方式或驾驶地点有影响吗？&lt;/i&gt; 不影响，正常驾驶即可。&lt;br&gt;&lt;br&gt;&lt;i&gt;Firehose 模式下我所有行程都会被上传吗？&lt;/i&gt; 不会，我们会选择性地上传部分行程。&lt;br&gt;&lt;br&gt;&lt;i&gt;什么样的 USB-C 充电器合适？&lt;/i&gt; 任何快速充电的手机或笔记本充电器都可以。&lt;br&gt;&lt;br&gt;&lt;i&gt;我使用的软件版本有影响吗？&lt;/i&gt; 有，仅官方 sunnypilot（及特定分支）可用于训练。</translation>
     </message>
 </context>
 <context>
@@ -652,7 +657,7 @@ Firehose Mode allows you to maximize your training data uploads to improve openp
     <name>HyundaiSettings</name>
     <message>
         <source>Off</source>
-        <translation></translation>
+        <translation>关闭</translation>
     </message>
     <message>
         <source>Dynamic</source>
@@ -668,7 +673,7 @@ Firehose Mode allows you to maximize your training data uploads to improve openp
     </message>
     <message>
         <source>This feature can only be used with openpilot longitudinal control enabled.</source>
-        <translation></translation>
+        <translation>此功能仅在启用 openpilot 纵向控制时可用。</translation>
     </message>
     <message>
         <source>Enable &quot;Always Offroad&quot; in Device panel, or turn vehicle off to select an option.</source>
@@ -712,175 +717,175 @@ Firehose Mode allows you to maximize your training data uploads to improve openp
     </message>
     <message>
         <source>Auto Lane Change: Delay with Blind Spot</source>
-        <translation></translation>
+        <translation>自动变道：盲区延迟</translation>
     </message>
     <message>
         <source>Toggle to enable a delay timer for seamless lane changes when blind spot monitoring (BSM) detects a obstructing vehicle, ensuring safe maneuvering.</source>
-        <translation></translation>
+        <translation>启用后，当盲区监测 (BSM) 检测到障碍车辆时，将延迟变道以确保安全。</translation>
     </message>
 </context>
 <context>
     <name>LateralPanel</name>
     <message>
         <source>Modular Assistive Driving System (MADS)</source>
-        <translation></translation>
+        <translation>模块化辅助驾驶系统 (MADS)</translation>
     </message>
     <message>
         <source>Enable the beloved MADS feature. Disable toggle to revert back to stock sunnypilot engagement/disengagement.</source>
-        <translation></translation>
+        <translation>启用广受喜爱的 MADS 功能。关闭此开关将恢复原版 sunnypilot 的启用/取消方式。</translation>
     </message>
     <message>
         <source>Customize MADS</source>
-        <translation></translation>
+        <translation>自定义 MADS</translation>
     </message>
     <message>
         <source>Customize Lane Change</source>
-        <translation></translation>
+        <translation>自定义变道</translation>
     </message>
     <message>
         <source>Pause Lateral Control with Blinker</source>
-        <translation></translation>
+        <translation>打转向灯时暂停横向控制</translation>
     </message>
     <message>
         <source>Pause lateral control with blinker when traveling below the desired speed selected.</source>
-        <translation></translation>
+        <translation>在低于所选速度行驶时，打转向灯暂停横向控制。</translation>
     </message>
     <message>
         <source>Enables independent engagements of Automatic Lane Centering (ALC) and Adaptive Cruise Control (ACC).</source>
-        <translation></translation>
+        <translation>启用自动车道居中 (ALC) 和自适应巡航控制 (ACC) 的独立启用。</translation>
     </message>
     <message>
         <source>Start the vehicle to check vehicle compatibility.</source>
-        <translation></translation>
+        <translation>启动车辆以检查车辆兼容性。</translation>
     </message>
     <message>
         <source>This platform supports all MADS settings.</source>
-        <translation></translation>
+        <translation>此平台支持所有 MADS 设置。</translation>
     </message>
     <message>
         <source>This platform supports limited MADS settings.</source>
-        <translation></translation>
+        <translation>此平台支持有限的 MADS 设置。</translation>
     </message>
 </context>
 <context>
     <name>LongitudinalPanel</name>
     <message>
         <source>Custom ACC Speed Increments</source>
-        <translation></translation>
+        <translation>自定义 ACC 速度增量</translation>
     </message>
     <message>
         <source>Enable custom Short &amp; Long press increments for cruise speed increase/decrease.</source>
-        <translation></translation>
+        <translation>启用巡航速度增减的自定义短按和长按增量。</translation>
     </message>
     <message>
         <source>This feature can only be used with openpilot longitudinal control enabled.</source>
-        <translation></translation>
+        <translation>此功能仅在启用 openpilot 纵向控制时可用。</translation>
     </message>
     <message>
         <source>This feature is not supported on this platform due to vehicle limitations.</source>
-        <translation></translation>
+        <translation>由于车辆限制，此功能在此平台上不受支持。</translation>
     </message>
     <message>
         <source>Start the vehicle to check vehicle compatibility.</source>
-        <translation></translation>
+        <translation>启动车辆以检查车辆兼容性。</translation>
     </message>
 </context>
 <context>
     <name>MadsSettings</name>
     <message>
         <source>Toggle with Main Cruise</source>
-        <translation></translation>
+        <translation>随主巡航开关切换</translation>
     </message>
     <message>
         <source>Unified Engagement Mode (UEM)</source>
-        <translation></translation>
+        <translation>统一启用模式 (UEM)</translation>
     </message>
     <message>
         <source>Steering Mode on Brake Pedal</source>
-        <translation></translation>
+        <translation>刹车踏板时的转向模式</translation>
     </message>
     <message>
         <source>Note: For vehicles without LFA/LKAS button, disabling this will prevent lateral control engagement.</source>
-        <translation></translation>
+        <translation>注意：对于没有 LFA/LKAS 按钮的车辆，禁用此项将阻止横向控制启用。</translation>
     </message>
     <message>
         <source>Engage lateral and longitudinal control with cruise control engagement.</source>
-        <translation></translation>
+        <translation>启用巡航控制时同步启用横向和纵向控制。</translation>
     </message>
     <message>
         <source>Note: Once lateral control is engaged via UEM, it will remain engaged until it is manually disabled via the MADS button or car shut off.</source>
-        <translation></translation>
+        <translation>注意：通过 UEM 启用横向控制后，将一直保持启用状态，直到通过 MADS 按钮手动禁用或车辆关闭。</translation>
     </message>
     <message>
         <source>Start the vehicle to check vehicle compatibility.</source>
-        <translation></translation>
+        <translation>启动车辆以检查车辆兼容性。</translation>
     </message>
     <message>
         <source>This feature defaults to OFF, and does not allow selection due to vehicle limitations.</source>
-        <translation></translation>
+        <translation>此功能默认为关闭，且因车辆限制不允许选择。</translation>
     </message>
     <message>
         <source>This feature defaults to ON, and does not allow selection due to vehicle limitations.</source>
-        <translation></translation>
+        <translation>此功能默认为开启，且因车辆限制不允许选择。</translation>
     </message>
     <message>
         <source>This platform only supports Disengage mode due to vehicle limitations.</source>
-        <translation></translation>
+        <translation>由于车辆限制，此平台仅支持取消模式。</translation>
     </message>
     <message>
         <source>Remain Active</source>
-        <translation></translation>
+        <translation>保持激活</translation>
     </message>
     <message>
         <source>Remain Active: ALC will remain active when the brake pedal is pressed.</source>
-        <translation></translation>
+        <translation>保持激活：踩下刹车踏板时，ALC 保持激活状态。</translation>
     </message>
     <message>
         <source>Pause</source>
-        <translation></translation>
+        <translation>暂停</translation>
     </message>
     <message>
         <source>Pause: ALC will pause when the brake pedal is pressed.</source>
-        <translation></translation>
+        <translation>暂停：踩下刹车踏板时，ALC 暂停。</translation>
     </message>
     <message>
         <source>Disengage</source>
-        <translation></translation>
+        <translation>取消</translation>
     </message>
     <message>
         <source>Disengage: ALC will disengage when the brake pedal is pressed.</source>
-        <translation></translation>
+        <translation>取消：踩下刹车踏板时，ALC 取消控制。</translation>
     </message>
     <message>
         <source>Choose how Automatic Lane Centering (ALC) behaves after the brake pedal is manually pressed in sunnypilot.</source>
-        <translation></translation>
+        <translation>选择在 sunnypilot 中手动踩下刹车踏板后，自动车道居中 (ALC) 的行为方式。</translation>
     </message>
 </context>
 <context>
     <name>MaxTimeOffroad</name>
     <message>
         <source>Max Time Offroad</source>
-        <translation></translation>
+        <translation>最长离线时间</translation>
     </message>
     <message>
         <source>Device will automatically shutdown after set time once the engine is turned off.&lt;br/&gt;(30h is the default)</source>
-        <translation></translation>
+        <translation>发动机关闭后，设备将在设定时间后自动关机。&lt;br/&gt;（默认 30 小时）</translation>
     </message>
     <message>
         <source>Always On</source>
-        <translation></translation>
+        <translation>始终保持开启</translation>
     </message>
     <message>
         <source>h</source>
-        <translation></translation>
+        <translation>小时</translation>
     </message>
     <message>
         <source>m</source>
-        <translation></translation>
+        <translation>分钟</translation>
     </message>
     <message>
         <source> (default)</source>
-        <translation></translation>
+        <translation>（默认）</translation>
     </message>
 </context>
 <context>
@@ -961,70 +966,70 @@ The default software delay value is 0.2</source><translation>关闭实时学习�
     <name>NetworkingSP</name>
     <message>
         <source>Scan</source>
-        <translation></translation>
+        <translation>扫描</translation>
     </message>
     <message>
         <source>Scanning...</source>
-        <translation></translation>
+        <translation>正在扫描…</translation>
     </message>
 </context>
 <context>
     <name>NeuralNetworkLateralControl</name>
     <message>
         <source>Neural Network Lateral Control (NNLC)</source>
-        <translation></translation>
+        <translation>神经网络横向控制 (NNLC)</translation>
     </message>
     <message>
         <source>NNLC is currently not available on this platform.</source>
-        <translation></translation>
+        <translation>NNLC 当前在此平台上不可用。</translation>
     </message>
     <message>
         <source>Start the car to check car compatibility</source>
-        <translation></translation>
+        <translation>启动车辆以检查车辆兼容性</translation>
     </message>
     <message>
         <source>NNLC Not Loaded</source>
-        <translation></translation>
+        <translation>NNLC 未加载</translation>
     </message>
     <message>
         <source>NNLC Loaded</source>
-        <translation></translation>
+        <translation>NNLC 已加载</translation>
     </message>
     <message>
         <source>Match</source>
-        <translation></translation>
+        <translation>匹配</translation>
     </message>
     <message>
         <source>Exact</source>
-        <translation></translation>
+        <translation>精确</translation>
     </message>
     <message>
         <source>Fuzzy</source>
-        <translation></translation>
+        <translation>模糊</translation>
     </message>
     <message>
         <source>Match: &quot;Exact&quot; is ideal, but &quot;Fuzzy&quot; is fine too.</source>
-        <translation></translation>
+        <translation>匹配度：&quot;精确&quot;最理想，但&quot;模糊&quot;也可以。</translation>
     </message>
     <message>
         <source>Formerly known as &lt;b&gt;&quot;NNFF&quot;&lt;/b&gt;, this replaces the lateral &lt;b&gt;&quot;torque&quot;&lt;/b&gt; controller, with one using a neural network trained on each car&apos;s (actually, each separate EPS firmware) driving data for increased controls accuracy.</source>
-        <translation></translation>
+        <translation>旧称为 &lt;b&gt;&quot;NNFF&quot;&lt;/b&gt;，用针对每辆车（实际上是每个独立的 EPS 固件）的驾驶数据训练的神经网络来替代横向&lt;b&gt;扭矩&lt;/b&gt;控制器，以提高控制精度。</translation>
     </message>
     <message>
         <source>Reach out to the sunnypilot team in the following channel at the sunnypilot Discord server</source>
-        <translation></translation>
+        <translation>通过 sunnypilot Discord 服务器的以下频道联系 sunnypilot 团队</translation>
     </message>
     <message>
         <source>with feedback, or to provide log data for your car if your car is currently unsupported:</source>
-        <translation></translation>
+        <translation>提供反馈，或为当前不受支持的车辆提供日志数据：</translation>
     </message>
     <message>
         <source>if there are any issues:</source>
-        <translation></translation>
+        <translation>如有任何问题：</translation>
     </message>
     <message>
         <source>and donate logs to get NNLC loaded for your car:</source>
-        <translation></translation>
+        <translation>捐赠日志数据以为您的车辆加载 NNLC：</translation>
     </message>
 </context>
 <context>
@@ -1111,7 +1116,7 @@ The default software delay value is 0.2</source><translation>关闭实时学习�
     <name>OffroadHomeSP</name>
     <message>
         <source>ALWAYS OFFROAD ACTIVE</source>
-        <translation></translation>
+        <translation>始终离线模式已激活</translation>
     </message>
 </context>
 <context>
@@ -1297,7 +1302,7 @@ Are you sure you want to delete all the maps?</source>
     </message>
     <message>
         <source>All</source>
-        <translation></translation>
+        <translation>全部</translation>
     </message>
     <message>
         <source>REFRESH</source>
@@ -1343,7 +1348,7 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>s</source>
-        <translation></translation>
+        <translation>秒</translation>
     </message>
     <message>
         <source>Calculating...</source>
@@ -1415,23 +1420,23 @@ Warning: You are on a metered connection!</source>
     <name>PlatformSelector</name>
     <message>
         <source>Vehicle</source>
-        <translation></translation>
+        <translation>车辆</translation>
     </message>
     <message>
         <source>SEARCH</source>
-        <translation></translation>
+        <translation>搜索</translation>
     </message>
     <message>
         <source>Search your vehicle</source>
-        <translation></translation>
+        <translation>搜索您的车辆</translation>
     </message>
     <message>
         <source>Enter model year (e.g., 2021) and model name (Toyota Corolla):</source>
-        <translation></translation>
+        <translation>输入车型年份（如 2021）和型号名称（如 Toyota Corolla）：</translation>
     </message>
     <message>
         <source>SEARCHING</source>
-        <translation></translation>
+        <translation>搜索中…</translation>
     </message>
     <message>
         <source>REMOVE</source>
@@ -1439,19 +1444,19 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>This setting will take effect immediately.</source>
-        <translation></translation>
+        <translation>此设置将立即生效。</translation>
     </message>
     <message>
         <source>This setting will take effect once the device enters offroad state.</source>
-        <translation></translation>
+        <translation>此设置将在设备进入离线状态后生效。</translation>
     </message>
     <message>
         <source>Vehicle Selector</source>
-        <translation></translation>
+        <translation>车辆选择器</translation>
     </message>
     <message>
         <source>Confirm</source>
-        <translation></translation>
+        <translation>确认</translation>
     </message>
     <message>
         <source>Cancel</source>
@@ -1459,35 +1464,35 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>No vehicles found for query: %1</source>
-        <translation></translation>
+        <translation>未找到匹配的车辆：%1</translation>
     </message>
     <message>
         <source>Select a vehicle</source>
-        <translation></translation>
+        <translation>选择车辆</translation>
     </message>
     <message>
         <source>Unrecognized Vehicle</source>
-        <translation></translation>
+        <translation>未识别车辆</translation>
     </message>
     <message>
         <source>Fingerprinted automatically</source>
-        <translation></translation>
+        <translation>自动指纹识别</translation>
     </message>
     <message>
         <source>Manually selected</source>
-        <translation></translation>
+        <translation>手动选择</translation>
     </message>
     <message>
         <source>Not fingerprinted or manually selected</source>
-        <translation></translation>
+        <translation>未指纹识别或手动选择</translation>
     </message>
     <message>
         <source>Select vehicle to force fingerprint manually.</source>
-        <translation></translation>
+        <translation>选择车辆以强制执行手动指纹识别。</translation>
     </message>
     <message>
         <source>Colors represent fingerprint status:</source>
-        <translation></translation>
+        <translation>颜色含义（指纹识别状态）：</translation>
     </message>
 </context>
 <context>
@@ -1558,7 +1563,7 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>sunnypilot</source>
-        <translation></translation>
+        <translation>sunnypilot</translation>
     </message>
 </context>
 <context>
@@ -1938,23 +1943,23 @@ Warning: You are on a metered connection!</source>
     <name>SoftwarePanelSP</name>
     <message>
         <source>Search Branch</source>
-        <translation></translation>
+        <translation>搜索分支</translation>
     </message>
     <message>
         <source>Enter search keywords, or leave blank to list all branches.</source>
-        <translation></translation>
+        <translation>输入搜索关键词，留空则列出所有分支。</translation>
     </message>
     <message>
         <source>Disable Updates</source>
-        <translation></translation>
+        <translation>禁用更新</translation>
     </message>
     <message>
         <source>When enabled, software updates will be disabled. &lt;b&gt;This requires a reboot to take effect.&lt;/b&gt;</source>
-        <translation></translation>
+        <translation>启用后，将禁用软件更新。&lt;b&gt;需要重启才能生效。&lt;/b&gt;</translation>
     </message>
     <message>
         <source>No branches found for keywords: %1</source>
-        <translation></translation>
+        <translation>未找到包含关键词的分支：%1</translation>
     </message>
     <message>
         <source>Select a branch</source>
@@ -1962,7 +1967,7 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>%1 updates requires a reboot.&lt;br&gt;Reboot now?</source>
-        <translation></translation>
+        <translation>%1 更新需要重启。&lt;br&gt;立即重启？</translation>
     </message>
     <message>
         <source>Reboot</source>
@@ -1970,11 +1975,11 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>When enabled, software updates will be disabled.&lt;br&gt;&lt;b&gt;This requires a reboot to take effect.&lt;/b&gt;</source>
-        <translation></translation>
+        <translation>启用后，将禁用软件更新。&lt;br&gt;&lt;b&gt;需要重启才能生效。&lt;/b&gt;</translation>
     </message>
     <message>
         <source>Please enable always offroad mode or turn off vehicle to adjust these toggles</source>
-        <translation></translation>
+        <translation>请启用始终离线模式或关闭车辆以调整这些设置</translation>
     </message>
 </context>
 <context>
@@ -2174,39 +2179,39 @@ Warning: You are on a metered connection!</source>
     <name>SunnylinkSponsorPopup</name>
     <message>
         <source>Scan the QR code to login to your GitHub account</source>
-        <translation></translation>
+        <translation>扫描二维码登录您的 GitHub 账户</translation>
     </message>
     <message>
         <source>Follow the prompts to complete the pairing process</source>
-        <translation></translation>
+        <translation>按照提示完成配对过程</translation>
     </message>
     <message>
         <source>Re-enter the &quot;sunnylink&quot; panel to verify sponsorship status</source>
-        <translation></translation>
+        <translation>重新进入&quot;sunnylink&quot;面板以验证赞助状态</translation>
     </message>
     <message>
         <source>If sponsorship status was not updated, please contact a moderator on Discord at https://discord.gg/sunnypilot</source>
-        <translation></translation>
+        <translation>如果赞助状态未更新，请在 Discord 上联系管理员：https://discord.gg/sunnypilot</translation>
     </message>
     <message>
         <source>Scan the QR code to visit sunnyhaibin&apos;s GitHub Sponsors page</source>
-        <translation></translation>
+        <translation>扫描二维码访问 sunnyhaibin 的 GitHub 赞助页面</translation>
     </message>
     <message>
         <source>Choose your sponsorship tier and confirm your support</source>
-        <translation></translation>
+        <translation>选择赞助等级并确认您的支持</translation>
     </message>
     <message>
         <source>Join our community on Discord at https://discord.gg/sunnypilot and reach out to a moderator to confirm your sponsor status</source>
-        <translation></translation>
+        <translation>加入我们的 Discord 社区 https://discord.gg/sunnypilot，联系管理员确认您的赞助状态</translation>
     </message>
     <message>
         <source>Pair your GitHub account</source>
-        <translation></translation>
+        <translation>配对您的 GitHub 账户</translation>
     </message>
     <message>
         <source>Early Access: Become a sunnypilot Sponsor</source>
-        <translation></translation>
+        <translation>抢先体验：成为 sunnypilot 赞助者</translation>
     </message>
 </context>
 <context>
@@ -2221,11 +2226,11 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>Welcome to sunnypilot</source>
-        <translation></translation>
+        <translation>欢迎使用 sunnypilot</translation>
     </message>
     <message>
         <source>You must accept the Terms and Conditions to use sunnypilot. Read the latest terms at &lt;span style=&apos;color: #465BEA;&apos;&gt;https://comma.ai/terms&lt;/span&gt; before continuing.</source>
-        <translation></translation>
+        <translation>使用 sunnypilot 前必须接受条款和条件。请在继续前阅读最新条款：&lt;span style=&apos;color: #465BEA;&apos;&gt;https://comma.ai/terms&lt;/span&gt;</translation>
     </message>
 </context>
 <context>
@@ -2374,11 +2379,11 @@ Warning: You are on a metered connection!</source>
     <name>VisualsPanel</name>
     <message>
         <source>Show Blind Spot Warnings</source>
-        <translation></translation>
+        <translation>显示盲区警告</translation>
     </message>
     <message>
         <source>Enabling this will display warnings when a vehicle is detected in your blind spot as long as your car has BSM supported.</source>
-        <translation></translation>
+        <translation>启用后，当车辆配备的盲区监测(BSM)检测到盲区内有车辆时，将显示警告。</translation>
     </message>
     <message>
         <source> Changing this setting will restart openpilot if the car is powered on.</source>
@@ -2386,31 +2391,31 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>Off</source>
-        <translation></translation>
+        <translation>关闭</translation>
     </message>
     <message>
         <source>Distance</source>
-        <translation></translation>
+        <translation>距离</translation>
     </message>
     <message>
         <source>Speed</source>
-        <translation></translation>
+        <translation>速度</translation>
     </message>
     <message>
         <source>Time</source>
-        <translation></translation>
+        <translation>时间</translation>
     </message>
     <message>
         <source>All</source>
-        <translation></translation>
+        <translation>全部</translation>
     </message>
     <message>
         <source>Display Metrics Below Chevron</source>
-        <translation></translation>
+        <translation>前车箭头下方显示指标</translation>
     </message>
     <message>
         <source>Display useful metrics below the chevron that tracks the lead car (only applicable to cars with openpilot longitudinal control).</source>
-        <translation></translation>
+        <translation>在前车跟踪箭头下方显示距离/速度/时间等实用指标（仅适用于 openpilot 纵向控制的车型）。</translation>
     </message>
 </context>
 <context>
