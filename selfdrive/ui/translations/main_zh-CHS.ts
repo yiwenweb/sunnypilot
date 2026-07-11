@@ -576,15 +576,15 @@ This is the time after which settings UI closes automatically if user is not int
     <name>ExitOffroadButton</name>
     <message>
         <source>Are you sure you want to exit Always Offroad mode?</source>
-        <translation></translation>
+        <translation>确定要退出始终离线模式吗？</translation>
     </message>
     <message>
         <source>Confirm</source>
-        <translation></translation>
+        <translation>确认</translation>
     </message>
     <message>
         <source>EXIT ALWAYS OFFROAD MODE</source>
-        <translation></translation>
+        <translation>退出始终离线模式</translation>
     </message>
 </context>
 <context>
@@ -1173,7 +1173,7 @@ The default software delay value is 0.2</source>
     </message>
     <message>
         <source>Acknowledge Excessive Actuation</source>
-        <translation></translation>
+        <translation>确认异常操控</translation>
     </message>
     <message>
         <source>Snooze Update</source>
@@ -1181,29 +1181,31 @@ The default software delay value is 0.2</source>
     </message>
     <message>
         <source>openpilot detected excessive %1 actuation on your last drive. Please contact support at https://comma.ai/support and share your device&apos;s Dongle ID for troubleshooting.</source>
-        <translation></translation>
+        <translation>openpilot 在上次驾驶中检测到异常的 %1 操控。请联系 https://comma.ai/support 技术支持并提供设备的 Dongle ID 以进行排查。</translation>
     </message>
     <message>
         <source>Immediately connect to the internet to check for updates. If you do not connect to the internet, sunnypilot won&apos;t engage in %1</source>
-        <translation></translation>
+        <translation>请立即连接互联网以检查更新。若未连接互联网，sunnypilot 将在 %1 后无法启用。</translation>
     </message>
     <message>
         <source>Connect to internet to check for updates. sunnypilot won&apos;t automatically start until it connects to internet to check for updates.</source>
-        <translation></translation>
+        <translation>请连接互联网以检查更新。在连接互联网完成更新检查之前，sunnypilot 将不会自动启动。</translation>
     </message>
     <message>
         <source>sunnypilot was unable to identify your car. Your car is either unsupported or its ECUs are not recognized. Please submit a pull request to add the firmware versions to the proper vehicle. Need help? Join discord.comma.ai.</source>
-        <translation></translation>
+        <translation>sunnypilot 无法识别您的车辆。您的车辆可能不受支持，或 ECU 固件未被识别。请提交 Pull Request 以添加对应车型的固件版本。需要帮助？加入 discord.comma.ai。</translation>
     </message>
     <message>
         <source>sunnypilot detected a change in the device&apos;s mounting position. Ensure the device is fully seated in the mount and the mount is firmly secured to the windshield.</source>
-        <translation></translation>
+        <translation>sunnypilot 检测到设备安装位置发生变化。请确保设备完全固定在支架中，且支架牢固地安装在前挡风玻璃上。</translation>
     </message>
     <message>
         <source>OpenStreetMap database is out of date. New maps must be downloaded if you wish to continue using OpenStreetMap data for Enhanced Speed Control and road name display.
 
 %1</source>
-        <translation></translation>
+        <translation>OpenStreetMap 地图数据库已过期。如需继续使用 OpenStreetMap 数据进行增强速度控制和道路名称显示，必须下载新地图。
+
+%1</translation>
     </message>
 </context>
 <context>
@@ -1852,7 +1854,7 @@ Warning: You are on a metered connection!</source>
     <name>SidebarSP</name>
     <message>
         <source>DISABLED</source>
-        <translation></translation>
+        <translation>已禁用</translation>
     </message>
     <message>
         <source>OFFLINE</source>
@@ -1860,7 +1862,7 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>REGIST...</source>
-        <translation></translation>
+        <translation>注册中…</translation>
     </message>
     <message>
         <source>ONLINE</source>
@@ -1872,7 +1874,7 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>SUNNYLINK</source>
-        <translation></translation>
+        <translation>SUNNYLINK</translation>
     </message>
 </context>
 <context>
