@@ -1232,26 +1232,124 @@ The default software delay value is 0.2</source>
 </context>
 <context>
     <name>OnroadAlerts</name>
-    <message>
-        <source>TAKE CONTROL IMMEDIATELY</source>
-        <translation>立即接管</translation>
-    </message>
-    <message>
-        <source>Reboot Device</source>
-        <translation>重启设备</translation>
-    </message>
-    <message>
-        <source>Waiting to start</source>
-        <translation>等待开始</translation>
-    </message>
-    <message>
-        <source>System Unresponsive</source>
-        <translation>系统无响应</translation>
-    </message>
-    <message>
-        <source>sunnypilot Unavailable</source>
-        <translation></translation>
-    </message>
+    <message><source>TAKE CONTROL IMMEDIATELY</source><translation>立即接管</translation></message>
+    <message><source>Reboot Device</source><translation>重启设备</translation></message>
+    <message><source>Waiting to start</source><translation>等待开始</translation></message>
+    <message><source>System Unresponsive</source><translation>系统无响应</translation></message>
+    <message><source>sunnypilot Unavailable</source><translation>sunnypilot 不可用</translation></message>
+    <message><source>Be ready to take over at any time</source><translation>请随时准备接管</translation></message>
+    <message><source>Always keep hands on wheel and eyes on road</source><translation>请始终手握方向盘，注视道路</translation></message>
+    <message><source>Dashcam mode</source><translation>行车记录仪模式</translation></message>
+    <message><source>Dashcam mode for unsupported car</source><translation>行车记录仪模式（车型不受支持）</translation></message>
+    <message><source>Dashcam Mode</source><translation>行车记录仪模式</translation></message>
+    <message><source>Car Unrecognized</source><translation>车辆未识别</translation></message>
+    <message><source>Security Key Not Available</source><translation>安全密钥不可用</translation></message>
+    <message><source>System Initializing</source><translation>系统初始化中</translation></message>
+    <message><source>WARNING: This branch is not tested</source><translation>警告：此分支未经测试</translation></message>
+    <message><source>BRAKE!</source><translation>刹车！</translation></message>
+    <message><source>Emergency Braking: Risk of Collision</source><translation>紧急制动：碰撞风险</translation></message>
+    <message><source>Stock AEB: Risk of Collision</source><translation>原车AEB：碰撞风险</translation></message>
+    <message><source>AEB: Risk of Collision</source><translation>AEB：碰撞风险</translation></message>
+    <message><source>Risk of Collision</source><translation>碰撞风险</translation></message>
+    <message><source>Lane Departure Detected</source><translation>检测到车道偏离</translation></message>
+    <message><source>DISENGAGE IMMEDIATELY</source><translation>请立即接管</translation></message>
+    <message><source>TAKE CONTROL</source><translation>请接管控制</translation></message>
+    <message><source>Take Control</source><translation>请接管</translation></message>
+    <message><source>Resume Driving Manually</source><translation>请手动驾驶</translation></message>
+    <message><source>Pay Attention</source><translation>请注意</translation></message>
+    <message><source>Driver Distracted</source><translation>驾驶员分心</translation></message>
+    <message><source>Driver Unresponsive</source><translation>驾驶员无响应</translation></message>
+    <message><source>Touch Steering Wheel: No Face Detected</source><translation>请触摸方向盘：未检测到面部</translation></message>
+    <message><source>Touch Steering Wheel</source><translation>请触摸方向盘</translation></message>
+    <message><source>Distraction Level Too High</source><translation>分心程度过高</translation></message>
+    <message><source>Steering Temporarily Unavailable</source><translation>转向暂时不可用</translation></message>
+    <message><source>Vehicle Steering Time Limit</source><translation>车辆转向时间限制</translation></message>
+    <message><source>Steering Pressed</source><translation>方向盘被按压</translation></message>
+    <message><source>Steering misalignment detected</source><translation>检测到转向偏差</translation></message>
+    <message><source>Steer ratio mismatch</source><translation>转向比不匹配</translation></message>
+    <message><source>Abnormal tire stiffness</source><translation>轮胎刚度异常</translation></message>
+    <message><source>Turn Exceeds Steering Limit</source><translation>转弯超出转向限制</translation></message>
+    <message><source>Press Resume to Exit Standstill</source><translation>按恢复键退出静止状态</translation></message>
+    <message><source>Press Resume to Exit Brake Hold</source><translation>按恢复键退出刹车保持</translation></message>
+    <message><source>Release Brake to Engage</source><translation>松开刹车以启用</translation></message>
+    <message><source>Press Set to Engage</source><translation>按SET键以启用</translation></message>
+    <message><source>Steer Left to Start Lane Change Once Safe</source><translation>安全时向左转向以开始变道</translation></message>
+    <message><source>Steer Right to Start Lane Change Once Safe</source><translation>安全时向右转向以开始变道</translation></message>
+    <message><source>Car Detected in Blindspot</source><translation>盲区检测到车辆</translation></message>
+    <message><source>Changing Lanes</source><translation>正在变道</translation></message>
+    <message><source>System Overheated</source><translation>系统过热</translation></message>
+    <message><source>Low Memory</source><translation>内存不足</translation></message>
+    <message><source>Low Memory: Reboot Your Device</source><translation>内存不足：请重启设备</translation></message>
+    <message><source>High CPU Usage</source><translation>CPU使用率过高</translation></message>
+    <message><source>Driving Model Lagging</source><translation>驾驶模型延迟</translation></message>
+    <message><source>Posenet Speed Invalid</source><translation>位置网络速度无效</translation></message>
+    <message><source>Process Not Running</source><translation>进程未运行</translation></message>
+    <message><source>Communication Issue Between Processes</source><translation>进程间通信异常</translation></message>
+    <message><source>Camera Malfunction</source><translation>摄像头故障</translation></message>
+    <message><source>Camera Frame Rate Low</source><translation>摄像头帧率过低</translation></message>
+    <message><source>Camera Malfunction: Reboot Your Device</source><translation>摄像头故障：请重启设备</translation></message>
+    <message><source>Fan Malfunction</source><translation>风扇故障</translation></message>
+    <message><source>Likely Hardware Issue</source><translation>可能为硬件问题</translation></message>
+    <message><source>Possible Hardware Issue</source><translation>可能存在硬件问题</translation></message>
+    <message><source>Check Hardware</source><translation>请检查硬件</translation></message>
+    <message><source>Sensor Data Invalid</source><translation>传感器数据无效</translation></message>
+    <message><source>Vehicle Sensors Invalid</source><translation>车辆传感器无效</translation></message>
+    <message><source>Vehicle Sensors Calibrating</source><translation>车辆传感器校准中</translation></message>
+    <message><source>Drive to Calibrate</source><translation>行驶以进行校准</translation></message>
+    <message><source>Calibration Invalid</source><translation>校准无效</translation></message>
+    <message><source>Calibration Incomplete</source><translation>校准未完成</translation></message>
+    <message><source>Calibration in Progress</source><translation>校准进行中</translation></message>
+    <message><source>Calibration Invalid: Remount Device &amp; Recalibrate</source><translation>校准无效：请重新安装设备并重新校准</translation></message>
+    <message><source>Device Remount Detected: Recalibrating</source><translation>检测到设备重装：重新校准中</translation></message>
+    <message><source>Remount Detected: Recalibrating</source><translation>检测到重装：重新校准中</translation></message>
+    <message><source>Out of Storage</source><translation>存储空间不足</translation></message>
+    <message><source>Device Fell Off Mount</source><translation>设备从支架脱落</translation></message>
+    <message><source>USB Error: Reboot Your Device</source><translation>USB错误：请重启设备</translation></message>
+    <message><source>CAN Error</source><translation>CAN总线错误</translation></message>
+    <message><source>CAN Error: Check Connections</source><translation>CAN总线错误：请检查连接</translation></message>
+    <message><source>CAN Bus Disconnected</source><translation>CAN总线断开</translation></message>
+    <message><source>CAN Bus Disconnected: Likely Faulty Cable</source><translation>CAN总线断开：可能为线缆故障</translation></message>
+    <message><source>CAN Bus Disconnected: Check Connections</source><translation>CAN总线断开：请检查连接</translation></message>
+    <message><source>Harness Relay Malfunction</source><translation>线束继电器故障</translation></message>
+    <message><source>Radar Error: Restart the Car</source><translation>雷达错误：请重新启动车辆</translation></message>
+    <message><source>Radar Temporarily Unavailable</source><translation>雷达暂时不可用</translation></message>
+    <message><source>Door Open</source><translation>车门未关</translation></message>
+    <message><source>Seatbelt Unlatched</source><translation>安全带未系</translation></message>
+    <message><source>Gear not D</source><translation>档位不在D档</translation></message>
+    <message><source>Reverse Gear</source><translation>倒档</translation></message>
+    <message><source>Electronic Stability Control Disabled</source><translation>电子稳定控制已禁用</translation></message>
+    <message><source>Electronic Stability Control Active</source><translation>电子稳定控制已激活</translation></message>
+    <message><source>Low Battery</source><translation>电量不足</translation></message>
+    <message><source>Excessive Actuation</source><translation>异常操控</translation></message>
+    <message><source>Controls Mismatch</source><translation>控制不匹配</translation></message>
+    <message><source>Joystick Mode</source><translation>摇杆模式</translation></message>
+    <message><source>Longitudinal Maneuver Mode</source><translation>纵向操控测试模式</translation></message>
+    <message><source>Ensure road ahead is clear</source><translation>确保前方道路畅通</translation></message>
+    <message><source>Recording Audio Feedback</source><translation>正在录制音频反馈</translation></message>
+    <message><source>Bookmark Saved</source><translation>书签已保存</translation></message>
+    <message><source>Low Communication Rate Between Processes</source><translation>进程间通信速率过低</translation></message>
+    <message><source>System Lagging</source><translation>系统延迟</translation></message>
+    <message><source>Selfdrive Process Lagging: Reboot Your Device</source><translation>自动驾驶进程延迟：请重启设备</translation></message>
+    <message><source>Invalid LKAS setting</source><translation>LKAS设置无效</translation></message>
+    <message><source>Toggle stock LKAS on or off to engage</source><translation>切换原车LKAS开关以启用</translation></message>
+    <message><source>LKAS Fault: Restart the Car</source><translation>LKAS故障：请重新启动车辆</translation></message>
+    <message><source>LKAS Fault: Restart the car to engage</source><translation>LKAS故障：重启车辆后启用</translation></message>
+    <message><source>Speed Too High</source><translation>速度过高</translation></message>
+    <message><source>Model uncertain at this speed</source><translation>此速度下模型不确定</translation></message>
+    <message><source>Slow down to engage</source><translation>请减速以启用</translation></message>
+    <message><source>openpilot Canceled</source><translation>openpilot已取消</translation></message>
+    <message><source>Speed too low</source><translation>速度过低</translation></message>
+    <message><source>Cruise Is Off</source><translation>巡航已关闭</translation></message>
+    <message><source>Cruise Fault: Restart the Car</source><translation>巡航故障：请重启车辆</translation></message>
+    <message><source>Cruise Fault: Restart the car to engage</source><translation>巡航故障：重启车辆后启用</translation></message>
+    <message><source>Adaptive Cruise Disabled</source><translation>自适应巡航已禁用</translation></message>
+    <message><source>Cancel Pressed</source><translation>取消键已按下</translation></message>
+    <message><source>Parking Brake Engaged</source><translation>驻车制动已启用</translation></message>
+    <message><source>Pedal Pressed</source><translation>踏板被踩下</translation></message>
+    <message><source>paramsd Temporary Error</source><translation>参数服务临时错误</translation></message>
+    <message><source>paramsd Permanent Error</source><translation>参数服务永久错误</translation></message>
+    <message><source>locationd Temporary Error</source><translation>定位服务临时错误</translation></message>
+    <message><source>locationd Permanent Error</source><translation>定位服务永久错误</translation></message>
 </context>
 <context>
     <name>OsmPanel</name>
