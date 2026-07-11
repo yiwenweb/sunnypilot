@@ -25,14 +25,14 @@ VisualsPanel::VisualsPanel(QWidget *parent) : QWidget(parent) {
       "BlindSpot",
       tr("盲区警告提示"),
       tr("开启后，当盲区监测 (BSM) 检测到盲区内有车辆时，屏幕两侧将显示警告图标。需要车辆支持 BSM 功能。"),
-      "../assets/offroad/icon_monitoring.png",
+      "../assets/offroad/icon_monitoring.svg",
       false,
     },
     {
       "RainbowMode",
       tr("彩虹路径模式"),
       RainbowizeWords(tr("在模型规划的路径上显示美丽的彩虹渐变效果。")) + "<br/><i>" + tr("此功能")+ " <b>" + tr("不会") + "</b> " + tr("影响驾驶行为。") + "</i>",
-      "../assets/offroad/icon_monitoring.png",
+      "../assets/offroad/icon_monitoring.svg",
       false,
     },
   };
