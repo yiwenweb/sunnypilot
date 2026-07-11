@@ -39,9 +39,9 @@ class CarInterface(CarInterfaceBase):
         ret.minEnableSpeed = -1.
         ret.minSteerSpeed = 0.1 * CV.KPH_TO_MS
 
-        ret.steerActuatorDelay = 0.3   # 门总 0.98 confirmed 0.30 (BYD EPS has ~0.3s lag);
+        ret.steerActuatorDelay = 0.3   # 门总实测 0.30 (BYD EPS has ~0.3s lag);
                                        # 0.05 assumed near-instant response → no lead steering → sluggish turn-in
-        ret.steerLimitTimer = 0.4
+        ret.steerLimitTimer = 0.5      # 门总实测 0.5 (原 0.4)
 
         if candidate in PLATFORM_HANTANG_DMEV:
             ret.safetyConfigs[0].safetyParam |= BydSafetyFlags.HAN_TANG_DMEV.value
@@ -53,10 +53,10 @@ class CarInterface(CarInterfaceBase):
 
         if use_torque_lat:
             CarInterfaceBase.configure_torque_tune(candidate, ret.lateralTuning)
-            # 对齐门总 0.98 实测调参 (configure_torque_tune 默认 ki=0.3, deadzone=0):
-            ret.lateralTuning.torque.ki = 0.1                      # 门总=0.1 (默认0.3偏大易振荡)
-            ret.lateralTuning.torque.steeringAngleDeadzoneDeg = 0.1  # 门总=0.1
-            # 注: kp=1.0/kf=1.0 与门总一致; latAccelFactor/friction 由 override.toml 提供(已对齐2.75/0.1)
+            # 对齐门总实测 (门总日志逐帧实测, 见技术笔记; configure_torque_tune 默认 ki=0.3, deadzone=0):
+            ret.lateralTuning.torque.ki = 0.1                        # 门总实测=0.1 (默认0.3偏大易振荡)
+            ret.lateralTuning.torque.steeringAngleDeadzoneDeg = 0.0  # 门总实测=0.0 (原写0.1有误)
+            # 注: kp=1.0/kf=1.0 与门总实测一致; latAccelFactor/friction 由 override.toml 提供(门总实测2.75/0.1)
         else:
             ret.lateralTuning.init('pid')
             ret.lateralTuning.pid.kpBP, ret.lateralTuning.pid.kiBP = [[8.3, 27.8], [8.3, 27.8]]
@@ -73,7 +73,7 @@ class CarInterface(CarInterfaceBase):
         ret.longitudinalTuning.kpV, ret.longitudinalTuning.kiV = [[1.5], [0.3]]
 
         if candidate == CAR.BYD_TANG_DM:
-            ret.steerRatio = 20.1478  # From closed-source LiveParameters
+            ret.steerRatio = 19.0     # 门总实测: liveParameters 学习稳定锁定在 19.0 (n=17984, min18.9999~max19.006); 原 20.1478 偏大6%致转向不足
             ret.minSteerSpeed = 0
             ret.autoResumeSng = True
             ret.startingState = True
