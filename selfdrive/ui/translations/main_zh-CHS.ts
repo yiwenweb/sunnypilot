@@ -2432,47 +2432,47 @@ Warning: You are on a metered connection!</source>
     </message>
     <message>
         <source>Enable sunnypilot</source>
-        <translation></translation>
+        <translation>启用 sunnypilot</translation>
     </message>
     <message>
         <source>Use the sunnypilot system for adaptive cruise control and lane keep driver assistance. Your attention is required at all times to use this feature.</source>
-        <translation></translation>
+        <translation>使用 sunnypilot 系统进行自适应巡航控制和车道保持辅助驾驶。使用此功能时需要始终保持注意力。</translation>
     </message>
     <message>
         <source>Enable Dynamic Experimental Control</source>
-        <translation></translation>
+        <translation>启用动态实验控制</translation>
     </message>
     <message>
         <source>Enable toggle to allow the model to determine when to use sunnypilot ACC or sunnypilot End to End Longitudinal.</source>
-        <translation></translation>
+        <translation>启用后，让模型自行决定何时使用 sunnypilot ACC 或端到端纵向控制。</translation>
     </message>
     <message>
         <source>When enabled, pressing the accelerator pedal will disengage sunnypilot.</source>
-        <translation></translation>
+        <translation>启用后，踩下油门踏板将取消 sunnypilot 控制。</translation>
     </message>
     <message>
         <source>Enable driver monitoring even when sunnypilot is not engaged.</source>
-        <translation></translation>
+        <translation>即使 sunnypilot 未启用也保持驾驶员监控。</translation>
     </message>
     <message>
         <source>Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive with the gas and brake. In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with your steering wheel distance button.</source>
-        <translation></translation>
+        <translation>推荐使用标准模式。激进模式下，sunnypilot 会跟车更近、加减速更激烈。舒适模式下则保持更远跟车距离。在支持的车型上，可通过方向盘跟车距离按钮切换驾驶风格。</translation>
     </message>
     <message>
         <source>sunnypilot defaults to driving in &lt;b&gt;chill mode&lt;/b&gt;. Experimental mode enables &lt;b&gt;alpha-level features&lt;/b&gt; that aren&apos;t ready for chill mode. Experimental features are listed below:</source>
-        <translation></translation>
+        <translation>sunnypilot 默认以&lt;b&gt;轻松模式&lt;/b&gt;行驶。实验模式会启用尚未在轻松模式中准备好的&lt;b&gt;Alpha级功能&lt;/b&gt;。实验功能如下：</translation>
     </message>
     <message>
         <source>Let the driving model control the gas and brakes. sunnypilot will drive as it thinks a human would, including stopping for red lights and stop signs. Since the driving model decides the speed to drive, the set speed will only act as an upper bound. This is an alpha quality feature; mistakes should be expected.</source>
-        <translation></translation>
+        <translation>让驾驶模型控制油门和刹车。sunnypilot 会像人类一样驾驶，包括在红灯和停止标志前停车。由于驾驶模型决定行驶速度，设定速度仅作为上限。这是 Alpha 级功能，可能会出现错误。</translation>
     </message>
     <message>
         <source>An alpha version of sunnypilot longitudinal control can be tested, along with Experimental mode, on non-release branches.</source>
-        <translation></translation>
+        <translation>sunnypilot 纵向控制的 Alpha 版本和实验模式可在非发布分支上进行测试。</translation>
     </message>
     <message>
         <source>Enable the sunnypilot longitudinal control (alpha) toggle to allow Experimental mode.</source>
-        <translation></translation>
+        <translation>启用 sunnypilot 纵向控制（Alpha）开关以允许使用实验模式。</translation>
     </message>
 </context>
 <context>
