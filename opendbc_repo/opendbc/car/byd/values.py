@@ -39,9 +39,9 @@ class CarControllerParams:
   ACCEL_MAX = 2.0
   ACCEL_MIN = -3.5
 
-  K_DASHSPEED = 0.0719  # DBC验证为0.0735，但用户反馈车机低3-5km/h（如车机92显C3上95）
-                         # 下调约2.2%使C3显示更接近车机。若仍有差异，实车标定后再调。
-                         # 实车标定方法：C3上运行 byd_speed_diag.py 记录车机→C3对应关系
+  K_DASHSPEED = 0.072636  # 00000006实测值(中位数,n=29316样本,线性良好,各速度段偏差<0.1%)
+                         # 分速度段验证: 10-40km/h=0.072642, 40-70km/h=0.072562
+                         # DBC标注0.0735偏高约1.4%。用户反馈车机低3-5km/h已通过实测修正。
 
   USE_STEERING_SPEED_LIMITER = False
 
