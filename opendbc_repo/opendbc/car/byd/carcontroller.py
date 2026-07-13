@@ -58,6 +58,9 @@ class CarController(CarControllerBase):
     self.sss = 0
 
     self.apply_accel_last = 0
+    
+    # 纵向控制优化
+    self.speed_hyst_upper = False  # 超速抑制状态
 
 
   def update(self, CC, CC_SP, CS, now_nanos):
@@ -311,6 +314,23 @@ class CarController(CarControllerBase):
     if (self.frame + 1 - self.last_acc_frame) >= CarControllerParams.ACC_STEP:
       accel = np.clip(CC.actuators.accel, CarControllerParams.ACCEL_MIN, CarControllerParams.ACCEL_MAX)
 
+      if CC.longActive:
+        # 速度滞环：防止在目标速度附近频繁点刹震荡
+        v_cruise = CS.out.cruiseState.speed  # m/s
+        v_ego = CS.out.vEgo
+        HYSTERESIS = 0.5  # m/s (约1.8km/h 死区)
+        
+        # 超速检测：真超速(>v_cruise+HYST)才进入减速态
+        if v_ego > v_cruise + HYSTERESIS:
+          self.speed_hyst_upper = True
+        elif v_ego < v_cruise - HYSTERESIS:
+          self.speed_hyst_upper = False
+        
+        # 在超速区间内抑制过激减速，避免频繁刹车泵启动
+        if self.speed_hyst_upper and v_cruise < v_ego < v_cruise + HYSTERESIS * 2:
+          # 滞环区间：限制减速度，让自然滑行
+          accel = max(accel, -0.3)  # 最多轻减速
+        
       if CC.longActive:
         stopping = CC.actuators.longControlState == LongCtrlState.stopping
         starting = CC.actuators.longControlState == LongCtrlState.starting

@@ -77,11 +77,36 @@ class CarInterface(CarInterfaceBase):
             ret.minSteerSpeed = 0
             ret.autoResumeSng = True
             ret.startingState = True
-            ret.startAccel = 0.8
-            ret.stopAccel = -0.5
+            
+            # 驾驶风格绑定（读取sunnypilot的LongitudinalPersonality参数）
+            # 0=激进, 1=标准, 2=舒适
+            try:
+                from opendbc.car.common.params import Params
+                personality = Params().get_int("LongitudinalPersonality")
+            except:
+                personality = 1  # 默认标准
+            
+            if personality == 0:  # 激进
+                ret.startAccel = 1.0
+                ret.stopAccel = -0.7
+                ret.longitudinalActuatorDelay = 0.4
+                ret.longitudinalTuning.kpV = [1.8]
+                ret.longitudinalTuning.kiV = [0.4]
+            elif personality == 2:  # 舒适
+                ret.startAccel = 0.6
+                ret.stopAccel = -0.4
+                ret.longitudinalActuatorDelay = 0.6
+                ret.longitudinalTuning.kpV = [1.2]
+                ret.longitudinalTuning.kiV = [0.25]
+            else:  # 标准（默认）
+                ret.startAccel = 0.8
+                ret.stopAccel = -0.5
+                ret.longitudinalActuatorDelay = 0.5
+                ret.longitudinalTuning.kpV = [1.5]
+                ret.longitudinalTuning.kiV = [0.3]
+            
             ret.vEgoStarting = 0.2 * CV.KPH_TO_MS
             ret.vEgoStopping = 0.1 * CV.KPH_TO_MS
-            ret.longitudinalActuatorDelay = 0.5
         else:
             ret.dashcamOnly = True
 

@@ -39,7 +39,9 @@ class CarControllerParams:
   ACCEL_MAX = 2.0
   ACCEL_MIN = -3.5
 
-  K_DASHSPEED = 0.0735  # convert pulse to kph (matches panda byd.h UPDATE_VEHICLE_SPEED factor)
+  K_DASHSPEED = 0.0719  # DBC验证为0.0735，但用户反馈车机低3-5km/h（如车机92显C3上95）
+                         # 下调约2.2%使C3显示更接近车机。若仍有差异，实车标定后再调。
+                         # 实车标定方法：C3上运行 byd_speed_diag.py 记录车机→C3对应关系
 
   USE_STEERING_SPEED_LIMITER = False
 
@@ -100,6 +102,16 @@ class CarControllerParams:
   K_jerk_xp =            [   4,   10,   20,   40,   80]
   K_jerk_base_lower_fp = [-2.3, -1.8, -1.4, -1.0, -0.4]
   K_jerk_base_upper_fp = [ 0.8,  0.7,  0.6,  0.3,  0.2]
+  
+  # 跟车距离档位映射（原车4档，对应813 SetDistance值 1-4）
+  # time_gap单位：秒，公式 safe_distance = v_ego * time_gap + 5m
+  # 实测标定建议：原车ACC各档位实车跟车测量真实距离反推
+  GAP_TIME_TABLE = {
+    1: 1.0,   # 近距离
+    2: 1.4,   # 中近
+    3: 1.8,   # 中远（默认）
+    4: 2.3,   # 远距离
+  }
 
   def __init__(self, CP):
     pass

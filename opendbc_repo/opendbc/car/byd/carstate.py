@@ -100,6 +100,10 @@ class CarState(CarStateBase):
         # use dash speedo as speed reference
         speed_raw = int(cp.vl["CARSPEED"]["CarDisplaySpeed"])
         speed_raw_kph = speed_raw * CarControllerParams.K_DASHSPEED
+        
+        # 速度修正系数（若车机显示与C3有恒定偏差，在此调整）
+        # 默认全1.0（不修正）。实车标定后可改为分段修正，如：
+        # correct_factor = np.interp(speed_raw_kph, [0, 30, 60, 90, 120], [1.0, 0.98, 0.97, 0.97, 0.97])
         correct_factor = np.interp(speed_raw_kph, [30, 60, 90, 120], [1., 1., 1., 1.])
         self.speed_kph = speed_raw_kph * correct_factor
 
