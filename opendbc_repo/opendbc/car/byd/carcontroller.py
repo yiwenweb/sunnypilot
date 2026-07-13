@@ -174,31 +174,40 @@ class CarController(CarControllerBase):
               print("LOCK5 GIVEUP drv=%d out=%d MainTq=%d stuck=%d -> release (like 门总 -175)" % (
                 int(CS.out.steeringTorque), int(apply_torque), int(CS.out.steeringTorqueEps), self.stuck_counter))
 
-          # 无车道线补偿: 当 lateralPlan 在低速无车道线时输出0曲率导致横向完全不出力,
-          # 给一个最小的"居中保持"扭矩, 避免突然松手的危险感。
-          # 触发条件: 低速 + 横向激活 + 命令扭矩≈0 + 无司机对抗
-          # 策略: 输出极小扭矩(15Nm), 仅让司机感觉"有点力", 不主动转向
+          # 无车道线补偿 V2: 解决0.3秒周期震荡问题
+          # 根因发现: 低速转弯时，方向盘被车辆几何强制转动产生机械力 → EPS传感器误读为"驾驶员对抗"(dTq=100-250+)
+          #           → EPS每0.3秒切断会话(PREP=0,CRU=0,mTq=0) → 震荡松手 → 危险！
+          # 策略升级: 不仅"回中"，更要"保持转向" —— 主动输出足够扭矩压制机械反力，让EPS电机推动而非被动承受
           if CarControllerParams.LANELESS_ASSIST_ENABLE:
             low_speed = CS.out.vEgo < CarControllerParams.LANELESS_ASSIST_SPEED  # <20km/h
-            no_output = abs(apply_torque) < 5  # 几乎无输出
-            no_driver_fight = abs(int(CS.out.steeringTorque)) < 80  # 司机未对抗
+            no_output = abs(apply_torque) < 5  # lateralPlan输出≈0
+            no_driver_fight = abs(int(CS.out.steeringTorque)) < 80  # 司机未对抗（真实人手力）
             
             if low_speed and no_output and no_driver_fight and not self.lock5_giveup:
               # 渐进启用 (平滑过渡, 避免突然介入)
               self.laneless_smoothing = min(1.0, self.laneless_smoothing + 0.05)
               self.laneless_assist_active = True
               
-              # 输出一个极小的"居中"扭矩 (基于方向盘角度的轻微纠正)
-              # 如果方向盘偏右(>0), 给一点左转力; 反之亦然
               steer_angle = CS.out.steeringAngleDeg
-              # 限制在小角度内才介入 (|角度|<30度, 说明基本直行或小幅转弯)
-              if abs(steer_angle) < 30:
+              
+              # 场景1: 正在转弯(角度>15°) → 主动保持，防止EPS误读机械力为dTq
+              if abs(steer_angle) > 15:
+                # 输出足够大的"保持"扭矩(80Nm)，跟随当前方向
+                # 让EPS电机主动推，而非被动承受机械拉力 → dTq降低 → EPS不会误判"驾驶员对抗"
+                hold_torque = int(np.sign(steer_angle) * 80 * self.laneless_smoothing)
+                apply_torque = hold_torque
+                
+                if self.frame % 50 == 0:  # 每2.5秒打印
+                  print(f"LANELESS_HOLD: angle={steer_angle:.1f}° → tq={hold_torque} (preventing 0.3s oscillation)")
+              
+              # 场景2: 基本直行(角度<15°) → 轻微回中即可
+              elif abs(steer_angle) < 30:
                 # 极轻的"回中"力: -sign(角度) * 小扭矩
                 assist_torque = int(-np.sign(steer_angle) * 15 * self.laneless_smoothing)
                 apply_torque = assist_torque
                 
-                if self.frame % 50 == 0:  # 每2.5秒打印一次
-                  print(f"LANELESS_ASSIST: angle={steer_angle:.1f}° → tq={assist_torque} (smooth={self.laneless_smoothing:.2f})")
+                if self.frame % 50 == 0:
+                  print(f"LANELESS_CENTER: angle={steer_angle:.1f}° → tq={assist_torque}")
             else:
               # 退出条件: 速度高 或 有正常输出 或 司机对抗
               self.laneless_smoothing = max(0.0, self.laneless_smoothing - 0.1)
