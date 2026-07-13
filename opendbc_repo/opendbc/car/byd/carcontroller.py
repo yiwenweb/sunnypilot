@@ -181,9 +181,11 @@ class CarController(CarControllerBase):
           if CarControllerParams.LANELESS_ASSIST_ENABLE:
             low_speed = CS.out.vEgo < CarControllerParams.LANELESS_ASSIST_SPEED  # <20km/h
             no_output = abs(apply_torque) < 5  # lateralPlan输出≈0
-            no_driver_fight = abs(int(CS.out.steeringTorque)) < 80  # 司机未对抗（真实人手力）
+            # ⚠ 不再用 dTq 判断：低速转弯时机械反力导致 dTq=100-279，
+            # 正是需要 OP 主动发力去压制的信号，而非"人手对抗"。
+            # 真实的驾驶员抢夺会用 steeringPressed 在更上层拦截，与此无关。
             
-            if low_speed and no_output and no_driver_fight and not self.lock5_giveup:
+            if low_speed and no_output and not self.lock5_giveup:
               # 渐进启用 (平滑过渡, 避免突然介入)
               self.laneless_smoothing = min(1.0, self.laneless_smoothing + 0.05)
               self.laneless_assist_active = True
@@ -192,9 +194,9 @@ class CarController(CarControllerBase):
               
               # 场景1: 正在转弯(角度>15°) → 主动保持，防止EPS误读机械力为dTq
               if abs(steer_angle) > 15:
-                # 输出足够大的"保持"扭矩(80Nm)，跟随当前方向
+                # 输出足够大的"保持"扭矩(120Nm)，跟随当前方向
                 # 让EPS电机主动推，而非被动承受机械拉力 → dTq降低 → EPS不会误判"驾驶员对抗"
-                hold_torque = int(np.sign(steer_angle) * 80 * self.laneless_smoothing)
+                hold_torque = int(np.sign(steer_angle) * 120 * self.laneless_smoothing)
                 apply_torque = hold_torque
                 
                 if self.frame % 50 == 0:  # 每2.5秒打印
