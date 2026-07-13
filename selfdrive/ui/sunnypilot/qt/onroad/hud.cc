@@ -200,7 +200,7 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
       drawTurnSignals(p, surface_rect);
     }
 
-    // Speed limit sign (near set speed)
+    // Speed limit block (below MAX set speed, A方案)
     if (speedLimitEnabled && speedLimitValid) {
       drawSpeedLimit(p, surface_rect);
     }
@@ -372,14 +372,14 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
   // RocketFuel: vertical bar on the left side (ported from sunnypilot 2026)
   // MICI-style: gradient color + smooth animation
   const int bar_width = 36;
-  const int bar_height = 560;   // a bit longer
+  const int bar_height = surface_rect.height();  // 拉满全屏高度
   const float max_accel = 3.0f;
   // Tucked to the far left so it never overlaps the set-speed / data boxes
   // (metric set-speed box left edge = 46, imperial = 60; bar right edge = 42)
   const int margin_left = 6;
 
   int track_x = margin_left;
-  int track_y = surface_rect.center().y() - bar_height / 2;
+  int track_y = 0;
 
   // Background track
   p.setPen(Qt::NoPen);
@@ -476,47 +476,63 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
-  // 2026-style speed limit sign (Vienna convention: white circle, red border)
-  const int sign_size = 90;
-  int cx = surface_rect.right() - sign_size - UI_BORDER_SIZE * 3;
-  int cy = surface_rect.top() + UI_BORDER_SIZE * 2 + sign_size / 2;
+  // A方案：限速方块紧贴在MAX定速方块下方，同宽同风格
+  const QSize default_size = {172, 204};
+  QSize max_box_size = is_metric ? QSize(200, 204) : default_size;
+  const int block_w = max_box_size.width();
+  const int block_h = 155;
+  const int box_x = 60 + (default_size.width() - block_w) / 2;
+  const int box_y = 45 + 204; // 紧贴MAX方块底部（MAX: y=45, h=204）
 
   // Convert speed from m/s
   int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
-  QString text = QString::number(limit_kmh);
+  QString limit_text = QString::number(limit_kmh);
 
-  // Draw sign background (white circle with red border)
   p.save();
-  p.setPen(QPen(QColor(200, 40, 40), 8));
+
+  // Draw block (same style as MAX set-speed box)
+  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
+  p.setBrush(QColor(0, 0, 0, 166));
+  p.drawRoundedRect(box_x, box_y, block_w, block_h, 32, 32);
+
+  // --- Vienna circle (80px diameter) ---
+  const int circle_r = 40;        // radius
+  const int circle_border = 6;    // red border width
+  int circle_cx = box_x + block_w / 2;
+  int circle_cy = box_y + 30 + circle_r;  // top padding 30px
+
+  // White circle fill
+  p.setPen(QPen(QColor(200, 40, 40), circle_border));
   p.setBrush(QColor(255, 255, 255, 245));
-  p.drawEllipse(QPoint(cx, cy), sign_size / 2, sign_size / 2);
+  p.drawEllipse(QPoint(circle_cx, circle_cy), circle_r, circle_r);
 
-  // Speed number
+  // Speed number inside circle
   p.setPen(QColor(30, 30, 30));
-  p.setFont(InterFont(sign_size / 2, QFont::Bold));
-  QFontMetrics fm(p.font());
-  QRect text_rect = fm.boundingRect(text);
-  text_rect.moveCenter(QPoint(cx, cy));
-  p.drawText(text_rect, Qt::AlignCenter, text);
+  QFont circle_font = InterFont(44, QFont::Bold);
+  p.setFont(circle_font);
+  QFontMetrics cfm(circle_font);
+  QRect circle_text_rect = cfm.boundingRect(limit_text);
+  circle_text_rect.moveCenter(QPoint(circle_cx, circle_cy));
+  p.drawText(circle_text_rect, Qt::AlignCenter, limit_text);
 
-  // Speed limit ahead (smaller sign below)
+  // --- LIMIT label ---
+  const int label_y = circle_cy + circle_r + 14;
+  QString label_text;
   if (speedLimitAheadValid) {
     int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
-    QString ahead_text = QString::number(ahead_kmh);
-    int ahead_y = cy + sign_size + 10;
-    int ahead_size = sign_size * 2 / 3;
-
-    p.setPen(QPen(QColor(200, 40, 40, 180), 5));
-    p.setBrush(QColor(255, 255, 255, 200));
-    p.drawEllipse(QPoint(cx, ahead_y), ahead_size / 2, ahead_size / 2);
-
-    p.setPen(QColor(30, 30, 30));
-    p.setFont(InterFont(ahead_size / 2, QFont::Bold));
-    QFontMetrics afm(p.font());
-    QRect ahead_rect = afm.boundingRect(ahead_text);
-    ahead_rect.moveCenter(QPoint(cx, ahead_y));
-    p.drawText(ahead_rect, Qt::AlignCenter, ahead_text);
+    label_text = QString("LIMIT  →  %1").arg(ahead_kmh);
+  } else {
+    label_text = "LIMIT";
   }
+
+  p.setPen(QColor(180, 180, 180, 200));
+  p.setFont(InterFont(22, QFont::Medium));
+  QFontMetrics lfm(p.font());
+  QRect label_rect = lfm.boundingRect(label_text);
+  label_rect.moveCenter(QPoint(circle_cx, label_y + label_rect.height() / 2));
+  p.drawText(label_rect, Qt::AlignCenter, label_text);
+
+  p.restore();
 }
 
 void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
@@ -544,11 +560,12 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // MICI-style steering arc: gradient color (white→yellow→orange) + smooth filter + dynamic sizing
-  const int arc_width = 900;        // -10%
-  const int arc_height = 234;       // -10%
-  const int margin_bottom = 5;      // 弧整体下移
+  // Tuned: arc_height -10%, arc_width +15%, line thickness +50%, center dot hidden
+  const int arc_width = 1035;       // +15% (原900)
+  const int arc_height = 210;       // -10% (原234)，弧度更扁平
+  const int margin_bottom = 88;     // 弧下移到贴近底部状态栏上方
   const float max_angle = 55.f;
-  const int half_span = 54;         // 弧半跨度（°），+20%（原45°）
+  const int half_span = 54;         // 弧半跨度（°）
 
   int cx = surface_rect.center().x();
   int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
@@ -563,14 +580,14 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.save();
   p.setRenderHint(QPainter::Antialiasing);
 
-  // Background arc（线宽+20%，更透明）
-  p.setPen(QPen(QColor(255, 255, 255, 45), 24));
+  // Background arc（厚度+50%：24→36）
+  p.setPen(QPen(QColor(255, 255, 255, 45), 36));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, (90 - half_span) * 16, (half_span * 2) * 16);
 
-  // Tick marks（增强可见度：线宽+alpha大幅提升）
+  // Tick marks（厚度+50%：4→6）
   {
-    p.setPen(QPen(QColor(255, 255, 255, 100), 4));
+    p.setPen(QPen(QColor(255, 255, 255, 100), 6));
     p.setFont(InterFont(22, QFont::Normal));
     for (int deg = 90 - half_span; deg <= 90 + half_span; deg += 10) {
       double rad = deg * M_PI / 180.0;
@@ -600,14 +617,14 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
     if (is_active) {
       int g = (int)(255.0f * (1.0f - yellow_t * 0.55f));
       int b = (int)(255.0f * (1.0f - yellow_t));
-      fill_color = QColor(255, g, b, 255);    // +20% → cap 255
+      fill_color = QColor(255, g, b, 255);
     } else {
-      fill_color = QColor(180, 180, 180, 240); // +20%
+      fill_color = QColor(180, 180, 180, 240);
     }
 
     if (std::abs(clamped_angle) > 1.f) {
-      // Dynamic line width（+20%）: 26→40px
-      float pen_width = 26.0f + abs_ratio * 14.0f;
+      // Dynamic line width（厚度+50%：26→39，14→21）
+      float pen_width = 39.0f + abs_ratio * 21.0f;
       p.setPen(QPen(fill_color, pen_width, Qt::SolidLine, Qt::RoundCap));
       int span = (int)(clamped_angle / max_angle * half_span * 16);
       p.drawArc(arc_rect, 90 * 16, span);
@@ -630,10 +647,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
     p.drawPolygon(diamond);
   }
 
-  // Center dot
-  p.setPen(Qt::NoPen);
-  p.setBrush(QColor(255, 255, 255, 240)); // +20%
-  p.drawEllipse(QPoint(cx, cy), 12, 12);
+  // Center dot removed
 
   p.restore();
 }
@@ -776,11 +790,11 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
 }
 
 void HudRendererSP::drawSteerTorqueData(QPainter &p, const QRect &surface_rect) {
-  // Box below the set-speed box, SAME size & alignment as the MAX set-speed box
+  // Box below the speed-limit box, SAME size & alignment as the MAX set-speed box
   const QSize default_size = {172, 204};
   QSize box_size = is_metric ? QSize(200, 204) : default_size;
   const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
-  const int box_y = 280;  // 45 + 204 + 31 gap
+  const int box_y = 435;  // 45 + 204 (MAX) + 155 (SpeedLimit) + 31 gap
 
   // Draw box
   p.setPen(QPen(QColor(255, 255, 255, 75), 6));
@@ -839,7 +853,7 @@ void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
   const QSize default_size = {172, 204};
   QSize box_size = is_metric ? QSize(200, 204) : default_size;
   const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
-  const int box_y = 515;  // 280 + 204 + 31 gap
+  const int box_y = 670;  // 435 + 204 + 31 gap
 
   // Draw box
   p.setPen(QPen(QColor(255, 255, 255, 75), 6));
