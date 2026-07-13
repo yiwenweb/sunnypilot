@@ -96,6 +96,13 @@ class CarControllerParams:
   LOCK5_STUCK_OUT = 40              # 我们命令 |out| 超此值却顶不动, 才算真硬顶(门总大对抗也压~40)
   LOCK5_STUCK_MAINTQ = 30           # EPS 电机 |MainTorque| 长期低于此值 = 顶不动(电机没能跟上命令)
 
+  # --- 无车道线辅助 (20260713 新增, 解决sunnypilot在低速无车道线时输出0曲率) ---
+  # 问题: sunnypilot的lateralPlan在车道线置信度低时输出desiredCurvature=0 -> 横向完全不出力
+  # 方案: 在低速(<20km/h)时, 如果检测到无输出且司机未对抗, 给一个极小的"居中保持"扭矩
+  # 效果: 避免"横向激活但突然松手"的危险感, 让司机感觉"有点力"但不主动转向
+  LANELESS_ASSIST_ENABLE = True     # 默认开启, 若不需要可改为False
+  LANELESS_ASSIST_SPEED = 5.5       # m/s (≈20km/h), 低于此速度才触发
+
   # op long control
   K_accel_jerk_upper = 0.1
   K_accel_jerk_lower = 0.5

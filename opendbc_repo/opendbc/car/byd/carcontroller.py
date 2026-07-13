@@ -61,6 +61,10 @@ class CarController(CarControllerBase):
     
     # 纵向控制优化
     self.speed_hyst_upper = False  # 超速抑制状态
+    
+    # 横向补偿：低速无车道线时的最小转向保持 (解决sunnypilot在无车道线时输出0曲率的问题)
+    self.laneless_assist_active = False
+    self.laneless_smoothing = 0.0  # 平滑系数
 
 
   def update(self, CC, CC_SP, CS, now_nanos):
@@ -169,6 +173,37 @@ class CarController(CarControllerBase):
                                                               CS.out.steeringTorque, CarControllerParams)
               print("LOCK5 GIVEUP drv=%d out=%d MainTq=%d stuck=%d -> release (like 门总 -175)" % (
                 int(CS.out.steeringTorque), int(apply_torque), int(CS.out.steeringTorqueEps), self.stuck_counter))
+
+          # 无车道线补偿: 当 lateralPlan 在低速无车道线时输出0曲率导致横向完全不出力,
+          # 给一个最小的"居中保持"扭矩, 避免突然松手的危险感。
+          # 触发条件: 低速 + 横向激活 + 命令扭矩≈0 + 无司机对抗
+          # 策略: 输出极小扭矩(15Nm), 仅让司机感觉"有点力", 不主动转向
+          if CarControllerParams.LANELESS_ASSIST_ENABLE:
+            low_speed = CS.out.vEgo < CarControllerParams.LANELESS_ASSIST_SPEED  # <20km/h
+            no_output = abs(apply_torque) < 5  # 几乎无输出
+            no_driver_fight = abs(int(CS.out.steeringTorque)) < 80  # 司机未对抗
+            
+            if low_speed and no_output and no_driver_fight and not self.lock5_giveup:
+              # 渐进启用 (平滑过渡, 避免突然介入)
+              self.laneless_smoothing = min(1.0, self.laneless_smoothing + 0.05)
+              self.laneless_assist_active = True
+              
+              # 输出一个极小的"居中"扭矩 (基于方向盘角度的轻微纠正)
+              # 如果方向盘偏右(>0), 给一点左转力; 反之亦然
+              steer_angle = CS.out.steeringAngleDeg
+              # 限制在小角度内才介入 (|角度|<30度, 说明基本直行或小幅转弯)
+              if abs(steer_angle) < 30:
+                # 极轻的"回中"力: -sign(角度) * 小扭矩
+                assist_torque = int(-np.sign(steer_angle) * 15 * self.laneless_smoothing)
+                apply_torque = assist_torque
+                
+                if self.frame % 50 == 0:  # 每2.5秒打印一次
+                  print(f"LANELESS_ASSIST: angle={steer_angle:.1f}° → tq={assist_torque} (smooth={self.laneless_smoothing:.2f})")
+            else:
+              # 退出条件: 速度高 或 有正常输出 或 司机对抗
+              self.laneless_smoothing = max(0.0, self.laneless_smoothing - 0.1)
+              if self.laneless_smoothing == 0:
+                self.laneless_assist_active = False
 
           # Detect low-speed sustained near-max torque (wheel winding to lock while torque
           # pins at STEER_MAX) and force a brief torque release so the BYD EPS overload
