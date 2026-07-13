@@ -66,14 +66,6 @@ void HudRendererSP::updateState(const UIState &s) {
   // such field, so read it conditionally and fall back to 0.
   const auto lat_ctrl = cs.getLateralControlState();
 
-  // TorqueState: controller output torque (Nm) for BYD torque-based systems
-  if (lat_ctrl.isTorqueState()) {
-    const auto ts = lat_ctrl.getTorqueState();
-    torqueStateOutput = ts.getOutput();
-    torqueStateSaturated = ts.getSaturated();
-  } else {
-    torqueStateOutput = 0.0f;
-  }
   if (lat_ctrl.isPidState()) {
     angleSteersDesired = lat_ctrl.getPidState().getSteeringAngleDesiredDeg();
   } else if (lat_ctrl.isAngleState()) {
@@ -124,7 +116,6 @@ void HudRendererSP::updateState(const UIState &s) {
   steeringArcEnabled = s.scene.steering_arc;
   standstillTimerEnabled = s.scene.standstill_timer;
   debugPlotsEnabled = s.scene.debug_plots;
-  steerTorqueDataEnabled = s.scene.steer_torque_data;
   laneLineDataEnabled = s.scene.lane_line_data;
 
   // MICI-style smoothing filters
@@ -220,12 +211,7 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
       drawStandstillTimer(p, surface_rect);
     }
 
-    // Steering torque comparison box (top-left, below set speed)
-    if (steerTorqueDataEnabled) {
-      drawSteerTorqueData(p, surface_rect);
-    }
-
-    // Lane line distance box (top-left, below steerTorqueData)
+    // Lane line distance box (top-left)
     if (laneLineDataEnabled) {
       drawLaneLineData(p, surface_rect);
     }
@@ -476,60 +462,92 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
-  // A方案：限速方块紧贴在MAX定速方块下方，同宽同风格
+  // 一体化设计：ACC设定速度 + 限速标志 融合同一个方框
+  // 有限速时方框自动变长（330px）；无限速时仅显示原 ACC 204px 方框（由基类绘制）
   const QSize default_size = {172, 204};
-  QSize max_box_size = is_metric ? QSize(200, 204) : default_size;
-  const int block_w = max_box_size.width();
-  const int block_h = 155;
+  QSize box_size = is_metric ? QSize(200, 204) : default_size;
+  const int block_w = box_size.width();
+  const int block_h = 330;
   const int box_x = 60 + (default_size.width() - block_w) / 2;
-  const int box_y = 45 + 204; // 紧贴MAX方块底部（MAX: y=45, h=204）
+  const int box_y = 45;
 
-  // Convert speed from m/s
+  // Speed conversions
   int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
   QString limit_text = QString::number(limit_kmh);
+  QString setSpeedStr = is_cruise_set ? QString::number(std::nearbyint(set_speed)) : QString::fromUtf8("–");
 
   p.save();
 
-  // Draw block (same style as MAX set-speed box)
+  // === 统一方框背景 ===
   p.setPen(QPen(QColor(255, 255, 255, 75), 6));
   p.setBrush(QColor(0, 0, 0, 166));
   p.drawRoundedRect(box_x, box_y, block_w, block_h, 32, 32);
 
-  // --- Vienna circle (80px diameter) ---
-  const int circle_r = 40;        // radius
-  const int circle_border = 6;    // red border width
-  int circle_cx = box_x + block_w / 2;
-  int circle_cy = box_y + 30 + circle_r;  // top padding 30px
+  // === ACC设定速度区域（上方，与原生 drawSetSpeed 完全一致） ===
+  QColor max_color = QColor(0xa6, 0xa6, 0xa6, 0xff);
+  QColor set_speed_color = QColor(0x72, 0x72, 0x72, 0xff);
+  if (is_cruise_set) {
+    set_speed_color = QColor(255, 255, 255);
+    if (status == STATUS_DISENGAGED) {
+      max_color = QColor(255, 255, 255);
+    } else if (status == STATUS_OVERRIDE) {
+      max_color = QColor(0x91, 0x9b, 0x95, 0xff);
+    } else {
+      max_color = QColor(0x80, 0xd8, 0xa6, 0xff);
+    }
+  }
 
-  // White circle fill
+  // "MAX" 标签
+  p.setFont(InterFont(40, QFont::DemiBold));
+  p.setPen(max_color);
+  QRect max_rect(box_x, box_y + 27, block_w, 40);
+  p.drawText(max_rect, Qt::AlignTop | Qt::AlignHCenter, tr("MAX"));
+
+  // 设定速度数字
+  p.setFont(InterFont(90, QFont::Bold));
+  p.setPen(set_speed_color);
+  QRect speed_rect(box_x, box_y + 77, block_w, 90);
+  p.drawText(speed_rect, Qt::AlignTop | Qt::AlignHCenter, setSpeedStr);
+
+  // === 分隔线 ===
+  const int divider_y = box_y + 165;
+  p.setPen(QPen(QColor(255, 255, 255, 50), 1));
+  p.drawLine(box_x + 30, divider_y, box_x + block_w - 30, divider_y);
+
+  // === 限速标志区域（下方） ===
+  // Vienna 圆形限速标志（76px直径，比独立方块略小以适应一体化布局）
+  const int circle_r = 38;
+  const int circle_border = 5;
+  int circle_cx = box_x + block_w / 2;
+  int circle_cy = box_y + 212;
+
   p.setPen(QPen(QColor(200, 40, 40), circle_border));
   p.setBrush(QColor(255, 255, 255, 245));
   p.drawEllipse(QPoint(circle_cx, circle_cy), circle_r, circle_r);
 
-  // Speed number inside circle
+  // 圆形内限速数字
   p.setPen(QColor(30, 30, 30));
-  QFont circle_font = InterFont(44, QFont::Bold);
+  QFont circle_font = InterFont(42, QFont::Bold);
   p.setFont(circle_font);
   QFontMetrics cfm(circle_font);
   QRect circle_text_rect = cfm.boundingRect(limit_text);
   circle_text_rect.moveCenter(QPoint(circle_cx, circle_cy));
   p.drawText(circle_text_rect, Qt::AlignCenter, limit_text);
 
-  // --- LIMIT label ---
-  const int label_y = circle_cy + circle_r + 14;
+  // SPEED LIMIT 文字（比之前更大）
   QString label_text;
   if (speedLimitAheadValid) {
     int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
-    label_text = QString("LIMIT  →  %1").arg(ahead_kmh);
+    label_text = QString("SPEED LIMIT  →  %1").arg(ahead_kmh);
   } else {
-    label_text = "LIMIT";
+    label_text = "SPEED LIMIT";
   }
 
   p.setPen(QColor(180, 180, 180, 200));
-  p.setFont(InterFont(22, QFont::Medium));
+  p.setFont(InterFont(28, QFont::Medium));  // 放大：22→28pt
   QFontMetrics lfm(p.font());
   QRect label_rect = lfm.boundingRect(label_text);
-  label_rect.moveCenter(QPoint(circle_cx, label_y + label_rect.height() / 2));
+  label_rect.moveCenter(QPoint(circle_cx, box_y + 292));
   p.drawText(label_rect, Qt::AlignCenter, label_text);
 
   p.restore();
@@ -537,10 +555,10 @@ void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
 
 void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
   // Road name at top center
-  int y = surface_rect.top() + 12;
+  int y = surface_rect.top() + 24;
 
   p.save();
-  p.setFont(InterFont(32, QFont::Normal));
+  p.setFont(InterFont(38, QFont::Normal));
   p.setPen(QColor(255, 255, 255, 180));
 
   QString displayName = roadName;
@@ -560,10 +578,10 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // MICI-style steering arc: gradient color (white→yellow→orange) + smooth filter + dynamic sizing
-  // Tuned: arc_height -10%, arc_width +15%, line thickness +50%, center dot hidden
-  const int arc_width = 1035;       // +15% (原900)
+  // Tuned: arc_height -10%, arc_width +20%(+5% from 1087), line thickness -5%, center dot hidden
+  const int arc_width = 1087;       // +20% (原900), 再+5%
   const int arc_height = 210;       // -10% (原234)，弧度更扁平
-  const int margin_bottom = 88;     // 弧下移到贴近底部状态栏上方
+  const int margin_bottom = 20;     // 贴近底部信息栏，比信息栏高一点
   const float max_angle = 55.f;
   const int half_span = 54;         // 弧半跨度（°）
 
@@ -580,8 +598,8 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.save();
   p.setRenderHint(QPainter::Antialiasing);
 
-  // Background arc（厚度+50%：24→36）
-  p.setPen(QPen(QColor(255, 255, 255, 45), 36));
+  // Background arc（厚度-5%：36→34）
+  p.setPen(QPen(QColor(255, 255, 255, 45), 34));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, (90 - half_span) * 16, (half_span * 2) * 16);
 
@@ -623,8 +641,8 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
     }
 
     if (std::abs(clamped_angle) > 1.f) {
-      // Dynamic line width（厚度+50%：26→39，14→21）
-      float pen_width = 39.0f + abs_ratio * 21.0f;
+      // Dynamic line width（厚度-5%：39→37，21→20）
+      float pen_width = 37.0f + abs_ratio * 20.0f;
       p.setPen(QPen(fill_color, pen_width, Qt::SolidLine, Qt::RoundCap));
       int span = (int)(clamped_angle / max_angle * half_span * 16);
       p.drawArc(arc_rect, 90 * 16, span);
@@ -789,71 +807,12 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   p.restore();
 }
 
-void HudRendererSP::drawSteerTorqueData(QPainter &p, const QRect &surface_rect) {
-  // Box below the speed-limit box, SAME size & alignment as the MAX set-speed box
-  const QSize default_size = {172, 204};
-  QSize box_size = is_metric ? QSize(200, 204) : default_size;
-  const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
-  const int box_y = 435;  // 45 + 204 (MAX) + 155 (SpeedLimit) + 31 gap
-
-  // Draw box
-  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
-  p.setBrush(QColor(0, 0, 0, 166));
-  p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), 32, 32);
-
-  int cx = box_x + box_size.width() / 2;
-  const int gap = 10;
-
-  // Line 1: 模型 <value>
-  QString model_lbl = tr("模型");
-  p.setFont(InterFont(30, QFont::Normal));
-  int lbl_w = p.fontMetrics().horizontalAdvance(model_lbl);
-  QColor model_color = torqueStateSaturated ? QColor(255, 200, 60) : Qt::white;  // amber = saturated
-  QString model_str = QString::number(torqueStateOutput, 'f', 1);
-  p.setFont(InterFont(42, QFont::Bold));
-  int val_w = p.fontMetrics().horizontalAdvance(model_str);
-  int total_w = lbl_w + gap + val_w;
-  int start_x = cx - total_w / 2;
-  int line1_y = box_y + 72;
-  p.setFont(InterFont(30, QFont::Normal));
-  p.setPen(QColor(160, 200, 255, 230));
-  p.drawText(start_x, line1_y, model_lbl);
-  p.setFont(InterFont(42, QFont::Bold));
-  p.setPen(model_color);
-  p.drawText(start_x + lbl_w + gap, line1_y, model_str);
-
-  // MAX marker (top-right) if saturated
-  if (torqueStateSaturated) {
-    p.setFont(InterFont(18, QFont::Bold));
-    p.setPen(QColor(255, 140, 0, 230));
-    QRect max_rect(box_x, box_y, box_size.width() - 14, 30);
-    p.drawText(max_rect, Qt::AlignRight | Qt::AlignTop, "MAX");
-  }
-
-  // Line 2: 实际 <value> (actual EPS torque Nm, sign indicates direction)
-  QString eps_lbl = tr("实际");
-  p.setFont(InterFont(30, QFont::Normal));
-  int lbl2_w = p.fontMetrics().horizontalAdvance(eps_lbl);
-  QString eps_str = QString::number(steeringTorqueEps, 'f', 1);
-  p.setFont(InterFont(42, QFont::Bold));
-  int val2_w = p.fontMetrics().horizontalAdvance(eps_str);
-  int total2_w = lbl2_w + gap + val2_w;
-  int start2_x = cx - total2_w / 2;
-  int line2_y = box_y + 152;
-  p.setFont(InterFont(30, QFont::Normal));
-  p.setPen(QColor(160, 255, 180, 230));
-  p.drawText(start2_x, line2_y, eps_lbl);
-  p.setFont(InterFont(42, QFont::Bold));
-  p.setPen(Qt::white);
-  p.drawText(start2_x + lbl2_w + gap, line2_y, eps_str);
-}
-
 void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
-  // Box below SteerTorqueData, SAME size & alignment as the MAX set-speed box
+  // Lane line distance box, SAME size & alignment as the MAX set-speed box
   const QSize default_size = {172, 204};
   QSize box_size = is_metric ? QSize(200, 204) : default_size;
   const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
-  const int box_y = 670;  // 435 + 204 + 31 gap
+  const int box_y = 400;  // 紧贴在限速一体化方框下方 (375 + 25 gap)
 
   // Draw box
   p.setPen(QPen(QColor(255, 255, 255, 75), 6));

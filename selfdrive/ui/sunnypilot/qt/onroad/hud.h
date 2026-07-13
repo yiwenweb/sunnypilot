@@ -45,7 +45,6 @@ private:
   void drawSteeringArc(QPainter &p, const QRect &surface_rect);
   void drawStandstillTimer(QPainter &p, const QRect &surface_rect);
   void drawDebugPlots(QPainter &p, const QRect &surface_rect);
-  void drawSteerTorqueData(QPainter &p, const QRect &surface_rect);
   void drawLaneLineData(QPainter &p, const QRect &surface_rect);
 
   bool lead_status;
@@ -92,10 +91,7 @@ private:
   bool isStandstill;
   cereal::CarParams::SteerControlType steerControlType;
   cereal::CarControl::Actuators::Reader actuators;
-  float torqueStateOutput;
-  bool torqueStateSaturated;
   bool debugPlotsEnabled;
-  bool steerTorqueDataEnabled;
   bool laneLineDataEnabled;
   DebugPlotHistory steerHistory;
   DebugPlotHistory steerDesHistory;

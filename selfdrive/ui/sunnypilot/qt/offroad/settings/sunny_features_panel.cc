@@ -38,7 +38,7 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
     {
       "SpeedLimit",
       tr("限速标志"),
-      tr("在屏幕右上角显示当前道路的限速标志（维也纳风格圆形标识）。如果前方有限速变化，会显示前方限速提示。"),
+      tr("在左上角 ACC 设定速度方框内集成显示维也纳风格圆形限速标志。有限速数据时方框自动变长，无需限速时仅显示 ACC 设定速度。前方有限速变化时显示箭头提示。"),
       "../../sunnypilot/selfdrive/assets/offroad/icon_monitoring.svg",
       false,
     },
@@ -74,13 +74,6 @@ SunnyFeaturesPanel::SunnyFeaturesPanel(QWidget *parent) : QWidget(parent) {
       "WebrtcStreamEnabled",
       tr("摄像头实时流（WebRTC）"),
       tr("启用后，行车时可通过 Android App 观看摄像头实时画面（road/wideRoad/ driver，H264 硬件编码，几乎不占用性能）。仅在车辆启动（onroad）时生效。"),
-      "../../sunnypilot/selfdrive/assets/offroad/icon_monitoring.svg",
-      false,
-    },
-    {
-      "SteerTorqueData",
-      tr("转向扭矩监控"),
-      tr("在定速巡航方块下方显示模型输出扭矩命令和 EPS 实际扭矩对比。模型扭矩触及上限时数值变橙并显示 MAX 标记。仅 BYD 等 Torque 控制车型有效。"),
       "../../sunnypilot/selfdrive/assets/offroad/icon_monitoring.svg",
       false,
     },
