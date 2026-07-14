@@ -402,6 +402,17 @@ class CarController(CarControllerBase):
       self.mpc_acc_counter = int(self.mpc_acc_counter + 1) & 0xF
       can_sends.append(bydcan.acc_cmd(self.packer, self.CP, CS.cam_acc, CS.mrr_leading_dist, accel, self.rfss, self.sss, CC.longActive, self.mpc_acc_counter))
 
+      # 接管 813(ACC_HUD_ADAS) + 815(ACC_AEB), 与 814 共用同一套连续 counter (对齐门总 0.98)。
+      # 门总实证 (probe_menmen_813_815): 门总把摄像头的 813/814/815 全部拦截重发, 三者用
+      # 【同一套】连续 counter (813c==814c==815c, mod16 严格+1递增, 0跳变); 数据体 byte0-5
+      # 原样透传摄像头值(AEB/AccState 一个bit不改), 仅重算 counter+checksum。
+      # 我们过去只发 814(自己的counter), 813/815 靠 panda 透传摄像头(另一套counter) -> ESC 看到
+      # ACC 报文组 counter 不同步 -> 车机 ACC 黄灯报错 + 报错期间纵向失效。故复刻门总: 三报文同
+      # counter 重发, 数据全透传, 让 ESC 收到一套自洽连续的 ACC 报文组。
+      # AEB 安全: 数据体(AEB_Active/AEB_Decel)每帧取摄像头最新值透传, 仅多一帧(20ms)延迟, 门总已验证。
+      can_sends.append(bydcan.create_acc_hud_adas(self.packer, self.CP, CS.cam_adas, self.mpc_acc_counter))
+      can_sends.append(bydcan.create_acc_aeb(self.packer, self.CP, CS.cam_aeb, self.mpc_acc_counter))
+
       self.apply_accel_last = accel
       self.last_acc_frame = self.frame + 1
 

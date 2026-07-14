@@ -120,6 +120,53 @@ def acc_cmd(packer, CP, cam_msg: dict, mrr_leaddist, accel, rfss, sss, longActiv
     return packer.make_can_msg("ACC_CMD", CanBus.ESC, values)
 
 
+# 接管 813 (ACC_HUD_ADAS): 透传摄像头数据体, 只重编 Counter + 重算 checksum。
+# 门总 0.98 实证 (probe_menmen_813_815): 门总 src=128 的 813 与摄像头 src=2 的 byte0-5
+# 完全相同(数据体不改), 仅 byte6(Counter)/byte7(CheckSum) 不同; 且 813/814/815 用同一套
+# 连续 counter (813c-814c=0, 全程 mod16 +1 无跳变)。车机检测 ACC 报文组 counter 连续性,
+# 我们过去只发 814(自己counter)、813/815 透传摄像头(另一套counter) -> 三者不同步 -> 车机
+# 判 ACC 报文组不健康 -> 黄灯报错 + 纵向失效。故接管 813/815, 与 814 共用连续 counter。
+def create_acc_hud_adas(packer, CP, cam_msg: dict, counter):
+    values = {s: cam_msg[s] for s in [
+        "SetSpeed",
+        "HasLead",
+        "SetDistance",
+        "LeadingDistance",
+        "AEB",
+        "FCW",
+        "SETME1_0x1",
+        "AccState",
+        "AccOn1",
+        "CloseWarning",
+        "SETME2_0x1",
+        "Notify",
+        "Status",
+        "SETME3_0xFFF",
+        "SETME4_0xF",
+    ]}
+    values["Counter"] = counter
+
+    data = packer.make_can_msg("ACC_HUD_ADAS", CanBus.ESC, values)[1]
+    values["CheckSum"] = byd_checksum(data)
+    return packer.make_can_msg("ACC_HUD_ADAS", CanBus.ESC, values)
+
+
+# 接管 815 (ACC_AEB): 同 813, 纯数据透传 + 重编 counter/checksum。
+# 门总 src=128 的 815 与摄像头 src=2 byte0-5 完全相同(0580020fffff), AEB 指令原样转发到 ESP,
+# 仅晚一帧(20ms), 门总已实车验证 AEB 功能正常。数据体不改, 不影响 AEB/FCW 安全功能。
+def create_acc_aeb(packer, CP, cam_msg: dict, counter):
+    values = {s: cam_msg[s] for s in [
+        "AEB_Active",
+        "AEB_Decel",
+        "SETME_0xF",
+    ]}
+    values["Counter"] = counter
+
+    data = packer.make_can_msg("ACC_AEB", CanBus.ESC, values)[1]
+    values["CheckSum"] = byd_checksum(data)
+    return packer.make_can_msg("ACC_AEB", CanBus.ESC, values)
+
+
 # send fake torque feedback from eps to trick MPC
 # 门总 0.98 behaviour (confirmed from rlog, src=130 vs src=0): the fake 318 sent to the
 # MPC is a PURE PASS-THROUGH of the real EPS 318 - LKAS_Prepared, CruiseActivated and

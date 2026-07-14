@@ -51,6 +51,8 @@ class CarState(CarStateBase):
         self.cam_lkas = {}
         self.cam_acc = {}
         self.cam_adas = {}
+        self.cam_aeb = {}
+        self.cam_aeb = {}
         self.esc_eps = {}
 
         self.setTimeDelay = 100
@@ -214,6 +216,7 @@ class CarState(CarStateBase):
         self.cam_lkas = copy.copy(cp_cam.vl["ACC_MPC_STATE"])
         self.cam_adas = copy.copy(cp_cam.vl["ACC_HUD_ADAS"])
         self.cam_acc = copy.copy(cp_cam.vl["ACC_CMD"])
+        self.cam_aeb = copy.copy(cp_cam.vl["ACC_AEB"])
         self.esc_eps = copy.copy(cp.vl["ACC_EPS_STATE"])
 
         if BYD_RADAR:
@@ -262,6 +265,7 @@ class CarState(CarStateBase):
         cam_messages = [
             ("ACC_HUD_ADAS", 50),
             ("ACC_CMD", 50),
+            ("ACC_AEB", 50),
             ("ACC_MPC_STATE", 50),
         ]
         if BYD_RADAR:

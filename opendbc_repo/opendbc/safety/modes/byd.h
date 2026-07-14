@@ -158,13 +158,13 @@ static bool byd_tx_hook(const CANPacket_t *msg) {
     }
   }
 
-  // 814 ACC_CMD on Bus 0 - allow for experimental longitudinal control
-  // 813/815 on Bus 0 - block (stock passthrough only)
+  // 814 ACC_CMD / 813 ACC_HUD_ADAS / 815 ACC_AEB on Bus 0
+  // 对齐门总 0.98: OP 接管重发 813/814/815 (同一套连续 counter), 让 ESC 收到自洽的 ACC 报文组。
+  // 过去 block 813/815 -> 只发814、813/815透传摄像头(另一套counter) -> 车机ACC黄灯报错+纵向失效。
+  // 现放行 813/814/815, 并在 fwd_hook 拦截摄像头的 813/815 避免双源冲突。
+  // 用 byd_op_acc_active 标记接管态 (OP在发这组ACC报文), 供 fwd_hook 门控。
   if (msg->bus == BYD_MAIN_BUS) {
-    if ((msg->addr == BYD_ACC_HUD_ADAS) || (msg->addr == BYD_ACC_AEB)) {
-      tx = false;
-    }
-    if (msg->addr == BYD_ACC_CMD) {
+    if ((msg->addr == BYD_ACC_CMD) || (msg->addr == BYD_ACC_HUD_ADAS) || (msg->addr == BYD_ACC_AEB)) {
       byd_op_acc_active = true;
       byd_op_acc_ts = microsecond_timer_get();
     }
@@ -205,13 +205,15 @@ static bool byd_fwd_hook(int bus_num, int addr) {
   // miss, or the 100ms timeout edge) let MPC's Active=0 316 reach the EPS at 50Hz,
   // so the EPS saw a "don't steer" stream mixed with OP's "steer" command. Block it
   // unconditionally so the EPS only ever hears OP, matching 门总.
-  // Block MPC's 814 when OP is sending ACC_CMD
-  // 813/815 always pass through (stock longitudinal)
+  // Block MPC's 814/813/815 when OP is taking over (sending its own ACC 报文组).
+  // 对齐门总: OP 接管期间, 摄像头的 813/814/815 从 bus2->bus0 全部拦截, ESC 只听 OP 的一套
+  // 连续 counter 报文组, 避免双源 counter 冲突导致车机 ACC 报错。OP 停发 100ms 超时后自动恢复
+  // 全透传 (byd_op_acc_active 超时清零), 保证异常/退出时原厂 ACC/AEB 立即接管。
   if (bus_num == 2) {
     if (addr == BYD_ACC_MPC_STATE) {
       return true;
     }
-    if (byd_op_acc_active && (addr == BYD_ACC_CMD)) {
+    if (byd_op_acc_active && ((addr == BYD_ACC_CMD) || (addr == BYD_ACC_HUD_ADAS) || (addr == BYD_ACC_AEB))) {
       return true;
     }
   }
