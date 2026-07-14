@@ -184,8 +184,14 @@ class CarController(CarControllerBase):
             # ⚠ 不再用 dTq 判断：低速转弯时机械反力导致 dTq=100-279，
             # 正是需要 OP 主动发力去压制的信号，而非"人手对抗"。
             # 真实的驾驶员抢夺会用 steeringPressed 在更上层拦截，与此无关。
+            #
+            # ⚠ 必须等 EPS CruiseActivated 稳定：门总实证（00000001--d3632f5262）
+            # EPS 偶尔会自发 PREP/CRU 抖动（~0.08s 自行恢复），门总此时 mTq=0 不干预。
+            # 若在 CRU=0 时强行输出 120Nm，EPS 判定异常 → 反复切断 → 死循环震荡。
+            # 故 ESPN cru 不稳定时，放弃本次 laneless 介入，等 EPS 恢复。
+            cru_stable = CS.eps_cruise_activated
             
-            if low_speed and no_output and not self.lock5_giveup:
+            if low_speed and no_output and not self.lock5_giveup and cru_stable:
               # 渐进启用 (平滑过渡, 避免突然介入)
               self.laneless_smoothing = min(1.0, self.laneless_smoothing + 0.05)
               self.laneless_assist_active = True
