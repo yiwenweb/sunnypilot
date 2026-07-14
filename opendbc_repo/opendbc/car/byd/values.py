@@ -54,16 +54,22 @@ class CarControllerParams:
   ANTISTALL_TRIGGER_FRAMES = 20
   ANTISTALL_RELEASE_FRAMES = 15
 
-  # --- LOCK3: EPS 请求退出横向 (Prepared 0->1) -> 快速松手退出 (对齐门总 0.98, 默认开启) ---
-  # 门总日志实证 (byd_menmen_prep.py, 41段/1621s): LKAS_Prepared 0->1 = EPS 主动请求"结束本次
-  # 横向会话"(通常因驾驶员介入方向盘, drvTq 骤变/很大), 之后 0.08~0.14s 内 byte0 -> 0xF8 完全退出。
-  # 门总响应: 一见 Prepared 0->1 就 2-3帧内把扭矩收到0, 随后 Active 置0 退出; 全程 Active=0 占比
-  # 80%、ReqPrepare=1 占比 0% -> 门总【只快速退出, 从不重握手/硬顶】。
-  # 我们锁死那次(20260701)相反: Prepared 0->1 后仍继续发扭矩(76->90)、Active 保持1, 使 Prepared 与
-  # MainTq 卡在(1,0)达 0.5s, EPS 等不到 OP 退出 -> TorqueFailed 锁死。故抄门总: 检测 Prepared 上升沿
-  # -> 按速率把扭矩快速收0 -> Active=0 干净退出, 不重握手; 待驾驶员松手 EPS 回稳后走正常流程重接管。
-  LOCK3_ENABLE = True
-  LOCK3_EXIT_FRAMES = 8        # 退出收尾窗口上限(帧, ~0.16s); 门总实测 2-3帧收完扭矩, 给足余量
+  # --- LOCK3: EPS 请求退出横向 (Prepared) -> 快速松手退出 (20260714 已停用, 见下) ---
+  # ❌ 已停用 (LOCK3_ENABLE=False)。两轮门总/段56 数据分析证明 LOCK3 的设计前提是错的:
+  #  [证据1] 门总 Prepared=1 事件深度分析 (analyze_menmen_prep_deep, 57个事件):
+  #    门总遇到 Prepared=1 有 81%(46/57) 【不退出】, 扭矩维持原值继续接管 (最大对抗 drvTq=189
+  #    时门总 OPout 全程 63 纹丝不动)。门总退出与否看【司机对抗力度 drvTq】: 退出事件 drvTq_max
+  #    中位 156, 未退出事件仅 64。即 Prepared 只是 EPS 的伴随状态位, 不是"退出命令"。
+  #  [证据2] 段56 退出时刻分析 (analyze_seg56_exit): 段56 中 lkas_active 掉0 共 49 次, 【全部
+  #    49 次 latActive 仍=1】(上层从没要退, latActive 全程 97.4%=1) 且 cru 仍=1(EPS没撤授权)。
+  #    即那 49 次横向断续【全是 LOCK3 自作主张退出】造成的(OPout 按16/帧降到0是其退出收尾特征),
+  #    与门总(81%不退)完全相反, 正是"低速无车道线横向不连续"的直接根因。
+  #  结论: LOCK3"一见Prepared就快速退出"弊大于利。防锁死改由 LOCK6(限时封顶, 从源头不激怒EPS)
+  #    + LOCK4(退出等电机卸载) + LOCK5(重接管慢软起) 负责; 横向退出回归 openpilot 标准机制
+  #    (上层 latActive / steeringPressed→override 决定, 与门总一致——门总退出也是靠 drvTq 大)。
+  LOCK3_ENABLE = False
+  LOCK3_EXIT_FRAMES = 8        # [保留参数, 未启用]
+  LOCK3_PREP_HOLD_FRAMES = 4   # [保留参数, 未启用]
 
   # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
   # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):
@@ -96,12 +102,33 @@ class CarControllerParams:
   LOCK5_STUCK_OUT = 40              # 我们命令 |out| 超此值却顶不动, 才算真硬顶(门总大对抗也压~40)
   LOCK5_STUCK_MAINTQ = 30           # EPS 电机 |MainTorque| 长期低于此值 = 顶不动(电机没能跟上命令)
 
-  # --- 无车道线辅助 (20260713 新增, 解决sunnypilot在低速无车道线时输出0曲率) ---
-  # 问题: sunnypilot的lateralPlan在车道线置信度低时输出desiredCurvature=0 -> 横向完全不出力
-  # 方案: 在低速(<20km/h)时, 如果检测到无输出且司机未对抗, 给一个极小的"居中保持"扭矩
-  # 效果: 避免"横向激活但突然松手"的危险感, 让司机感觉"有点力"但不主动转向
-  LANELESS_ASSIST_ENABLE = True     # 默认开启, 若不需要可改为False
-  LANELESS_ASSIST_SPEED = 5.5       # m/s (≈20km/h), 低于此速度才触发
+  # --- 无车道线辅助 (20260713 新增 -> 20260714 停用) ---
+  # ❌ 已停用并从 carcontroller 移除。原实现在低速转弯(角度>15°)时按
+  #    hold_torque = sign(steer_angle) * 120 直接赋值(绕过速率限制/softstart), 与方向盘偏角
+  #    【同向】输出大扭矩 = 正反馈自锁: 角度越大越同向顶 -> 顶到机械限位死压 120Nm -> EPS 过载
+  #    TorqueFailed 锁死(需断电重启)。且与 LOCK5"顶不动收回"互相触发 0.3~0.5s 震荡, 造成低速
+  #    控制不连续。违背笔记28~30章结论(低置信度应"衰减输出"而非"按角度开环编造扭矩")。
+  # 若将来要做无车道线辅助: 必须是"衰减/限幅模型输出", 经 apply_driver_steer_torque_limits,
+  #    且方向为反向小回中, 角度大时减小而非增大力度。详见笔记。
+  LANELESS_ASSIST_ENABLE = False    # 永久停用危险实现
+  LANELESS_ASSIST_SPEED = 5.5       # [保留参数, 未启用]
+
+  # --- LOCK6: 低速满扭矩"限时封顶" (对齐门总 0.98 实测包络, 默认开启) ---
+  # 门总 22万帧实证 (analyze_menmen_deep):
+  #  [1] 满扭矩(|out|>=290)连续段中位仅 3 帧(0.06s), 最长 31 帧(0.62s), >=25帧只 1 次
+  #      -> 门总允许【瞬间】满扭矩(起步/路口大转向需要), 但几乎从不持续顶 >0.5s。
+  #  [2] 低速包络: 10-15km/h max=240 p99=177; 15-20km/h max=180 p99=141 (无满扭矩帧);
+  #      0-10km/h 才允许到 300(短暂)。
+  #  段56锁死: 我们低速(7km/h)持续 -300 死顶数秒 -> EPS 过载 TorqueFailed。
+  # 策略(B, 限时而非砍死上限): 低速时允许瞬间满扭矩, 但 |命令| 持续接近满(>=HI)超过
+  #  HOLD_FRAMES 帧, 就把上限回落到 CEIL, 直到 |命令| 自然降到 <LO 才解除封顶。
+  #  既保留门总式瞬间大扭矩, 又杜绝段56式持续死顶。仅低速启用(高速本不锁)。
+  LOCK6_ENABLE = True
+  LOCK6_SPEED = 5.5            # m/s (≈20km/h) 低于此速度才启用限时封顶 (门总低速包络区)
+  LOCK6_HI = 260              # |命令|>=此值视为"接近满扭矩"(门总低速 p99~177, 260 留余量给瞬间尖峰)
+  LOCK6_LO = 200             # 封顶后 |命令| 自然降到 <此值 才解除封顶
+  LOCK6_HOLD_FRAMES = 25     # 接近满扭矩持续超此帧数(~0.5s, 门总最长满扭矩0.62s) -> 触发回落
+  LOCK6_CEIL = 200           # 触发后的扭矩上限 (门总 10-20km/h max 180~240 的中段)
 
   # op long control
   K_accel_jerk_upper = 0.1

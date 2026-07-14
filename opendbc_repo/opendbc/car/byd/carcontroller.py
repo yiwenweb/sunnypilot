@@ -39,8 +39,8 @@ class CarController(CarControllerBase):
     self.stall_counter = 0
     self.release_counter = 0
 
-    # LOCK3: EPS 请求退出横向 (Prepared 0->1) 检测 + 快速松手退出 (对齐门总)
-    self.eps_prepared_last = False
+    # LOCK3: EPS 请求退出横向检测 + 快速松手退出 (对齐门总)
+    self.eps_prepared_hold = 0   # LOCK3 去抖: Prepared 连续=1 的帧数, 达阈值才判真退出请求
     self.eps_exit_release = 0
     self.eps_exit_wait = False
 
@@ -53,6 +53,10 @@ class CarController(CarControllerBase):
     self.stuck_counter = 0     # 大对抗且顶不动的持续帧数
     self.lock5_giveup = False  # 已进入"顶不动收回"放弃状态
 
+    # LOCK6: 低速满扭矩限时封顶 (对齐门总: 允许瞬间满扭矩, 但不许持续死顶)
+    self.lock6_hi_counter = 0   # |命令|接近满扭矩的持续帧数
+    self.lock6_capped = False   # 是否已进入封顶状态
+
     self.first_start = True
     self.rfss = 0
     self.sss = 0
@@ -61,13 +65,6 @@ class CarController(CarControllerBase):
     
     # 纵向控制优化
     self.speed_hyst_upper = False  # 超速抑制状态
-    
-    # 横向补偿：低速无车道线时的最小转向保持 (解决sunnypilot在无车道线时输出0曲率的问题)
-    self.laneless_assist_active = False
-    self.laneless_smoothing = 0.0  # 平滑系数
-
-    # latActive 上升沿检测: 确保每次重新激活都走完整 PREP 握手流程 (对齐门总时序)
-    self.lat_active_last = False
 
 
   def update(self, CC, CC_SP, CS, now_nanos):
@@ -81,27 +78,6 @@ class CarController(CarControllerBase):
         self.mpc_acc_counter = int(CS.acc_cmd_counter + 1) & 0xF
         self.eps_fake318_counter = int(CS.eps_state_counter + 1) & 0xF
         self.first_start = False
-
-      # ★ latActive 上升沿: 强制清空握手状态, 等 EPS PREP=1 后再激活 (对齐门总时序)
-      # 实证: 门总 PREP=1 比 790 Active=1 先到 10s; 我们反过来先 Active 后等 PREP
-      # 导致 PREP 首次出现时 EPS 检测到 "Active已就绪但状态异常" → 0.26s后切断
-      lat_rising = CC.latActive and not self.lat_active_last
-      if lat_rising:
-        self.lkas_active = 0
-        self.lkas_req_prepare = 0
-        self.steer_softstart_limit = 0
-        self.steerRateLimActive = False
-        self.steerRateLim = 1.0
-        self.eps_exit_wait = False
-        self.eps_exit_release = 0
-        self.exit_dwell = 0
-        self.lock5_giveup = False
-        self.stuck_counter = 0
-        self.reengage_delay = 0
-        if self.frame % 10 == 0:
-          print(f"LAT-RISING: latActive {self.lat_active_last}→{CC.latActive}, 握手清零, 等 EPS PREP=1")
-
-      self.lat_active_last = bool(CC.latActive)
 
       apply_torque = 0
 
@@ -198,53 +174,37 @@ class CarController(CarControllerBase):
               print("LOCK5 GIVEUP drv=%d out=%d MainTq=%d stuck=%d -> release (like 门总 -175)" % (
                 int(CS.out.steeringTorque), int(apply_torque), int(CS.out.steeringTorqueEps), self.stuck_counter))
 
-          # 无车道线补偿 V2: 解决0.3秒周期震荡问题
-          # 根因发现: 低速转弯时，方向盘被车辆几何强制转动产生机械力 → EPS传感器误读为"驾驶员对抗"(dTq=100-250+)
-          #           → EPS每0.3秒切断会话(PREP=0,CRU=0,mTq=0) → 震荡松手 → 危险！
-          # 策略升级: 不仅"回中"，更要"保持转向" —— 主动输出足够扭矩压制机械反力，让EPS电机推动而非被动承受
-          if CarControllerParams.LANELESS_ASSIST_ENABLE:
-            low_speed = CS.out.vEgo < CarControllerParams.LANELESS_ASSIST_SPEED  # <20km/h
-            no_output = abs(apply_torque) < 5  # lateralPlan输出≈0
-            # ⚠ 不再用 dTq 判断：低速转弯时机械反力导致 dTq=100-279，
-            # 正是需要 OP 主动发力去压制的信号，而非"人手对抗"。
-            # 真实的驾驶员抢夺会用 steeringPressed 在更上层拦截，与此无关。
-            #
-            # ⚠ 必须等 EPS CruiseActivated 稳定：门总实证（00000001--d3632f5262）
-            # EPS 偶尔会自发 PREP/CRU 抖动（~0.08s 自行恢复），门总此时 mTq=0 不干预。
-            # 若在 CRU=0 时强行输出 120Nm，EPS 判定异常 → 反复切断 → 死循环震荡。
-            # 故 ESPN cru 不稳定时，放弃本次 laneless 介入，等 EPS 恢复。
-            cru_stable = CS.eps_cruise_activated
-            
-            if low_speed and no_output and not self.lock5_giveup and cru_stable:
-              # 渐进启用 (平滑过渡, 避免突然介入)
-              self.laneless_smoothing = min(1.0, self.laneless_smoothing + 0.05)
-              self.laneless_assist_active = True
-              
-              steer_angle = CS.out.steeringAngleDeg
-              
-              # 场景1: 正在转弯(角度>15°) → 主动保持，防止EPS误读机械力为dTq
-              if abs(steer_angle) > 15:
-                # 输出足够大的"保持"扭矩(120Nm)，跟随当前方向
-                # 让EPS电机主动推，而非被动承受机械拉力 → dTq降低 → EPS不会误判"驾驶员对抗"
-                hold_torque = int(np.sign(steer_angle) * 120 * self.laneless_smoothing)
-                apply_torque = hold_torque
-                
-                if self.frame % 50 == 0:  # 每2.5秒打印
-                  print(f"LANELESS_HOLD: angle={steer_angle:.1f}° → tq={hold_torque} (preventing 0.3s oscillation)")
-              
-              # 场景2: 基本直行(角度<15°) → 轻微回中即可
-              elif abs(steer_angle) < 30:
-                # 极轻的"回中"力: -sign(角度) * 小扭矩
-                assist_torque = int(-np.sign(steer_angle) * 15 * self.laneless_smoothing)
-                apply_torque = assist_torque
-                
-                if self.frame % 50 == 0:
-                  print(f"LANELESS_CENTER: angle={steer_angle:.1f}° → tq={assist_torque}")
-            else:
-              # 退出条件: 速度高 或 有正常输出 或 司机对抗
-              self.laneless_smoothing = max(0.0, self.laneless_smoothing - 0.1)
-              if self.laneless_smoothing == 0:
-                self.laneless_assist_active = False
+          # LOCK6: 低速满扭矩"限时封顶" (对齐门总实测: menacc 22万帧分析)
+          # 门总实证: 满扭矩(>=290)持续中位仅 3 帧(0.06s)、最长 31 帧(0.62s), ≥25帧仅1次;
+          #   低速(10-20km/h) p99=141~177、max 180~240, 几乎无满扭矩; 极低速(0-10)允许瞬间到300。
+          # 段56(我们)相反: 低速无车道线时 -300 持续死顶数秒 -> 激怒 EPS -> 频繁请求退出 -> 临界锁死。
+          # 策略(B, 限时而非砍死): 低速时允许瞬间满扭矩(保留起步/大转向力), 但 |命令| 持续处于
+          #   高位(>=HI_TORQUE)超过 HI_FRAMES(~0.5s, 门总满扭矩极少超此)时, 进入封顶: 把 |命令|
+          #   限到 CAP(~门总低速 p99); 待命令自然降到 HI_TORQUE 以下再解除。只在低速启用(高速不锁)。
+          if CarControllerParams.LOCK6_ENABLE and CS.out.vEgo < CarControllerParams.LOCK6_SPEED:
+            P = CarControllerParams
+            aout = abs(int(apply_torque))
+            # 接近满扭矩累计; 命令降到 LO 以下才衰减计数并(计数归0时)解除封顶(滞环防抖)
+            if aout >= P.LOCK6_HI:
+              self.lock6_hi_counter += 1
+            elif aout < P.LOCK6_LO:
+              self.lock6_hi_counter = max(0, self.lock6_hi_counter - 2)
+              if self.lock6_hi_counter == 0:
+                self.lock6_capped = False
+            if self.lock6_hi_counter >= P.LOCK6_HOLD_FRAMES:
+              self.lock6_capped = True
+            if self.lock6_capped:
+              # 持续高位太久 -> 回落到低速包络上限, 经速率限制器平滑收敛, 不硬切
+              capped = int(np.clip(apply_torque, -P.LOCK6_CEIL, P.LOCK6_CEIL))
+              apply_torque = apply_driver_steer_torque_limits(capped, self.apply_torque_last,
+                                                              CS.out.steeringTorque, CarControllerParams)
+              if self.frame % 25 == 0:
+                print("LOCK6 CAP v=%.1f out->%d (hi=%d) 门总低速包络封顶" % (
+                  CS.out.vEgo * 3.6, int(apply_torque), self.lock6_hi_counter))
+
+          # 无车道线补偿: 已于 20260714 移除 (原按 sign(角度)*120 同向死顶 -> 正反馈锁死 EPS,
+          # 详见 values.py LANELESS_ASSIST 注释)。低置信度时保持模型输出(通常≈0), 宁可不出力
+          # 也不开环编造扭矩。若日后重做需"衰减模型输出"而非"按角度注入", 且必须经速率限制器。
 
           # Detect low-speed sustained near-max torque (wheel winding to lock while torque
           # pins at STEER_MAX) and force a brief torque release so the BYD EPS overload
@@ -285,14 +245,25 @@ class CarController(CarControllerBase):
           #   全程 Active=0 占比 80%, ReqPrepare=1 占比 0% -> 门总【只快速退出, 从不重握手/硬顶】。
           # 我们锁死那次相反: Prepared 0->1 后仍继续发扭矩(76->90)、Active 保持1, 导致 Prepared 与
           #   MainTq 卡在 (1,0) 达 0.5s, EPS 等不到 OP 退出 -> TorqueFailed 锁死。
-          # 故正确做法 = 抄门总: 检测 Prepared 上升沿 -> 进入"退出收尾", 按速率快速把扭矩收到0,
+          # 故正确做法 = 抄门总: 检测 Prepared -> 进入"退出收尾", 按速率快速把扭矩收到0,
           #   期间锁定不重新 active(即使 else 分支想恢复也不允许), 待扭矩归0后 Active=0 干净退出。
           #   不重握手: 退出后由驾驶员松手 -> EPS 回到稳定态 -> 正常流程重新接管。
-          prepared_rising = CarControllerParams.LOCK3_ENABLE and CS.lkas_prepared and not self.eps_prepared_last
-          if prepared_rising and self.eps_exit_release == 0:
+          #
+          # LOCK3 去抖 (对齐门总实测, analyze_menmen_deep [5]):
+          #   门总对 Prepared 单帧抖动【不响应】(idx 22339-22348 那几次 Prepared 0->1->0 抖动时,
+          #   门总 OPout 稳定 -11 完全没动), 只在 Prepared 真持续时才退出。而我们旧逻辑一见单帧
+          #   上升沿就退出, 在段56那种 EPS 每0.3-0.6s 抖一次 Prepared 的场景下 -> 频繁退出/重握手
+          #   -> 横向不连续。故改为: Prepared 需连续 >=HOLD 帧才判定为真退出请求(滤掉1~3帧抖动)。
+          if CS.lkas_prepared:
+            self.eps_prepared_hold += 1
+          else:
+            self.eps_prepared_hold = 0
+          prepared_confirmed = (CarControllerParams.LOCK3_ENABLE and
+                                self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES)
+          if prepared_confirmed and self.eps_exit_release == 0:
             self.eps_exit_release = CarControllerParams.LOCK3_EXIT_FRAMES
-            print("LOCK3 EPS-EXIT-REQ v=%.2f OPtq=%d MainTq=%d drvTq=%d -> fast release+exit (like 门总)" % (
-              CS.out.vEgo, int(self.apply_torque_last), int(CS.out.steeringTorqueEps), int(CS.out.steeringTorque)))
+            print("LOCK3 EPS-EXIT-REQ v=%.2f OPtq=%d MainTq=%d drvTq=%d hold=%d -> fast release+exit (like 门总)" % (
+              CS.out.vEgo, int(self.apply_torque_last), int(CS.out.steeringTorqueEps), int(CS.out.steeringTorque), self.eps_prepared_hold))
 
           if self.eps_exit_release > 0:
             # 退出收尾: 按速率把扭矩平滑收到0 (门总约2-3帧), 收到0即 Active=0 退出
@@ -319,27 +290,14 @@ class CarController(CarControllerBase):
               self.eps_exit_wait = False   # EPS 已回稳, 解除等待
             self.lkas_req_prepare = 0
           elif CS.lkas_prepared:
-            # 门总握手实证 (00000001--d3632f5262 + 本段 rlog):
-            # 门总: PREP=1 后等 10s → 790 Active=1 → 无震荡
-            # OP:  790 Active=1 在 PREP=0 时就发了 (latActive先来, PREP后到13s)
-            #       → PREP 首次出现时 EPS 发现 "已有Active+扭矩, 状态异常" → 0.26s后切断
-            # 修复: 要求 PREP 已稳定至少 N 帧后才允许接管, 对齐门总 "先等 PREP 再激活" 时序
-            # 用 prep_stable_counter 防一帧抖动就误接管
-            if not hasattr(self, 'prep_stable_counter'):
-              self.prep_stable_counter = 0
-            self.prep_stable_counter += 1
-            if self.prep_stable_counter >= 3:  # 3帧(~60ms)确认 PREP 稳定
-              # 原始握手逻辑 (基线一致): 见 Prepared=1 即接管, 从0软起
-              self.lkas_active = 1.0
-              self.steerRateLimActive = False
-              self.steerRateLim = 1.0
-              self.lkas_req_prepare = 0
-              self.steer_softstart_limit = 0
-              self.prep_stable_counter = 0
-            else:
-              self.lkas_req_prepare = 1
+            # 基线握手逻辑 (笔记12/19章验证): 见 EPS Prepared=1 即接管, 从0软起(每帧+16)。
+            # 之后由 LOCK1 (Cru未到不发扭矩) + LOCK5 (重接管前3帧0出力+慢软起) 保证平滑接管。
+            self.lkas_active = 1.0
+            self.steerRateLimActive = False
+            self.steerRateLim = 1.0
+            self.lkas_req_prepare = 0
+            self.steer_softstart_limit = 0
           else:
-            self.prep_stable_counter = 0  # PREP 又掉了, 重置
             self.lkas_req_prepare = 1
 
 
@@ -382,8 +340,6 @@ class CarController(CarControllerBase):
           self.exit_dwell = 0
 
       self.apply_torque_last = apply_torque
-      # LOCK3: 记录本帧 Prepared, 供下帧检测 Prepared 0->1 上升沿 (EPS 请求退出)
-      self.eps_prepared_last = bool(CS.lkas_prepared)
       # LOCK5: 记录本帧 lkas_active, 供下帧检测 0->1 重接管沿
       self.lkas_active_last = self.lkas_active
 
