@@ -178,8 +178,10 @@ selfdrive/ui/
 | 盲点检测警告 | `BlindSpot` (bool) | `sunnypilot/qt/onroad/model.cc` | ✅ |
 | 开发者 UI（右侧5指标） | `DevUIInfo` (1或2) | `sunnypilot/qt/onroad/hud.cc:drawRightDevUI()` | ✅ |
 | 开发者 UI（底部5-6指标） | `DevUIInfo` (2) | `sunnypilot/qt/onroad/hud.cc:drawBottomDevUI()` | ✅ |
-| **SteerTorqueData 转向扭矩监控** | `SteerTorqueData` (bool) | `sunnypilot/qt/onroad/hud.cc:drawSteerTorqueData()` | ✅ 已完成 |
-| **LaneLineData 车道线距离** | `LaneLineData` (bool) | `sunnypilot/qt/onroad/hud.cc:drawLaneLineData()` | ✅ 已完成 |
+| **LaneLineData 车道线距离** | `LaneLineData` (bool) | `sunnypilot/qt/onroad/hud.cc:drawLaneLineData()` | ✅ 已上移 y=400 |
+| **SpeedLimit 限速标志** | `SpeedLimit` (bool) | `sunnypilot/qt/onroad/hud.cc:drawSpeedLimit()` | ✅ 与ACC融合一体化框 |
+| **RoadName 道路名称** | `RoadNameDisplay` (bool) | `sunnypilot/qt/onroad/hud.cc:drawRoadName()` | ✅ 38pt, y=24 |
+| **SteeringArc 转向弧** | `SteeringArc` (bool) | `sunnypilot/qt/onroad/hud.cc:drawSteeringArc()` | ✅ 线宽-5%弧长+5%下移 |
 | 动态实验模式按钮 | — | `sunnypilot/qt/onroad/buttons.cc` | ✅ |
 | Sunnylink 侧边栏状态 | — | `sunnypilot/qt/sidebar.cc` | ✅ |
 | 驾驶员监控 | — | `qt/onroad/driver_monitoring.cc` | ✅ |
@@ -198,8 +200,10 @@ selfdrive/ui/
 | Cruise 纵向控制 | `sunnypilot/qt/offroad/settings/longitudinal_panel.cc` | ✅ |
 | **Visuals 视觉** | `sunnypilot/qt/offroad/settings/visuals_panel.cc` | ✅ |
 | **★ SP Features 移植特性** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新建 |
-| — | **SteerTorqueData 转向扭矩监控** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
 | — | **LaneLineData 车道线距离** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
+| — | **SpeedLimit 限速标志** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
+| — | **RoadNameDisplay 道路名称** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
+| — | **SteeringArc 转向弧** | `sunnypilot/qt/offroad/settings/sunny_features_panel.cc` | ✅ 新增开关 |
 | OSM 地图 | `sunnypilot/qt/offroad/settings/osm_panel.cc` | ✅ |
 | Trips 行程 | `sunnypilot/qt/offroad/settings/trips_panel.cc` | ✅ |
 | Vehicle 车辆 | `sunnypilot/qt/offroad/settings/vehicle_panel.cc` | ✅ |
@@ -251,10 +255,10 @@ selfdrive/ui/
 | 序号 | 功能 | 所需数据 | 难度 |
 |------|------|---------|------|
 | 5 | **CircularAlerts 环形提醒** | `longitudinalPlanSP.e2eAlerts` | ⭐⭐⭐ 中-高 |
-| 6 | **RoadName 道路名称** | `liveMapDataSP.roadName` | ⭐⭐⭐ 中-高 |
-| 7 | **SpeedLimit 限速标志** | `longitudinalPlanSP.speedLimit` | ⭐⭐⭐ 高 |
-| 8 | **SmartCruiseControl SCC状态** | `longitudinalPlanSP.smartCruiseControl` | ⭐⭐⭐ 高 |
-| 9 | **SteeringArc 转向弧** | 扭矩/角度数据 | ⭐⭐ 中 |
+| 6 | **SmartCruiseControl SCC状态** | `longitudinalPlanSP.smartCruiseControl` | ⭐⭐⭐ 高 |
+
+> ✅ **已移出 P2**：`SteeringArc`、`SpeedLimit`、`RoadName` 三项已在 `liveMapDataSP` / `carState` 数据管道支持下完成 Qt C++ 移植。
+> ❌ **已删除**：`SteerTorqueData` 转向扭矩监控功能已移除（2026-07-13）。
 
 ---
 
@@ -469,7 +473,13 @@ if (laneLineDataEnabled && sm.rcv_frame("modelV2") > 0) {        // ① 消息�
 | 2026-07-08 | **摄像头流（WebRTC 硬件编码）** | `process_config.py` `params_keys.h` `sunny_features_panel.cc` + App 端 | ✅ 已完成 |
 | 2026-07-09 | **SteerTorqueData 转向扭矩监控** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ✅ 已完成 |
 | 2026-07-09 | **LaneLineData 车道线距离** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ✅ 已完成 |
-| 2026-07-09 | **修复 LaneLineData 导致 onroad 崩溃** | `hud.cc` 加三层 capnp 守卫（`rcv_frame>0` + List 长度检查 + 内层 `getY()` 长度） | ✅ 已修复 |
+| 2026-07-09 | **修复 LaneLineData 导致 onroad 崩溃** | `hud.cc` 加三层 capnp 守卫 | ✅ 已修复 |
+| 2026-07-13 | **删除 SteerTorqueData 转向扭矩监控** | `hud.h/cc` `ui_scene.h` `ui.cc` `params_keys.h` `sunny_features_panel.cc` | ❌ 已删除 |
+| 2026-07-13 | **限速+ACC 一体化融合方框** | `hud.cc` `sunny_features_panel.cc`：限速方框与 ACC 设定速度融合为一个 330px 框 | ✅ 已完成 |
+| 2026-07-13 | **转向弧微调** | `hud.cc`：线宽-5%、弧长+5%、margin_bottom 88→20 | ✅ 已完成 |
+| 2026-07-13 | **车道线距离上移** | `hud.cc`：box_y 670→400 | ✅ 已完成 |
+| 2026-07-13 | **道路名称放大+下移** | `hud.cc`：32→38pt, top+12→top+24 | ✅ 已完成 |
+| 2026-07-13 | **速度显示下移** | `qt/onroad/hud.cc`：速度 y 210→230, 单位 y 290→310 | ✅ 已完成 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单

@@ -558,7 +558,7 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
   int y = surface_rect.top() + 24;
 
   p.save();
-  p.setFont(InterFont(38, QFont::Normal));
+  p.setFont(InterFont(48, QFont::Normal));
   p.setPen(QColor(255, 255, 255, 180));
 
   QString displayName = roadName;
@@ -581,7 +581,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // Tuned: arc_height -10%, arc_width +20%(+5% from 1087), line thickness -5%, center dot hidden
   const int arc_width = 1087;       // +20% (原900), 再+5%
   const int arc_height = 210;       // -10% (原234)，弧度更扁平
-  const int margin_bottom = 20;     // 贴近底部信息栏，比信息栏高一点
+  const int margin_bottom = -102;  // 弧两端距底部信息栏50px
   const float max_angle = 55.f;
   const int half_span = 54;         // 弧半跨度（°）
 
@@ -603,28 +603,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, (90 - half_span) * 16, (half_span * 2) * 16);
 
-  // Tick marks（厚度+50%：4→6）
-  {
-    p.setPen(QPen(QColor(255, 255, 255, 100), 6));
-    p.setFont(InterFont(22, QFont::Normal));
-    for (int deg = 90 - half_span; deg <= 90 + half_span; deg += 10) {
-      double rad = deg * M_PI / 180.0;
-      int tx = cx + (int)((arc_width / 2 - 12) * cos(rad));
-      int ty = cy - (int)((arc_height - 12) * sin(rad));
-      int tix = cx + (int)((arc_width / 2 - 24) * cos(rad));
-      int tiy = cy - (int)((arc_height - 24) * sin(rad));
-      p.drawLine(QPointF(tx, ty), QPointF(tix, tiy));
-
-      if ((deg - (90 - half_span)) % 20 == 0) {
-        int label_angle = (deg - 90) * (int)max_angle / half_span;
-        int lx = cx + (int)((arc_width / 2 + 12) * cos(rad));
-        int ly = cy - (int)((arc_height + 12) * sin(rad));
-        p.setPen(QColor(255, 255, 255, 120));
-        QRect lr(lx - 22, ly - 14, 44, 28);
-        p.drawText(lr, Qt::AlignCenter, QString::number(std::abs(label_angle)));
-      }
-    }
-  }
+  // Tick marks removed
 
   // MICI-style gradient fill: white at center → yellow at 75% → orange at 100%
   {
