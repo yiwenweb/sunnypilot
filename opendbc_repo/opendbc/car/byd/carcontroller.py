@@ -66,6 +66,9 @@ class CarController(CarControllerBase):
     self.laneless_assist_active = False
     self.laneless_smoothing = 0.0  # 平滑系数
 
+    # latActive 上升沿检测: 确保每次重新激活都走完整 PREP 握手流程 (对齐门总时序)
+    self.lat_active_last = False
+
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -78,6 +81,27 @@ class CarController(CarControllerBase):
         self.mpc_acc_counter = int(CS.acc_cmd_counter + 1) & 0xF
         self.eps_fake318_counter = int(CS.eps_state_counter + 1) & 0xF
         self.first_start = False
+
+      # ★ latActive 上升沿: 强制清空握手状态, 等 EPS PREP=1 后再激活 (对齐门总时序)
+      # 实证: 门总 PREP=1 比 790 Active=1 先到 10s; 我们反过来先 Active 后等 PREP
+      # 导致 PREP 首次出现时 EPS 检测到 "Active已就绪但状态异常" → 0.26s后切断
+      lat_rising = CC.latActive and not self.lat_active_last
+      if lat_rising:
+        self.lkas_active = 0
+        self.lkas_req_prepare = 0
+        self.steer_softstart_limit = 0
+        self.steerRateLimActive = False
+        self.steerRateLim = 1.0
+        self.eps_exit_wait = False
+        self.eps_exit_release = 0
+        self.exit_dwell = 0
+        self.lock5_giveup = False
+        self.stuck_counter = 0
+        self.reengage_delay = 0
+        if self.frame % 10 == 0:
+          print(f"LAT-RISING: latActive {self.lat_active_last}→{CC.latActive}, 握手清零, 等 EPS PREP=1")
+
+      self.lat_active_last = bool(CC.latActive)
 
       apply_torque = 0
 
@@ -295,13 +319,27 @@ class CarController(CarControllerBase):
               self.eps_exit_wait = False   # EPS 已回稳, 解除等待
             self.lkas_req_prepare = 0
           elif CS.lkas_prepared:
-            # 原始握手逻辑 (基线一致): 见 Prepared=1 即接管, 从0软起
-            self.lkas_active = 1.0
-            self.steerRateLimActive = False
-            self.steerRateLim = 1.0
-            self.lkas_req_prepare = 0
-            self.steer_softstart_limit = 0
+            # 门总握手实证 (00000001--d3632f5262 + 本段 rlog):
+            # 门总: PREP=1 后等 10s → 790 Active=1 → 无震荡
+            # OP:  790 Active=1 在 PREP=0 时就发了 (latActive先来, PREP后到13s)
+            #       → PREP 首次出现时 EPS 发现 "已有Active+扭矩, 状态异常" → 0.26s后切断
+            # 修复: 要求 PREP 已稳定至少 N 帧后才允许接管, 对齐门总 "先等 PREP 再激活" 时序
+            # 用 prep_stable_counter 防一帧抖动就误接管
+            if not hasattr(self, 'prep_stable_counter'):
+              self.prep_stable_counter = 0
+            self.prep_stable_counter += 1
+            if self.prep_stable_counter >= 3:  # 3帧(~60ms)确认 PREP 稳定
+              # 原始握手逻辑 (基线一致): 见 Prepared=1 即接管, 从0软起
+              self.lkas_active = 1.0
+              self.steerRateLimActive = False
+              self.steerRateLim = 1.0
+              self.lkas_req_prepare = 0
+              self.steer_softstart_limit = 0
+              self.prep_stable_counter = 0
+            else:
+              self.lkas_req_prepare = 1
           else:
+            self.prep_stable_counter = 0  # PREP 又掉了, 重置
             self.lkas_req_prepare = 1
 
 
