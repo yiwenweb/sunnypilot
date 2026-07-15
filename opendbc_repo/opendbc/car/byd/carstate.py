@@ -160,6 +160,8 @@ class CarState(CarStateBase):
         #    不要用 steeringPressed(控制用)兼任 (见笔记31章)。滤波帧数一并回退到 5。
         ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > 59, 5)
 
+        ret.lkasPrepared = bool(self.lkas_prepared)
+
         ret.parkingBrake = (cp.vl["EPB"]["EPB_ActiveFlag"] == 1)
 
         brake = int(cp.vl["PEDAL"]["BrakePedal"])
