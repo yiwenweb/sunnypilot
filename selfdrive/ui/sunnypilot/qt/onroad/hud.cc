@@ -462,16 +462,15 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
-  // 一体化设计：ACC设定速度 + 限速标志 融合同一个方框
-  // 有限速时方框自动变长（330px）；无限速时仅显示原 ACC 204px 方框（由基类绘制）
+  // 横向布局：ACC设定速度（左）+ 限速标志（右），同宽同高
   const QSize default_size = {172, 204};
   QSize box_size = is_metric ? QSize(200, 204) : default_size;
-  const int block_w = box_size.width();
-  const int block_h = 330;
-  const int box_x = 60 + (default_size.width() - block_w) / 2;
+  const int block_h = 204;
+  const int sign_area_w = 120;        // 限速标志区域宽度
+  const int block_w = box_size.width() + sign_area_w;  // ACC宽 + 限速区宽
+  const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
   const int box_y = 45;
 
-  // Speed conversions
   int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
   QString limit_text = QString::number(limit_kmh);
   QString setSpeedStr = is_cruise_set ? QString::number(std::nearbyint(set_speed)) : QString::fromUtf8("–");
@@ -483,7 +482,7 @@ void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
   p.setBrush(QColor(0, 0, 0, 166));
   p.drawRoundedRect(box_x, box_y, block_w, block_h, 32, 32);
 
-  // === ACC设定速度区域（上方，与原生 drawSetSpeed 完全一致） ===
+  // === ACC设定速度区域（左侧，与原生 drawSetSpeed 完全一致） ===
   QColor max_color = QColor(0xa6, 0xa6, 0xa6, 0xff);
   QColor set_speed_color = QColor(0x72, 0x72, 0x72, 0xff);
   if (is_cruise_set) {
@@ -500,54 +499,54 @@ void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
   // "MAX" 标签
   p.setFont(InterFont(40, QFont::DemiBold));
   p.setPen(max_color);
-  QRect max_rect(box_x, box_y + 27, block_w, 40);
+  QRect max_rect(box_x, box_y + 27, box_size.width(), 40);
   p.drawText(max_rect, Qt::AlignTop | Qt::AlignHCenter, tr("MAX"));
 
   // 设定速度数字
   p.setFont(InterFont(90, QFont::Bold));
   p.setPen(set_speed_color);
-  QRect speed_rect(box_x, box_y + 77, block_w, 90);
+  QRect speed_rect(box_x, box_y + 77, box_size.width(), 90);
   p.drawText(speed_rect, Qt::AlignTop | Qt::AlignHCenter, setSpeedStr);
 
-  // === 分隔线 ===
-  const int divider_y = box_y + 165;
+  // === 竖分隔线 ===
+  int div_x = box_x + box_size.width() + 10;
   p.setPen(QPen(QColor(255, 255, 255, 50), 1));
-  p.drawLine(box_x + 30, divider_y, box_x + block_w - 30, divider_y);
+  p.drawLine(div_x, box_y + 28, div_x, box_y + block_h - 28);
 
-  // === 限速标志区域（下方） ===
-  // Vienna 圆形限速标志（76px直径，比独立方块略小以适应一体化布局）
-  const int circle_r = 38;
-  const int circle_border = 5;
-  int circle_cx = box_x + block_w / 2;
-  int circle_cy = box_y + 212;
+  // === 限速标志区域（右侧，垂直居中） ===
+  // Tesla 风格：白底圆角矩形
+  const int sign_w = 96;
+  const int sign_h = 66;
+  const int sign_radius = 12;
+  int sign_area_cx = box_x + box_size.width() + sign_area_w / 2;
+  int sign_x = sign_area_cx - sign_w / 2;
+  int sign_y = box_y + (block_h - sign_h) / 2;
 
-  p.setPen(QPen(QColor(200, 40, 40), circle_border));
+  p.setPen(QPen(QColor(80, 80, 80, 180), 3));
   p.setBrush(QColor(255, 255, 255, 245));
-  p.drawEllipse(QPoint(circle_cx, circle_cy), circle_r, circle_r);
+  p.drawRoundedRect(sign_x, sign_y, sign_w, sign_h, sign_radius, sign_radius);
 
-  // 圆形内限速数字
+  // 限速数字
   p.setPen(QColor(30, 30, 30));
-  QFont circle_font = InterFont(42, QFont::Bold);
-  p.setFont(circle_font);
-  QFontMetrics cfm(circle_font);
-  QRect circle_text_rect = cfm.boundingRect(limit_text);
-  circle_text_rect.moveCenter(QPoint(circle_cx, circle_cy));
-  p.drawText(circle_text_rect, Qt::AlignCenter, limit_text);
+  p.setFont(InterFont(44, QFont::Bold));
+  QRect sign_text_rect(sign_x, sign_y, sign_w, sign_h);
+  p.drawText(sign_text_rect, Qt::AlignCenter, limit_text);
 
-  // SPEED LIMIT 文字（比之前更大）
+  // 限速标签（紧贴标志下方）
   QString label_text;
   if (speedLimitAheadValid) {
     int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
-    label_text = QString("SPEED LIMIT  →  %1").arg(ahead_kmh);
+    label_text = QString("LIMIT  → %1").arg(ahead_kmh);
   } else {
-    label_text = "SPEED LIMIT";
+    label_text = "LIMIT";
   }
 
   p.setPen(QColor(180, 180, 180, 200));
-  p.setFont(InterFont(28, QFont::Medium));  // 放大：22→28pt
+  p.setFont(InterFont(20, QFont::Medium));
   QFontMetrics lfm(p.font());
   QRect label_rect = lfm.boundingRect(label_text);
-  label_rect.moveCenter(QPoint(circle_cx, box_y + 292));
+  int label_y = sign_y + sign_h + 12;
+  label_rect.moveCenter(QPoint(sign_area_cx, label_y + label_rect.height() / 2));
   p.drawText(label_rect, Qt::AlignCenter, label_text);
 
   p.restore();
@@ -558,7 +557,7 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
   int y = surface_rect.top() + 24;
 
   p.save();
-  p.setFont(InterFont(48, QFont::Normal));
+  p.setFont(InterFont(56, QFont::Normal));
   p.setPen(QColor(255, 255, 255, 180));
 
   QString displayName = roadName;
