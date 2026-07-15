@@ -201,6 +201,14 @@ UiElement DeveloperUi::getAltitude(float gps_accuracy, float altitude) {
   return UiElement(value, "ALT.", "m", color);
 }
 
+// Add LKAS Prepared Status
+// 0=NOT READY (gray), 1=READY (green)
+UiElement DeveloperUi::getLkasPrepared(bool lkas_prepared) {
+  QString value = lkas_prepared ? tr("READY") : tr("WAIT");
+  QColor color = lkas_prepared ? QColor(0, 255, 0, 230) : QColor(160, 160, 160, 200);
+  return UiElement(value, "Rp", "", color);
+}
+
 // Add Actuators Output
 // Unit: Degree (angle) or m/s² (torque)
 UiElement DeveloperUi::getActuatorsOutputLateral(cereal::CarParams::SteerControlType steerControlType,

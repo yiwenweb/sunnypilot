@@ -64,6 +64,7 @@ private:
   float aEgo;
   float smoothAEgo;
   float steeringTorqueEps;
+  bool lkasPrepared;
   float bearingAccuracyDeg;
   float bearingDeg;
   bool torquedUseParams;

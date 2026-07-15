@@ -49,6 +49,7 @@ void HudRendererSP::updateState(const UIState &s) {
 
   latActive = car_control.getLatActive();
   steerOverride = car_state.getSteeringPressed();
+  lkasPrepared = car_state.getLkasPrepared();
 
   devUiInfo = s.scene.dev_ui_info;
 
@@ -352,6 +353,9 @@ void HudRendererSP::drawBottomDevUI(QPainter &p, int x, int y) {
 
   UiElement aEgoElement = DeveloperUi::getAEgo(aEgo);
   rw += drawBottomDevUIElement(p, rw, y, aEgoElement.value, aEgoElement.label, aEgoElement.units, aEgoElement.color);
+
+  UiElement lkasPreparedElement = DeveloperUi::getLkasPrepared(lkasPrepared);
+  rw += drawBottomDevUIElement(p, rw, y, lkasPreparedElement.value, lkasPreparedElement.label, lkasPreparedElement.units, lkasPreparedElement.color);
 }
 
 void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
