@@ -67,9 +67,19 @@ class CarControllerParams:
   #  结论: LOCK3"一见Prepared就快速退出"弊大于利。防锁死改由 LOCK6(限时封顶, 从源头不激怒EPS)
   #    + LOCK4(退出等电机卸载) + LOCK5(重接管慢软起) 负责; 横向退出回归 openpilot 标准机制
   #    (上层 latActive / steeringPressed→override 决定, 与门总一致——门总退出也是靠 drvTq 大)。
-  LOCK3_ENABLE = False
-  LOCK3_EXIT_FRAMES = 8        # [保留参数, 未启用]
-  LOCK3_PREP_HOLD_FRAMES = 4   # [保留参数, 未启用]
+  # LOCK3 v4 (20260714 重启, 软响应对齐门总): 前版(v3)一见Prepared就"收扭矩+完全退出Active"
+  # 造成段56断续, 遂于39章误关(LOCK3_ENABLE=False) -> 段29正常行驶(33km/h)EPS周期性重握手发
+  # Prepared, 我们不响应继续硬顶 -> Prepared+MainTq卡(1,0)0.5s -> TorqueFailed锁死。
+  # 门总实证(analyze_menmen_prep_response, 57事件, 排除未接管): 门总Prepared持续【中位3帧max6帧】,
+  #   从不超7帧就落回; 门总收扭矩延迟中位0帧(Prepared出现时扭矩已≤16); 全量锁死0次。
+  #   门总不锁死的根本 = 【Prepared时不硬顶、扭矩收得快 -> EPS满意 -> Prepared很快落回】,
+  #   而非"每次退出"(无对抗时70%没完全退出也不锁)。
+  # v4软响应: Prepared确认(去抖PREP_HOLD帧)-> 按速率收扭矩到0(每帧-16, 不硬切防LOCK2)但【保持
+  #   active不完全退出】; Prepared落回 -> 下帧自动从0慢软起恢复(不断续); 仅当Prepared持续超
+  #   FULL_EXIT帧(>门总max6, 判定真退出)才完全退出Active。既解段29锁死(不硬顶)又不致段56断续。
+  LOCK3_ENABLE = True
+  LOCK3_PREP_HOLD_FRAMES = 2   # Prepared 连续>=此帧才触发收扭矩(去抖, 滤1帧噪声, ~0.04s快响应)
+  LOCK3_FULL_EXIT_FRAMES = 8   # Prepared 持续超此帧(>门总max6) 判真退出 -> 完全退出 Active
 
   # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
   # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):

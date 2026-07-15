@@ -39,10 +39,9 @@ class CarController(CarControllerBase):
     self.stall_counter = 0
     self.release_counter = 0
 
-    # LOCK3: EPS 请求退出横向检测 + 快速松手退出 (对齐门总)
-    self.eps_prepared_hold = 0   # LOCK3 去抖: Prepared 连续=1 的帧数, 达阈值才判真退出请求
-    self.eps_exit_release = 0
-    self.eps_exit_wait = False
+    # LOCK3 v4: EPS 请求重握手/退出 (Prepared 0->1) 软响应 (对齐门总)
+    self.eps_prepared_hold = 0   # Prepared 连续=1 的帧数: 达 PREP_HOLD 收扭矩, 达 FULL_EXIT 完全退出
+    self.eps_exit_wait = False   # 完全退出后等 Prepared 落回0 才允许重新接管
 
     # LOCK4: 退出收尾时等 EPS 电机(MainTorque)卸载再松手, 防司机对抗导致 MainTq 滞后锁死
     self.exit_dwell = 0
@@ -237,49 +236,44 @@ class CarController(CarControllerBase):
                 self.stall_counter, self.release_counter,
                 "<<< RELEASING" if self.release_counter > 0 else ("PUSH?" if pushing_hard else "")))
 
-          # LOCK3: EPS 请求退出横向 (Prepared 0->1) -> 立即快速松手退出 (完全对齐门总 0.98)
-          # 门总日志实证 (byd_menmen_prep.py, 41段/1621s):
-          #   Prepared 0->1 = EPS 主动请求"结束本次横向会话"(通常因驾驶员介入, drvTq 骤变或很大),
-          #   之后 0.08~0.14s 内 byte0 -> 0xF8 (Prep0 Cru0 完全退出待机)。
-          #   门总响应: 一见 Prepared 0->1, 2-3帧内把扭矩收到0, 随后 Active 置0 退出;
-          #   全程 Active=0 占比 80%, ReqPrepare=1 占比 0% -> 门总【只快速退出, 从不重握手/硬顶】。
-          # 我们锁死那次相反: Prepared 0->1 后仍继续发扭矩(76->90)、Active 保持1, 导致 Prepared 与
-          #   MainTq 卡在 (1,0) 达 0.5s, EPS 等不到 OP 退出 -> TorqueFailed 锁死。
-          # 故正确做法 = 抄门总: 检测 Prepared -> 进入"退出收尾", 按速率快速把扭矩收到0,
-          #   期间锁定不重新 active(即使 else 分支想恢复也不允许), 待扭矩归0后 Active=0 干净退出。
-          #   不重握手: 退出后由驾驶员松手 -> EPS 回到稳定态 -> 正常流程重新接管。
-          #
-          # LOCK3 去抖 (对齐门总实测, analyze_menmen_deep [5]):
-          #   门总对 Prepared 单帧抖动【不响应】(idx 22339-22348 那几次 Prepared 0->1->0 抖动时,
-          #   门总 OPout 稳定 -11 完全没动), 只在 Prepared 真持续时才退出。而我们旧逻辑一见单帧
-          #   上升沿就退出, 在段56那种 EPS 每0.3-0.6s 抖一次 Prepared 的场景下 -> 频繁退出/重握手
-          #   -> 横向不连续。故改为: Prepared 需连续 >=HOLD 帧才判定为真退出请求(滤掉1~3帧抖动)。
+          # LOCK3 v4: EPS 请求重握手/退出 (Prepared 0->1) -> "软响应"(对齐门总 analyze_menmen_prep_response)
+          # 【根因(段29锁死实证)】: 33km/h 正常行驶中 EPS 周期性发 Prepared 请求重握手, 我们若继续
+          #   发大扭矩硬顶(Prepared后OPout还从0加到-52), EPS 不满意 -> Prepared 持续25帧不落回 ->
+          #   Prepared+MainTq 卡(1,0)0.5s -> TorqueFailed 锁死。
+          # 【门总实证】: 门总 Prepared 持续中位3帧、max仅6帧, 从不超7帧; 收扭矩延迟中位0帧(Prepared
+          #   时扭矩已≤16); 全量锁死0次。门总不锁死的根本 = 【Prepared 时立即收扭矩不硬顶 -> EPS
+          #   满意 -> Prepared 很快落回】, 而非"每次完全退出"(无对抗时70%没退也不锁)。
+          # 【v4 软响应】(区别于 v3 一见 Prepared 就完全退出 Active 导致段56断续):
+          #   1. Prepared 确认(去抖 PREP_HOLD 帧) -> 按速率把扭矩收到0(每帧-16, 不硬切, 防 LOCK2),
+          #      但【保持 lkas_active=1 不完全退出】;
+          #   2. Prepared 落回0(短暂事件, 门总≤6帧) -> 退出收尾状态, 下帧起从0慢软起恢复出力(不断续);
+          #   3. 仅当 Prepared 持续超 FULL_EXIT 帧(>门总max6, 判定真退出请求) -> 才完全退出 Active。
           if CS.lkas_prepared:
             self.eps_prepared_hold += 1
           else:
             self.eps_prepared_hold = 0
-          prepared_confirmed = (CarControllerParams.LOCK3_ENABLE and
-                                self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES)
-          if prepared_confirmed and self.eps_exit_release == 0:
-            self.eps_exit_release = CarControllerParams.LOCK3_EXIT_FRAMES
-            print("LOCK3 EPS-EXIT-REQ v=%.2f OPtq=%d MainTq=%d drvTq=%d hold=%d -> fast release+exit (like 门总)" % (
-              CS.out.vEgo, int(self.apply_torque_last), int(CS.out.steeringTorqueEps), int(CS.out.steeringTorque), self.eps_prepared_hold))
 
-          if self.eps_exit_release > 0:
-            # 退出收尾: 按速率把扭矩平滑收到0 (门总约2-3帧), 收到0即 Active=0 退出
-            self.eps_exit_release -= 1
+          lock3_soft = (CarControllerParams.LOCK3_ENABLE and
+                        self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES)
+          if lock3_soft:
+            # 按速率收扭矩到0, 保持 active (对齐门总: Prepared 时扭矩收得快、不硬顶)
             apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
                                                             CS.out.steeringTorque, CarControllerParams)
-            if abs(apply_torque) <= CarControllerParams.STEER_DELTA_DOWN or self.eps_exit_release == 0:
+            self.steer_softstart_limit = 0   # 归零, Prepared 落回后从0慢软起恢复
+            self.steerRateLimActive = False
+            self.steerRateLim = 1.0
+            if self.frame % 10 == 0:
+              print("LOCK3 SOFT v=%.1f OPtq->%d MainTq=%d drvTq=%d prepHold=%d (收扭矩不硬顶, 保持active)" % (
+                CS.out.vEgo * 3.6, int(apply_torque), int(CS.out.steeringTorqueEps),
+                int(CS.out.steeringTorque), self.eps_prepared_hold))
+            # Prepared 持续过久 = 真退出请求 -> 完全退出 Active (扭矩此时已收到接近0)
+            if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
               apply_torque = 0
               self.lkas_active = 0
               self.lkas_req_prepare = 0
-              self.steer_softstart_limit = 0
-              self.steerRateLimActive = False
-              self.steerRateLim = 1.0
-              self.eps_exit_release = 0
-              # 退出后要求先看到 Prepared 落回0(EPS 回稳)才允许重新接管, 避免与 EPS 退出意图打架
               self.eps_exit_wait = True
+              print("LOCK3 FULL-EXIT prepHold=%d > %d -> 真退出请求, Active=0" % (
+                self.eps_prepared_hold, CarControllerParams.LOCK3_FULL_EXIT_FRAMES))
 
         else:
           # 退出会话后的等待: EPS 退出时 Prepared 会保持1约7帧(0xFB)再落回0(0xF8)。
