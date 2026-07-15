@@ -12,6 +12,11 @@ typedef struct UISceneSP : UIScene {
   bool accel_bar = false;
   bool turn_signal = false;
   bool speed_limit = false;
+  int speed_limit_style = 1;  // 0=rect, 1=circle, 2=large_circle
+  bool speed_limit_color_max = true;
+  bool speed_limit_show_source = false;
+  int speed_limit_warn_threshold = 10;
+  int speed_limit_danger_threshold = 20;
   bool road_name = false;
   bool steering_arc = false;
   bool standstill_timer = false;

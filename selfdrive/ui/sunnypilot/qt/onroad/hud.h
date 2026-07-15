@@ -41,6 +41,8 @@ private:
   void drawAccelBar(QPainter &p, const QRect &surface_rect);
   void drawTurnSignals(QPainter &p, const QRect &surface_rect);
   void drawSpeedLimit(QPainter &p, const QRect &surface_rect);
+  void drawACCSetSpeedBox(QPainter &p, const QRect &surface_rect);
+  void drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect);
   void drawRoadName(QPainter &p, const QRect &surface_rect);
   void drawSteeringArc(QPainter &p, const QRect &surface_rect);
   void drawStandstillTimer(QPainter &p, const QRect &surface_rect);
@@ -107,4 +109,17 @@ private:
   float rightBlinkerAlpha = 0.0f;
   float leftLaneDist = 0.0f;
   float rightLaneDist = 0.0f;
+
+  // Speed limit circle cache (performance optimization for scheme B)
+  QPixmap speedLimitCircleCache;
+  int cachedSpeedLimit = -1;
+  bool speedLimitCacheDirty = true;
+
+  // Speed limit parameters
+  int speedLimitStyle = 1;  // 0=rect, 1=circle, 2=large circle
+  bool speedLimitColorMAX = true;
+  bool speedLimitShowSource = false;
+  int speedLimitWarnThreshold = 10;
+  int speedLimitDangerThreshold = 20;
+  float speedLimitConfidence = 1.0f;
 };

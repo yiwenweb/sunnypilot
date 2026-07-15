@@ -38,6 +38,11 @@ UIStateSP::UIStateSP(QObject *parent) : UIState(parent) {
   param_watcher->addParam("AccelBar");
   param_watcher->addParam("TurnSignal");
   param_watcher->addParam("SpeedLimit");
+  param_watcher->addParam("SpeedLimitStyle");
+  param_watcher->addParam("SpeedLimitColorMAX");
+  param_watcher->addParam("SpeedLimitShowSource");
+  param_watcher->addParam("SpeedLimitWarnThreshold");
+  param_watcher->addParam("SpeedLimitDangerThreshold");
   param_watcher->addParam("RoadNameDisplay");
   param_watcher->addParam("SteeringArc");
   param_watcher->addParam("StandstillTimer");
@@ -63,6 +68,11 @@ void ui_update_params_sp(UIStateSP *s) {
   s->scene.accel_bar = params.getBool("AccelBar");
   s->scene.turn_signal = params.getBool("TurnSignal");
   s->scene.speed_limit = params.getBool("SpeedLimit");
+  s->scene.speed_limit_style = std::atoi(params.get("SpeedLimitStyle").c_str());
+  s->scene.speed_limit_color_max = params.getBool("SpeedLimitColorMAX");
+  s->scene.speed_limit_show_source = params.getBool("SpeedLimitShowSource");
+  s->scene.speed_limit_warn_threshold = std::atoi(params.get("SpeedLimitWarnThreshold").c_str());
+  s->scene.speed_limit_danger_threshold = std::atoi(params.get("SpeedLimitDangerThreshold").c_str());
   s->scene.road_name = params.getBool("RoadNameDisplay");
   s->scene.steering_arc = params.getBool("SteeringArc");
   s->scene.standstill_timer = params.getBool("StandstillTimer");

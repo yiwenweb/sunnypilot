@@ -162,6 +162,11 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"AccelBar", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"TurnSignal", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"SpeedLimit", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"SpeedLimitStyle", {PERSISTENT | BACKUP, INT, "1"}},  // 0=rect, 1=circle, 2=large_circle
+    {"SpeedLimitColorMAX", {PERSISTENT | BACKUP, BOOL, "1"}},
+    {"SpeedLimitShowSource", {PERSISTENT | BACKUP, BOOL, "0"}},
+    {"SpeedLimitWarnThreshold", {PERSISTENT | BACKUP, INT, "10"}},
+    {"SpeedLimitDangerThreshold", {PERSISTENT | BACKUP, INT, "20"}},
     {"RoadNameDisplay", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"SteeringArc", {PERSISTENT | BACKUP, BOOL, "0"}},
     {"StandstillTimer", {PERSISTENT | BACKUP, BOOL, "0"}},

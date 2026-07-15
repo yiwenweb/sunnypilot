@@ -105,15 +105,35 @@ void HudRendererSP::updateState(const UIState &s) {
   // LiveMapDataSP
   if (sm.rcv_frame("liveMapDataSP") > 0) {
     auto live_map = sm["liveMapDataSP"].getLiveMapDataSP();
-    speedLimitValid = live_map.getSpeedLimitValid();
-    speedLimit = live_map.getSpeedLimit();
+    bool new_valid = live_map.getSpeedLimitValid();
+    float new_limit = live_map.getSpeedLimit();
+    
+    // 检测限速数据变化，标记缓存失效
+    if (new_valid != speedLimitValid || 
+        (new_valid && std::abs(new_limit - speedLimit) > 0.1f)) {
+      speedLimitCacheDirty = true;
+    }
+    
+    speedLimitValid = new_valid;
+    speedLimit = new_limit;
     speedLimitAheadValid = live_map.getSpeedLimitAheadValid();
     speedLimitAhead = live_map.getSpeedLimitAhead();
     roadName = QString::fromStdString(live_map.getRoadName());
+    
+    // TODO: 当 liveMapDataSP 扩展后，添加可信度读取
+    // speedLimitConfidence = live_map.getSpeedLimitConfidence();
   } else {
     speedLimitValid = false;
     roadName.clear();
   }
+  
+  // 读取限速参数
+  speedLimitStyle = s.scene.speed_limit_style;
+  speedLimitColorMAX = s.scene.speed_limit_color_max;
+  speedLimitShowSource = s.scene.speed_limit_show_source;
+  speedLimitWarnThreshold = s.scene.speed_limit_warn_threshold;
+  speedLimitDangerThreshold = s.scene.speed_limit_danger_threshold;
+  
   steeringArcEnabled = s.scene.steering_arc;
   standstillTimerEnabled = s.scene.standstill_timer;
   debugPlotsEnabled = s.scene.debug_plots;
@@ -466,94 +486,180 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
 }
 
 void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
-  // 横向布局：ACC设定速度（左）+ 限速标志（右），同宽同高
+  // 方案 B：独立绘制 ACC 方框和限速圆标（并排布局）
+  
+  // 1. 绘制 ACC 设定速度方框（保持原位置）
+  drawACCSetSpeedBox(p, surface_rect);
+  
+  // 2. 绘制限速圆标（右侧并排，仅当有效时）
+  if (speedLimitEnabled && speedLimitValid) {
+    drawSpeedLimitCircle(p, surface_rect);
+  }
+}
+
+void HudRendererSP::drawACCSetSpeedBox(QPainter &p, const QRect &surface_rect) {
+  // ACC 设定速度方框（独立绘制，支持超速变色）
   const QSize default_size = {172, 204};
   QSize box_size = is_metric ? QSize(200, 204) : default_size;
-  const int block_h = 204;
-  const int sign_area_w = 120;        // 限速标志区域宽度
-  const int block_w = box_size.width() + sign_area_w;  // ACC宽 + 限速区宽
   const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
   const int box_y = 45;
-
-  int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
-  QString limit_text = QString::number(limit_kmh);
+  const int box_radius = 32;
+  
   QString setSpeedStr = is_cruise_set ? QString::number(std::nearbyint(set_speed)) : QString::fromUtf8("–");
-
-  p.save();
-
-  // === 统一方框背景 ===
-  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
-  p.setBrush(QColor(0, 0, 0, 166));
-  p.drawRoundedRect(box_x, box_y, block_w, block_h, 32, 32);
-
-  // === ACC设定速度区域（左侧，与原生 drawSetSpeed 完全一致） ===
+  
+  // 计算 MAX 和设定速度颜色
   QColor max_color = QColor(0xa6, 0xa6, 0xa6, 0xff);
   QColor set_speed_color = QColor(0x72, 0x72, 0x72, 0xff);
+  
   if (is_cruise_set) {
     set_speed_color = QColor(255, 255, 255);
-    if (status == STATUS_DISENGAGED) {
-      max_color = QColor(255, 255, 255);
-    } else if (status == STATUS_OVERRIDE) {
-      max_color = QColor(0x91, 0x9b, 0x95, 0xff);
+    
+    // 超速颜色逻辑（speedLimitColorMAX 参数控制）
+    if (speedLimitEnabled && speedLimitValid && speedLimitColorMAX) {
+      int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
+      float speed_over = speed - limit_kmh;
+      
+      if (speed_over <= 0) {
+        // 未超速：绿色
+        max_color = QColor(0x80, 0xd8, 0xa6);
+      } else if (speed_over <= speedLimitWarnThreshold) {
+        // 轻微超速（+0 ~ +10）：白色
+        max_color = QColor(255, 255, 255);
+      } else if (speed_over <= speedLimitDangerThreshold) {
+        // 中度超速（+10 ~ +20）：橙色
+        max_color = QColor(255, 165, 0);
+      } else {
+        // 严重超速（+20 以上）：红色
+        max_color = QColor(255, 60, 60);
+      }
     } else {
-      max_color = QColor(0x80, 0xd8, 0xa6, 0xff);
+      // 无限速数据：原有逻辑
+      if (status == STATUS_DISENGAGED) {
+        max_color = QColor(255, 255, 255);
+      } else if (status == STATUS_OVERRIDE) {
+        max_color = QColor(0x91, 0x9b, 0x95, 0xff);
+      } else {
+        max_color = QColor(0x80, 0xd8, 0xa6, 0xff);
+      }
     }
   }
-
+  
+  p.save();
+  
+  // 方框背景
+  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
+  p.setBrush(QColor(0, 0, 0, 166));
+  p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), box_radius, box_radius);
+  
   // "MAX" 标签
   p.setFont(InterFont(40, QFont::DemiBold));
   p.setPen(max_color);
   QRect max_rect(box_x, box_y + 27, box_size.width(), 40);
   p.drawText(max_rect, Qt::AlignTop | Qt::AlignHCenter, tr("MAX"));
-
+  
   // 设定速度数字
   p.setFont(InterFont(90, QFont::Bold));
   p.setPen(set_speed_color);
   QRect speed_rect(box_x, box_y + 77, box_size.width(), 90);
   p.drawText(speed_rect, Qt::AlignTop | Qt::AlignHCenter, setSpeedStr);
-
-  // === 竖分隔线 ===
-  int div_x = box_x + box_size.width() + 10;
-  p.setPen(QPen(QColor(255, 255, 255, 50), 1));
-  p.drawLine(div_x, box_y + 28, div_x, box_y + block_h - 28);
-
-  // === 限速标志区域（右侧，垂直居中） ===
-  // Tesla 风格：白底圆角矩形
-  const int sign_w = 96;
-  const int sign_h = 66;
-  const int sign_radius = 12;
-  int sign_area_cx = box_x + box_size.width() + sign_area_w / 2;
-  int sign_x = sign_area_cx - sign_w / 2;
-  int sign_y = box_y + (block_h - sign_h) / 2;
-
-  p.setPen(QPen(QColor(80, 80, 80, 180), 3));
-  p.setBrush(QColor(255, 255, 255, 245));
-  p.drawRoundedRect(sign_x, sign_y, sign_w, sign_h, sign_radius, sign_radius);
-
-  // 限速数字
-  p.setPen(QColor(30, 30, 30));
-  p.setFont(InterFont(44, QFont::Bold));
-  QRect sign_text_rect(sign_x, sign_y, sign_w, sign_h);
-  p.drawText(sign_text_rect, Qt::AlignCenter, limit_text);
-
-  // 限速标签（紧贴标志下方）
-  QString label_text;
-  if (speedLimitAheadValid) {
-    int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
-    label_text = QString("LIMIT  → %1").arg(ahead_kmh);
-  } else {
-    label_text = "LIMIT";
-  }
-
-  p.setPen(QColor(180, 180, 180, 200));
-  p.setFont(InterFont(20, QFont::Medium));
-  QFontMetrics lfm(p.font());
-  QRect label_rect = lfm.boundingRect(label_text);
-  int label_y = sign_y + sign_h + 12;
-  label_rect.moveCenter(QPoint(sign_area_cx, label_y + label_rect.height() / 2));
-  p.drawText(label_rect, Qt::AlignCenter, label_text);
-
+  
   p.restore();
+}
+
+void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect) {
+  // 限速圆标（Tesla 风格，ACC 右侧并排）
+  
+  // ACC 方框参数（用于计算位置）
+  const QSize default_size = {172, 204};
+  QSize acc_box_size = is_metric ? QSize(200, 204) : default_size;
+  const int acc_box_x = 60 + (default_size.width() - acc_box_size.width()) / 2;
+  const int acc_box_y = 45;
+  
+  // 圆标参数
+  const int circle_d = 140;
+  const int circle_r = circle_d / 2;
+  const int border_width = 8;
+  const int gap = 20;
+  
+  // 位置：ACC 右侧，顶部对齐
+  int circle_cx = acc_box_x + acc_box_size.width() + gap + circle_r;
+  int circle_cy = acc_box_y + circle_r;
+  
+  int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
+  
+  // 检查缓存是否需要更新
+  if (speedLimitCacheDirty || cachedSpeedLimit != limit_kmh) {
+    speedLimitCircleCache = QPixmap(circle_d + 20, circle_d + 80);  // 额外空间给标签
+    speedLimitCircleCache.fill(Qt::transparent);
+    
+    QPainter cache_p(&speedLimitCircleCache);
+    cache_p.setRenderHint(QPainter::Antialiasing);
+    
+    // 在缓存中绘制圆标（相对坐标）
+    int cache_cx = circle_r + 10;
+    int cache_cy = circle_r + 10;
+    
+    // 外圈（红色边框，维也纳公约标准）
+    cache_p.setPen(QPen(QColor(220, 30, 30), border_width));
+    cache_p.setBrush(Qt::NoBrush);
+    cache_p.drawEllipse(QPoint(cache_cx, cache_cy), circle_r, circle_r);
+    
+    // 内圈（白色背景）
+    cache_p.setPen(Qt::NoPen);
+    cache_p.setBrush(QColor(255, 255, 255, 250));
+    int inner_r = circle_r - border_width - 2;
+    cache_p.drawEllipse(QPoint(cache_cx, cache_cy), inner_r, inner_r);
+    
+    // 限速数字（黑色，60pt）
+    cache_p.setPen(QColor(30, 30, 30));
+    cache_p.setFont(InterFont(60, QFont::Bold));
+    QString limit_text = QString::number(limit_kmh);
+    QRect text_rect(cache_cx - circle_r, cache_cy - 30, circle_d, 60);
+    cache_p.drawText(text_rect, Qt::AlignCenter, limit_text);
+    
+    // 标签区域（LIMIT 或前方限速）
+    int label_y = cache_cy + circle_r + 12;
+    if (speedLimitAheadValid) {
+      int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
+      bool is_decreasing = ahead_kmh < limit_kmh;
+      QColor label_color = is_decreasing ? QColor(255, 180, 60) : QColor(120, 200, 255);
+      QString arrow = is_decreasing ? "▼" : "▲";
+      
+      cache_p.setPen(label_color);
+      cache_p.setFont(InterFont(26, QFont::Bold));
+      QString ahead_text = QString("%1 %2").arg(arrow).arg(ahead_kmh);
+      QRect ahead_rect(cache_cx - 60, label_y, 120, 30);
+      cache_p.drawText(ahead_rect, Qt::AlignCenter, ahead_text);
+    } else {
+      cache_p.setPen(QColor(180, 180, 180, 200));
+      cache_p.setFont(InterFont(20, QFont::Medium));
+      QRect label_rect(cache_cx - 40, label_y, 80, 24);
+      cache_p.drawText(label_rect, Qt::AlignCenter, "LIMIT");
+    }
+    
+    cachedSpeedLimit = limit_kmh;
+    speedLimitCacheDirty = false;
+  }
+  
+  // 绘制缓存到屏幕
+  p.drawPixmap(circle_cx - circle_r - 10, circle_cy - circle_r - 10, speedLimitCircleCache);
+  
+  // 可选：数据源可信度图标（如果启用且可信度低）
+  if (speedLimitShowSource && speedLimitConfidence < 0.8f) {
+    int icon_x = circle_cx + circle_r - 12;
+    int icon_y = circle_cy - circle_r + 12;
+    
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 200, 60, 200));
+    p.drawEllipse(QPoint(icon_x, icon_y), 10, 10);
+    
+    p.setPen(QColor(60, 60, 60));
+    p.setFont(InterFont(14, QFont::Bold));
+    p.drawText(QRect(icon_x - 10, icon_y - 7, 20, 14), Qt::AlignCenter, "?");
+    p.restore();
+  }
 }
 
 void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
