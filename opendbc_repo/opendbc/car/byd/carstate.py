@@ -85,9 +85,9 @@ class CarState(CarStateBase):
         lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
         lkas_isMainSwOn = bool(cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"])
 
-        lkas_hud_AccOn1 = bool(cp_cam.vl["ACC_HUD_ADAS"]["AccOn1"])
-        self.acc_state = cp_cam.vl["ACC_HUD_ADAS"]["AccState"]
-        self.adas_set_dist = cp_cam.vl["ACC_HUD_ADAS"]["SetDistance"]
+        lkas_hud_AccOn1 = bool(cp.vl["ACC_HUD_ADAS"]["AccOn1"])  # 修复: 从bus0读(刷panda后)
+        self.acc_state = cp.vl["ACC_HUD_ADAS"]["AccState"]
+        self.adas_set_dist = cp.vl["ACC_HUD_ADAS"]["SetDistance"]
 
         prev_btn_acc_cancel = self.btn_acc_cancel
         prev_btn_acc_set_reset = self.btn_acc_set_reset
@@ -211,14 +211,14 @@ class CarState(CarStateBase):
         self.mpc_laks_reqprepare = cp_cam.vl["ACC_MPC_STATE"]["LKAS_ReqPrepare"] != 0
         self.mpc_laks_active = cp_cam.vl["ACC_MPC_STATE"]["LKAS_Active"] != 0
 
-        self.acc_hud_adas_counter = cp_cam.vl["ACC_HUD_ADAS"]["Counter"]
+        self.acc_hud_adas_counter = cp.vl["ACC_HUD_ADAS"]["Counter"]  # 修复: 从bus0读
         self.acc_mpc_state_counter = cp_cam.vl["ACC_MPC_STATE"]["Counter"]
         self.acc_cmd_counter = cp_cam.vl["ACC_CMD"]["Counter"]
 
         self.cam_lkas = copy.copy(cp_cam.vl["ACC_MPC_STATE"])
-        self.cam_adas = copy.copy(cp_cam.vl["ACC_HUD_ADAS"])
+        self.cam_adas = copy.copy(cp.vl["ACC_HUD_ADAS"])  # 修复: 从bus0读(刷panda后摄像头813被拦)
         self.cam_acc = copy.copy(cp_cam.vl["ACC_CMD"])
-        self.cam_aeb = copy.copy(cp_cam.vl["ACC_AEB"])
+        self.cam_aeb = copy.copy(cp.vl["ACC_AEB"])  # 修复: 从bus0读(刷panda后摄像头815被拦)
         self.esc_eps = copy.copy(cp.vl["ACC_EPS_STATE"])
 
         if BYD_RADAR:
@@ -259,6 +259,8 @@ class CarState(CarStateBase):
             ("DATETIME", 2),
             ("YAW_RATE", 50),
             ("BELT", 20),
+            ("ACC_HUD_ADAS", 50),  # 修复: 刷panda后摄像头813被拦,需从bus0读
+            ("ACC_AEB", 50),       # 修复: 刷panda后摄像头815被拦,需从bus0读
         ]
 
         if CP.enableBsm:
