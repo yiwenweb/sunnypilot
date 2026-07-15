@@ -63,7 +63,13 @@ class Soundd(QuietMode):
     self.current_sound_frame = 0
 
     self.selfdrive_timeout_alert = False
-    self.master_volume = self.params.get_float("SoundVolume") if self.params.get("SoundVolume") else 1.0
+
+    # 安全读取主音量：get_float 可能因参数文件异常而抛错，必须 try-except 防止 soundd 启动崩溃
+    try:
+      raw = self.params.get("SoundVolume")
+      self.master_volume = float(raw) if raw else 1.0
+    except (ValueError, TypeError, KeyError):
+      self.master_volume = 1.0
 
     self.spl_filter_weighted = FirstOrderFilter(0, 2.5, FILTER_DT, initialized=False)
 
@@ -85,13 +91,13 @@ class Soundd(QuietMode):
   def load_param(self) -> None:
     super().load_param()
     if self._frame % 50 == 0:
-      master_raw = self.params.get("SoundVolume")
-      if master_raw:
-        try:
+      try:
+        master_raw = self.params.get("SoundVolume")
+        if master_raw:
           self.master_volume = float(master_raw)
-        except ValueError:
+        else:
           self.master_volume = 1.0
-      else:
+      except (ValueError, TypeError, KeyError):
         self.master_volume = 1.0
 
   def get_sound_data(self, frames): # get "frames" worth of data from the current alert sound, looping when required
