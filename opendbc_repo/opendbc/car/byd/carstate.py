@@ -85,7 +85,7 @@ class CarState(CarStateBase):
         lkas_config_isAccOn = (self.mpc_lkas_config != LKASConfig.DISABLE)
         lkas_isMainSwOn = bool(cp.vl["PCM_BUTTONS"]["BTN_TOGGLE_ACC_OnOff"])
 
-        lkas_hud_AccOn1 = bool(cp.vl["ACC_HUD_ADAS"]["AccOn1"])  # 修复: 从bus0读(刷panda后)
+        lkas_hud_AccOn1 = bool(cp.vl["ACC_HUD_ADAS"]["AccOn1"])  # 修复: 从bus0读(刷panda后摄像头813被拦)
         self.acc_state = cp.vl["ACC_HUD_ADAS"]["AccState"]
         self.adas_set_dist = cp.vl["ACC_HUD_ADAS"]["SetDistance"]
 
@@ -219,6 +219,7 @@ class CarState(CarStateBase):
         self.cam_adas = copy.copy(cp.vl["ACC_HUD_ADAS"])  # 修复: 从bus0读(刷panda后摄像头813被拦)
         self.cam_acc = copy.copy(cp_cam.vl["ACC_CMD"])
         self.cam_aeb = copy.copy(cp.vl["ACC_AEB"])  # 修复: 从bus0读(刷panda后摄像头815被拦)
+        self.cam_aeb = copy.copy(cp_cam.vl["ACC_AEB"])
         self.esc_eps = copy.copy(cp.vl["ACC_EPS_STATE"])
 
         if BYD_RADAR:
@@ -259,17 +260,15 @@ class CarState(CarStateBase):
             ("DATETIME", 2),
             ("YAW_RATE", 50),
             ("BELT", 20),
-            ("ACC_HUD_ADAS", 50),  # 修复: 刷panda后摄像头813被拦,需从bus0读
-            ("ACC_AEB", 50),       # 修复: 刷panda后摄像头815被拦,需从bus0读
+            ("ACC_HUD_ADAS", 50),  # 修复: 刷panda后从bus0读(摄像头813被拦)
+            ("ACC_AEB", 50),       # 修复: 刷panda后从bus0读(摄像头815被拦)
         ]
 
         if CP.enableBsm:
             pt_messages.append(("BSD_RADAR", 20))
 
         cam_messages = [
-            ("ACC_HUD_ADAS", 50),
             ("ACC_CMD", 50),
-            ("ACC_AEB", 50),
             ("ACC_MPC_STATE", 50),
         ]
         if BYD_RADAR:
