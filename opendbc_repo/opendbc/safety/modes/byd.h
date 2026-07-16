@@ -253,6 +253,12 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
 static safety_config byd_init(uint16_t param) {
   UNUSED(param);
+  
+  // Force compiler to keep test marker (prevent dead code elimination)
+  // This volatile read ensures the array is linked into firmware
+  volatile char test_char = byd_test_verification_marker[0];
+  (void)test_char;  // Suppress unused variable warning
+  
   byd_op_steering_active = false;
   byd_op_steering_ts = 0U;
   byd_fake_eps_active = false;
