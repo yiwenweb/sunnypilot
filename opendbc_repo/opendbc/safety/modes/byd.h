@@ -4,25 +4,6 @@
 
 // === BYD Tang DM 2018 - Lateral + experimental longitudinal ===
 
-// ============ TEST MARKER START - 2026-07-16 15:05 ============
-// Purpose: Verify BYD code is actually compiled and flashed
-// This large array should increase firmware size significantly
-// If flash.py still says "already up to date", it's a flash.py bug not compilation issue
-static const char byd_test_verification_marker[2048] = 
-  "BYD_COMPILATION_TEST_MARKER_2026_07_16_15_05_UTC_"
-  "THIS_IS_A_LARGE_TEST_STRING_TO_VERIFY_THAT_BYD_CODE_IS_ACTUALLY_COMPILED_INTO_FIRMWARE_"
-  "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt "
-  "ut labore et dolore magna aliqua Ut enim ad minim veniam quis nostrud exercitation ullamco "
-  "laboris nisi ut aliquip ex ea commodo consequat Duis aute irure dolor in reprehenderit "
-  "in voluptate velit esse cillum dolore eu fugiat nulla pariatur Excepteur sint occaecat "
-  "cupidatat non proident sunt in culpa qui officia deserunt mollit anim id est laborum "
-  "The quick brown fox jumps over the lazy dog Pack my box with five dozen liquor jugs "
-  "How vexingly quick daft zebras jump Sphinx of black quartz judge my vow "
-  "Two driven jocks help fax my big quiz Jackdaws love my big sphinx of quartz "
-  "If firmware size increases by ~2KB this marker is compiled in successfully "
-  "END_OF_TEST_MARKER_BYD_2026_07_16";
-// ============ TEST MARKER END ============
-
 // RX messages (Bus 0)
 #define BYD_EPS              0x11FU  // 287
 #define BYD_CARSPEED         0x121U  // 289
@@ -253,12 +234,6 @@ static bool byd_fwd_hook(int bus_num, int addr) {
 
 static safety_config byd_init(uint16_t param) {
   UNUSED(param);
-  
-  // Force compiler to keep test marker (prevent dead code elimination)
-  // This volatile read ensures the array is linked into firmware
-  volatile char test_char = byd_test_verification_marker[0];
-  (void)test_char;  // Suppress unused variable warning
-  
   byd_op_steering_active = false;
   byd_op_steering_ts = 0U;
   byd_fake_eps_active = false;
