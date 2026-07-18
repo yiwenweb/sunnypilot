@@ -51,6 +51,7 @@ class CarController(CarControllerBase):
     self.lkas_active_last = 0  # 上一帧 lkas_active, 用于检测 0->1 重接管沿
     self.stuck_counter = 0     # 大对抗且顶不动的持续帧数
     self.lock5_giveup = False  # 已进入"顶不动收回"放弃状态
+    self.lock5_giveup_timer = 0  # giveup 持续帧数计时器（超时自动清除）
 
     # LOCK6: 低速满扭矩限时封顶 (对齐门总: 允许瞬间满扭矩, 但不许持续死顶)
     self.lock6_hi_counter = 0   # |命令|接近满扭矩的持续帧数
@@ -166,7 +167,18 @@ class CarController(CarControllerBase):
                 self.lock5_giveup = False
             if self.stuck_counter >= P.LOCK5_STUCK_FRAMES:
               self.lock5_giveup = True
+              self.lock5_giveup_timer = 0  # 进入giveup时重置计时器
             if self.lock5_giveup:
+              self.lock5_giveup_timer += 1
+              # 超时自动清除: 防止驾驶员持续大力(DrvTq一直>100)导致giveup永久卡死
+              # 数据实证: 驾驶员DrvTq=200+持续60s+, 正常清除条件(not drv_big)永远满足不了
+              # 超时3s后强制清除, 让LOCK5重新尝试出力(此时驾驶员若仍对抗则再次触发giveup)
+              if self.lock5_giveup_timer >= P.LOCK5_GIVEUP_MAX_FRAMES:
+                self.lock5_giveup = False
+                self.lock5_giveup_timer = 0
+                self.stuck_counter = 0
+                self.steer_softstart_limit = 0  # 从0重新软起
+                print("LOCK5 GIVEUP-TIMEOUT: 超时3s自动清除, 重新尝试出力")
               # 放弃硬顶: 命令按速率收回到0 (不松手退出, 只是不再顶), 待司机松手自然恢复
               apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
                                                               CS.out.steeringTorque, CarControllerParams)

@@ -111,6 +111,7 @@ class CarControllerParams:
   LOCK5_STUCK_FRAMES = 25           # 对抗且顶不动持续超此帧数(~0.5s) -> 收回放弃硬顶
   LOCK5_STUCK_OUT = 40              # 我们命令 |out| 超此值却顶不动, 才算真硬顶(门总大对抗也压~40)
   LOCK5_STUCK_MAINTQ = 30           # EPS 电机 |MainTorque| 长期低于此值 = 顶不动(电机没能跟上命令)
+  LOCK5_GIVEUP_MAX_FRAMES = 150     # giveup 超时: 持续放弃超此帧数(~3s)自动清除并重试
 
   # --- 无车道线辅助 (20260713 新增 -> 20260714 停用) ---
   # ❌ 已停用并从 carcontroller 移除。原实现在低速转弯(角度>15°)时按
