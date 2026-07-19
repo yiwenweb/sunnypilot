@@ -56,9 +56,8 @@ class CarController(CarControllerBase):
     self.lock6_hi_counter = 0   # |命令|接近满扭矩的持续帧数
     self.lock6_capped = False   # 是否已进入封顶状态
 
-    # LOCK7: 满扭矩顶不动收回 (纯物理判据, 不看司机对抗)
-    self.lock7_stuck_counter = 0  # "满扭矩+MainTq≈0"持续帧数
-    self.lock7_release = 0        # 收回后保持低出力的剩余帧数
+    # LOCK7 v2: EPS不响应时Out封顶150 (复刻门总闭环, 纯物理判据不看司机对抗)
+    self.lock7_stuck_counter = 0  # "EPS不响应(MainTq<10)且Out>150"持续帧数
 
     self.first_start = True
     self.rfss = 0
@@ -205,34 +204,31 @@ class CarController(CarControllerBase):
                 print("LOCK6 CAP v=%.1f out->%d (hi=%d) 门总低速包络封顶" % (
                   CS.out.vEgo * 3.6, int(apply_torque), self.lock6_hi_counter))
 
-          # LOCK7: 满扭矩顶不动收回 (纯物理判据, 独立于LOCK5的司机对抗判据)
-          # 【根因(0000004c段7)】: 方向盘打到454°接近机械限位, 车轮转不动 -> EPS MainTorque=0(放弃
-          #   执行), 我们仍发Out=300硬顶, Out=300+MainTq=0持续25帧 -> TorqueFailed锁死。
-          # 【门总铁律(53段实证)】: 门总使劲(|Out|>=50)时MainTq从不<10; 从不出现"满扭矩+MainTq=0"。
-          # 【判据】: |Out|>=260(满扭矩在使劲) 且 |MainTq|<10(EPS顶不动) 持续12帧 -> 收扭矩到0。
-          #   判据含MainTq<10, 只拦"顶不动"的满扭矩; 门总正常满扭矩(MainTq跟随>10)永不触发, 完美区分。
+          # LOCK7 v2: EPS不响应时Out封顶150 (复刻门总闭环, 纯物理判据不看司机对抗)
+          # 【根因(0000004f/52段)】: MainTq=0(EPS不响应)时我们Out却从16一路爬到234硬灌(开环) ->
+          #   Out=234+MainTq=0持续~25帧 -> TorqueFailed锁死。角度才-17°(没打死), 纯"EPS不响应还硬加力"。
+          # 【门总铁律(699个MainTq<10连续段, 无例外)】: 门总在EPS不响应时Out最高只到150(中位22),
+          #   持续越久压得越低(208帧时Out才13)。即门总"EPS不响应->停止加力->Out压150内->等EPS恢复"。
+          # 【判据】: |MainTq|<10(EPS不响应) 且 |Out|>150(超出门总包络) 持续5帧 -> Out封顶到150。
+          #   门总正常(MainTq<10但Out<150)不触发; 我们Out冲到234超150才封, 完美区分。经速率限制平滑收敛。
           if CarControllerParams.LOCK7_ENABLE:
             P = CarControllerParams
-            out_full = abs(int(apply_torque)) >= P.LOCK7_OUT
             eps_stuck = abs(int(CS.out.steeringTorqueEps)) < P.LOCK7_MAINTQ
-            if out_full and eps_stuck:
+            out_over = abs(int(apply_torque)) > P.LOCK7_STUCK_CEIL
+            if eps_stuck and out_over:
               self.lock7_stuck_counter += 1
             else:
               self.lock7_stuck_counter = max(0, self.lock7_stuck_counter - 1)
-            # 持续满扭矩顶不动 -> 进入收回窗口
-            if self.lock7_stuck_counter >= P.LOCK7_FRAMES:
-              self.lock7_release = P.LOCK7_RELEASE_FRAMES
+            # EPS重新响应(MainTq回升) -> 解除封顶计数
+            if abs(int(CS.out.steeringTorqueEps)) > P.LOCK7_RESUME_MAINTQ:
               self.lock7_stuck_counter = 0
-            # 收回窗口内: 命令按速率收到0, 待EPS恢复执行(MainTq回升)提前解除
-            if self.lock7_release > 0:
-              self.lock7_release -= 1
-              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
+            # 持续"EPS不响应且Out>150" -> 把Out封顶到150(复刻门总), 经速率限制平滑收敛
+            if self.lock7_stuck_counter >= P.LOCK7_FRAMES:
+              capped = int(np.clip(apply_torque, -P.LOCK7_STUCK_CEIL, P.LOCK7_STUCK_CEIL))
+              apply_torque = apply_driver_steer_torque_limits(capped, self.apply_torque_last,
                                                               CS.out.steeringTorque, CarControllerParams)
-              self.steer_softstart_limit = 0   # 归零, 解除后从0慢软起
-              if abs(int(CS.out.steeringTorqueEps)) > P.LOCK7_RESUME_MAINTQ:
-                self.lock7_release = 0   # EPS重新执行了, 提前解除
               if self.frame % 10 == 0:
-                print("LOCK7 STUCK-RELEASE v=%.1f ang=%.0f out->%d MainTq=%d (满扭矩顶不动, 收回防锁死)" % (
+                print("LOCK7 CEIL v=%.1f ang=%.0f out->%d MainTq=%d (EPS不响应, Out封顶150防锁死)" % (
                   CS.out.vEgo * 3.6, CS.out.steeringAngleDeg, int(apply_torque),
                   int(CS.out.steeringTorqueEps)))
 
