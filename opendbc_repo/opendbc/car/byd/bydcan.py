@@ -45,13 +45,20 @@ def create_steering_control(packer, CP, cam_msg: dict, req_torque, req_prepare, 
     values["LKAS_ReqPrepare"] = req_prepare
     values["Counter"] = counter
 
-    # 强制 LKAS_Config=1 (ALARM), 对齐门总 0.98。
-    # 取证结论 (byd_field_diff): 接管(Active=1)期间, 我们的316命令 16个字段中 15个与门总
-    # 完全一致, 唯一差异是 LKAS_Config: 门总恒发 1(ALARM), 我们透传原厂摄像头值 3(ALARM_AND_LKA)。
-    # 这是两次 EPS TorqueFailed 锁死的根因: EPS 在 Config=3 下对"大扭矩+方向盘不转"启用严格
-    # 校验并锁死(07:04驾驶员顶住/07:08低速阻力顶住); 门总 Config=1 下 EPS 无条件信任扭矩命令,
-    # 故任何速度/对抗/打死方向都不锁。门总特意覆盖此透传字段, 即为此。
-    values["LKAS_Config"] = 1
+    # 强制 LKAS_Config=3 (ALARM_AND_LKA), 对齐门总实测。
+    # ★★★ 20260718 重大更正: 之前(第39章)错误地设为1, 并写"门总恒发1"——【实测数据推翻】。
+    # 【铁证】verify_lkas_config.py 解码门总7个bus全部日志:
+    #   门总接管(Active=1)时 LKAS_Config 恒定=3 (ALARM_AND_LKA), 8336帧无一例外;
+    #   我们(旧)恒发1(ALARM), 摄像头原始src=2也是1。
+    # 【DBC】LKAS_Config: 0=禁用 1=报警 2=LKA 3=报警+LKA (byte0 bit6-7, 即 (byte0>>6)&0x3)。
+    # 【这是所有EPS问题的总根因】: Config=1(仅报警,无LKA位) -> EPS认为"这只是报警系统不是正经
+    #   LKA" -> 不完全信任横向 -> 接管中周期性发 Prepared=1 要求重新确认 -> 我们无论响应(收扭矩->
+    #   死锁,46章)还是硬顶(->TorqueFailed锁死,49章)都出问题。
+    # 【门总Config=3的效果】: EPS认为"正经LKA系统"无条件信任 -> 接管中【永不发Prepared】
+    #   (门总Cru=1的8314帧, Prepared=0次!) -> Active稳定维持(中位95帧) -> 永不锁死。
+    # 【历史教训】: LOCK1~6、LOCK3 v1-v4 折腾数月, 都在治"收到Prepared怎么办"的症状; 真正根因是
+    #   Config发错让EPS不信任才发Prepared。改Config=3后EPS不发Prepared, LOCK3彻底不需要(已停用)。
+    values["LKAS_Config"] = 3
 
     if active:
         values.update({
