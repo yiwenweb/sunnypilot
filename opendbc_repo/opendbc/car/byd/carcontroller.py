@@ -56,6 +56,10 @@ class CarController(CarControllerBase):
     self.lock6_hi_counter = 0   # |命令|接近满扭矩的持续帧数
     self.lock6_capped = False   # 是否已进入封顶状态
 
+    # LOCK7: 满扭矩顶不动收回 (纯物理判据, 不看司机对抗)
+    self.lock7_stuck_counter = 0  # "满扭矩+MainTq≈0"持续帧数
+    self.lock7_release = 0        # 收回后保持低出力的剩余帧数
+
     self.first_start = True
     self.rfss = 0
     self.sss = 0
@@ -200,6 +204,37 @@ class CarController(CarControllerBase):
               if self.frame % 25 == 0:
                 print("LOCK6 CAP v=%.1f out->%d (hi=%d) 门总低速包络封顶" % (
                   CS.out.vEgo * 3.6, int(apply_torque), self.lock6_hi_counter))
+
+          # LOCK7: 满扭矩顶不动收回 (纯物理判据, 独立于LOCK5的司机对抗判据)
+          # 【根因(0000004c段7)】: 方向盘打到454°接近机械限位, 车轮转不动 -> EPS MainTorque=0(放弃
+          #   执行), 我们仍发Out=300硬顶, Out=300+MainTq=0持续25帧 -> TorqueFailed锁死。
+          # 【门总铁律(53段实证)】: 门总使劲(|Out|>=50)时MainTq从不<10; 从不出现"满扭矩+MainTq=0"。
+          # 【判据】: |Out|>=260(满扭矩在使劲) 且 |MainTq|<10(EPS顶不动) 持续12帧 -> 收扭矩到0。
+          #   判据含MainTq<10, 只拦"顶不动"的满扭矩; 门总正常满扭矩(MainTq跟随>10)永不触发, 完美区分。
+          if CarControllerParams.LOCK7_ENABLE:
+            P = CarControllerParams
+            out_full = abs(int(apply_torque)) >= P.LOCK7_OUT
+            eps_stuck = abs(int(CS.out.steeringTorqueEps)) < P.LOCK7_MAINTQ
+            if out_full and eps_stuck:
+              self.lock7_stuck_counter += 1
+            else:
+              self.lock7_stuck_counter = max(0, self.lock7_stuck_counter - 1)
+            # 持续满扭矩顶不动 -> 进入收回窗口
+            if self.lock7_stuck_counter >= P.LOCK7_FRAMES:
+              self.lock7_release = P.LOCK7_RELEASE_FRAMES
+              self.lock7_stuck_counter = 0
+            # 收回窗口内: 命令按速率收到0, 待EPS恢复执行(MainTq回升)提前解除
+            if self.lock7_release > 0:
+              self.lock7_release -= 1
+              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
+                                                              CS.out.steeringTorque, CarControllerParams)
+              self.steer_softstart_limit = 0   # 归零, 解除后从0慢软起
+              if abs(int(CS.out.steeringTorqueEps)) > P.LOCK7_RESUME_MAINTQ:
+                self.lock7_release = 0   # EPS重新执行了, 提前解除
+              if self.frame % 10 == 0:
+                print("LOCK7 STUCK-RELEASE v=%.1f ang=%.0f out->%d MainTq=%d (满扭矩顶不动, 收回防锁死)" % (
+                  CS.out.vEgo * 3.6, CS.out.steeringAngleDeg, int(apply_torque),
+                  int(CS.out.steeringTorqueEps)))
 
           # 无车道线补偿: 已于 20260714 移除 (原按 sign(角度)*120 同向死顶 -> 正反馈锁死 EPS,
           # 详见 values.py LANELESS_ASSIST 注释)。低置信度时保持模型输出(通常≈0), 宁可不出力

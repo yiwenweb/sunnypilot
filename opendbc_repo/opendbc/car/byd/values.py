@@ -124,6 +124,25 @@ class CarControllerParams:
   LOCK5_STUCK_OUT = 40              # 我们命令 |out| 超此值却顶不动, 才算真硬顶(门总大对抗也压~40)
   LOCK5_STUCK_MAINTQ = 30           # EPS 电机 |MainTorque| 长期低于此值 = 顶不动(电机没能跟上命令)
 
+  # --- LOCK7: 满扭矩顶不动收回 (20260718 新增, 独立于LOCK5的drv对抗判据) ---
+  # 【根因(0000004c段7锁死实证)】: 低速5-7km/h路口极限转弯, 方向盘打到454°(接近机械限位),
+  #   车轮转不动->EPS电机MainTorque=0(放弃执行), 但模型仍要求满曲率->OP发Out=300硬顶,
+  #   Out=300+MainTq=0持续25帧(0.5s)-> EPS过载 TorqueFailed 锁死。
+  # 【门总铁律(53段10.9万帧实证)】:
+  #   - 门总满扭矩(>=290)最长68帧(1.36s), 但那时 MainTq 一定跟随(EPS真在转);
+  #   - 门总使劲(|Out|>=50)时 MainTq<10(顶不动) = 0%(从不出现);
+  #   - 即门总【从不出现"满扭矩+MainTq=0"组合】。我们段7这个组合是病态独有。
+  # 【与LOCK5区别】: LOCK5需 drv_big(司机对抗>100), 但段7司机扭矩56~162波动没连续>100 -> 没触发。
+  #   顶不动(机械限位)跟司机对抗无关, 故LOCK7用纯物理判据: |Out|大 且 MainTq持续≈0 就收, 不看drv。
+  # 【判据设计】: 判据含 MainTq<阈值, 所以只拦"顶不动"的满扭矩, 门总正常满扭矩(MainTq跟随)永不触发,
+  #   完美区分。N=12帧(0.24s)远短于锁死点25帧, 又不误伤(正常满扭矩MainTq>0根本不进此判据)。
+  LOCK7_ENABLE = True
+  LOCK7_OUT = 260              # |Out| >= 此值 = 接近满扭矩在使劲
+  LOCK7_MAINTQ = 10            # |MainTorque| < 此值 = EPS未执行/顶不动(门总使劲时MainTq从不<10)
+  LOCK7_FRAMES = 12            # "满扭矩+顶不动"持续超此帧数(~0.24s) -> 收扭矩 (锁死点25帧之前)
+  LOCK7_RELEASE_FRAMES = 25    # 收扭矩后保持低出力的帧数, 待EPS恢复执行(MainTq回升)再放开
+  LOCK7_RESUME_MAINTQ = 20     # MainTq 回升到 >此值 视为EPS重新执行, 可提前解除收回
+
   # --- 无车道线辅助 (20260713 新增 -> 20260714 停用) ---
   # ❌ 已停用并从 carcontroller 移除。原实现在低速转弯(角度>15°)时按
   #    hold_torque = sign(steer_angle) * 120 直接赋值(绕过速率限制/softstart), 与方向盘偏角
