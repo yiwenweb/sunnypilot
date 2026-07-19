@@ -253,39 +253,33 @@ class CarController(CarControllerBase):
           else:
             self.eps_prepared_hold = 0
 
-          lock3_soft = (CarControllerParams.LOCK3_ENABLE and
-                        self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES)
-          if lock3_soft:
-            # 按速率收扭矩到0, 保持 active (对齐门总: Prepared 时扭矩收得快、不硬顶)
-            apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
-                                                            CS.out.steeringTorque, CarControllerParams)
-            self.steer_softstart_limit = 0   # 归零, Prepared 落回后从0慢软起恢复
-            self.steerRateLimActive = False
-            self.steerRateLim = 1.0
-            if self.frame % 10 == 0:
-              print("LOCK3 SOFT v=%.1f OPtq->%d MainTq=%d drvTq=%d prepHold=%d (收扭矩不硬顶, 保持active)" % (
-                CS.out.vEgo * 3.6, int(apply_torque), int(CS.out.steeringTorqueEps),
-                int(CS.out.steeringTorque), self.eps_prepared_hold))
-            # Prepared 持续过久 = 真退出请求 -> 完全退出 Active (扭矩此时已收到接近0)
-            if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
-              apply_torque = 0
-              self.lkas_active = 0
-              self.lkas_req_prepare = 0
-              self.eps_exit_wait = True
-              print("LOCK3 FULL-EXIT prepHold=%d > %d -> 真退出请求, Active=0" % (
-                self.eps_prepared_hold, CarControllerParams.LOCK3_FULL_EXIT_FRAMES))
+          # LOCK3 已彻底停用 (LOCK3_ENABLE=False, 见 values.py 详细说明)。
+          # can_full_00000047 数据证明: LOCK3 把"握手中正常的 Prepared=1"误判为"EPS要退出",
+          # 累加到8帧就 full-exit(lkas_active=0)+eps_exit_wait=True, 打断握手 -> 无限振荡 + 永久
+          # 卡死(取消ACC无效, 只能离线/在线)。门总从不响应 Prepared(接管中0个事件), 握手切Act=1
+          # 后死保持(中位95帧)直到 Cru=1。故完全移除对 Prepared 的响应, 对齐门总。
+          if CarControllerParams.LOCK3_ENABLE:  # 恒False, 保留结构便于回溯; 不再执行
+            lock3_soft = self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES
+            if lock3_soft:
+              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
+                                                              CS.out.steeringTorque, CarControllerParams)
+              self.steer_softstart_limit = 0
+              self.steerRateLimActive = False
+              self.steerRateLim = 1.0
+              if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
+                apply_torque = 0
+                self.lkas_active = 0
+                self.lkas_req_prepare = 0
+                self.eps_exit_wait = True
 
         else:
-          # 退出会话后的等待: EPS 退出时 Prepared 会保持1约7帧(0xFB)再落回0(0xF8)。
-          # 若刚退出就见 Prepared=1 立即重新 active, 会与 EPS"要退出"意图对着干 -> 卡死风险。
-          # 故先等 Prepared 落回0 清除等待标志, 之后才走原始握手逻辑重新接管。
-          if self.eps_exit_wait:
-            if not CS.lkas_prepared:
-              self.eps_exit_wait = False   # EPS 已回稳, 解除等待
-            self.lkas_req_prepare = 0
-          elif CS.lkas_prepared:
-            # 基线握手逻辑 (笔记12/19章验证): 见 EPS Prepared=1 即接管, 从0软起(每帧+16)。
-            # 之后由 LOCK1 (Cru未到不发扭矩) + LOCK5 (重接管前3帧0出力+慢软起) 保证平滑接管。
+          # 握手逻辑 (对齐门总, 笔记12/19章验证): 见 EPS Prepared=1 即切 Act=1, 从0软起(每帧+16),
+          # 之后 Act 稳定保持直到 Cru=1 (门总 Active 中位维持95帧)。由 LOCK1(Cru未到不发扭矩)+
+          # LOCK5(重接管前3帧0出力+慢软起) 保证平滑接管。
+          # 注: 已移除 eps_exit_wait 等待逻辑 —— 它是"取消ACC无效/永久失力"的直接原因(LOCK3
+          # full-exit 设 True 后, 司机握盘时 Prepared 不落回, 永远解除不了, 且退出分支漏清它)。
+          # 门总握手不依赖此等待, 见 Prepared=1 直接接管。
+          if CS.lkas_prepared:
             self.lkas_active = 1.0
             self.steerRateLimActive = False
             self.steerRateLim = 1.0

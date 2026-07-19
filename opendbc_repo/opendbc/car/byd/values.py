@@ -77,9 +77,21 @@ class CarControllerParams:
   # v4软响应: Prepared确认(去抖PREP_HOLD帧)-> 按速率收扭矩到0(每帧-16, 不硬切防LOCK2)但【保持
   #   active不完全退出】; Prepared落回 -> 下帧自动从0慢软起恢复(不断续); 仅当Prepared持续超
   #   FULL_EXIT帧(>门总max6, 判定真退出)才完全退出Active。既解段29锁死(不硬顶)又不致段56断续。
-  LOCK3_ENABLE = True
-  LOCK3_PREP_HOLD_FRAMES = 2   # Prepared 连续>=此帧才触发收扭矩(去抖, 滤1帧噪声, ~0.04s快响应)
-  LOCK3_FULL_EXIT_FRAMES = 8   # Prepared 持续超此帧(>门总max6) 判真退出 -> 完全退出 Active
+  # ❌❌❌ 20260718 最终停用 (LOCK3_ENABLE=False): can_full_00000047 数据彻底证明 LOCK3 是错的。
+  # 【铁证】门总接管中(Act=1,Cru=1) 遇到 Prepared 0->1 事件 = 0 个; 门总 Active=1 持续中位 95帧、
+  #   <=2帧的run占0%。我们 Active=1 持续中位仅 1帧、<=2帧的run占 100%(1521个)。
+  # 【根因链】LOCK3 把"握手中正常的 Prepared=1"误判为"EPS要退出" -> eps_prepared_hold累加到8 ->
+  #   FULL-EXIT: lkas_active=0 + eps_exit_wait=True -> Active被打回0 -> 握手中断 -> EPS再发Prepared
+  #   -> 无限振荡; 且 eps_exit_wait 要求 Prepared落回0 才解除, 司机握盘时 Prepared 持续 -> 永久卡死
+  #   (失力段 Cru=0 持续252秒, Prep=1时87%的RP=0=eps_exit_wait在卡)。退出分支不清 eps_exit_wait
+  #   -> 取消ACC重激活无效 -> 只能离线/在线重建CarController才恢复。
+  # 【数据洞察】Cru=1(接管稳)时EPS只有0.5%发Prepared, Cru=0时24.8%。Prepared是"接管不稳"的症状,
+  #   不是独立故障。只要Active稳定保持->EPS不发Prepared->LOCK3整个逻辑就多余。全段TqF=0, 证明失力
+  #   是握手软件死锁, 非EPS硬件锁死。段29锁死同源(Active不稳致Prepared), 修复后一并消失。
+  # 【门总做法】接管中不发Prepared; 从不响应Prepared(0退出/0收扭矩); 握手切Act=1后死保持到Cru=1。
+  LOCK3_ENABLE = False
+  LOCK3_PREP_HOLD_FRAMES = 2   # (保留但不生效) 曾用于去抖
+  LOCK3_FULL_EXIT_FRAMES = 8   # (保留但不生效) 曾用于判真退出
 
   # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
   # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):
