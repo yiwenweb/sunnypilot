@@ -85,13 +85,17 @@ class CarControllerParams:
   #   -> 无限振荡; 且 eps_exit_wait 要求 Prepared落回0 才解除, 司机握盘时 Prepared 持续 -> 永久卡死
   #   (失力段 Cru=0 持续252秒, Prep=1时87%的RP=0=eps_exit_wait在卡)。退出分支不清 eps_exit_wait
   #   -> 取消ACC重激活无效 -> 只能离线/在线重建CarController才恢复。
-  # 【数据洞察】Cru=1(接管稳)时EPS只有0.5%发Prepared, Cru=0时24.8%。Prepared是"接管不稳"的症状,
-  #   不是独立故障。只要Active稳定保持->EPS不发Prepared->LOCK3整个逻辑就多余。全段TqF=0, 证明失力
-  #   是握手软件死锁, 非EPS硬件锁死。段29锁死同源(Active不稳致Prepared), 修复后一并消失。
-  # 【门总做法】接管中不发Prepared; 从不响应Prepared(0退出/0收扭矩); 握手切Act=1后死保持到Cru=1。
-  LOCK3_ENABLE = False
-  LOCK3_PREP_HOLD_FRAMES = 2   # (保留但不生效) 曾用于去抖
-  LOCK3_FULL_EXIT_FRAMES = 8   # (保留但不生效) 曾用于判真退出
+  # --- LOCK3 v5: Prepared=1 时只收扭矩(SOFT), 不退出(FULL-EXIT已移除), 对齐门总 ---
+  # 【门总Seg18逐帧实证(20260720)】: 0xFB(Prep=1+Cru=1)出现时 DTq=-160(司机大力) → 门总3帧
+  #   内收扭矩到0(Act保持1) → EPS自己退0xF8 → 40-140ms重激活 → 280ms恢复到0xFA。从不锁死。
+  # 【我们00000054实证】: 0xFB+OP=-201 → 不收扭矩 → |OP-MTq|>150 → panda safety block →
+  #   controlsMismatch → TorqueFailed。根因是Prep时扭矩没收, panda安全层收刀。
+  # 【v5修复】SOFT保留(Prep>=2帧按速率平滑收扭矩到0, 保持Act=1, EPS自己决定退不退出);
+  #   FULL-EXIT彻底移除(不设Act=0, 不设eps_exit_wait, 不等Prep落回, 不卡重握手)。
+  #   门总做法就是LOCK3 SOFT去掉FULL-EXIT, 分毫不差。
+  LOCK3_ENABLE = True
+  LOCK3_PREP_HOLD_FRAMES = 2   # Prep>=2帧触发SOFT收扭矩(去抖, 防单帧误触)
+  LOCK3_FULL_EXIT_FRAMES = 999 # 永不触发(保留参数, 代码里砍掉了full-exit逻辑)
 
   # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
   # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):

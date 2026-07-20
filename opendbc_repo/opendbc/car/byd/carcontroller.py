@@ -284,12 +284,11 @@ class CarController(CarControllerBase):
           else:
             self.eps_prepared_hold = 0
 
-          # LOCK3 已彻底停用 (LOCK3_ENABLE=False, 见 values.py 详细说明)。
-          # can_full_00000047 数据证明: LOCK3 把"握手中正常的 Prepared=1"误判为"EPS要退出",
-          # 累加到8帧就 full-exit(lkas_active=0)+eps_exit_wait=True, 打断握手 -> 无限振荡 + 永久
-          # 卡死(取消ACC无效, 只能离线/在线)。门总从不响应 Prepared(接管中0个事件), 握手切Act=1
-          # 后死保持(中位95帧)直到 Cru=1。故完全移除对 Prepared 的响应, 对齐门总。
-          if CarControllerParams.LOCK3_ENABLE:  # 恒False, 保留结构便于回溯; 不再执行
+          # LOCK3 v5: 仅SOFT收扭矩 (对齐门总 Seg18 逐帧实证)
+          # 门总遇到0xFB(Prep=1+Cru=1)时: 3帧内收扭矩到0(Act保持1) → EPS自己退 → 280ms恢复。
+          # 我们00000054: 0xFB+OP=-201不收扭矩 → |OP-MTq|>150 → panda safety block → 锁死。
+          # v5修复: Prep≥2帧按速率平滑收扭矩(保持Act=1), 不做full-exit(不设Act=0/不卡握手)。
+          if CarControllerParams.LOCK3_ENABLE:
             lock3_soft = self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES
             if lock3_soft:
               apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
@@ -297,11 +296,7 @@ class CarController(CarControllerBase):
               self.steer_softstart_limit = 0
               self.steerRateLimActive = False
               self.steerRateLim = 1.0
-              if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
-                apply_torque = 0
-                self.lkas_active = 0
-                self.lkas_req_prepare = 0
-                self.eps_exit_wait = True
+              # FULL-EXIT 已移除 (LOCK3_FULL_EXIT_FRAMES=999永不触发)。门总不收Act, 只收扭矩。
 
         else:
           # 握手逻辑 (对齐门总, 笔记12/19章验证): 见 EPS Prepared=1 即切 Act=1, 从0软起(每帧+16),
