@@ -21,7 +21,28 @@ class CarControllerParams:
   LOWSPEED_TQ_BP = [0.83, 1.4, 2.8]      # m/s  (≈3, 5, 10 km/h) [保留参数, 未启用]
   LOWSPEED_TQ_V  = [150, 170, STEER_MAX]
 
-  STEER_DRIVER_ALLOWANCE = 68
+  # STEER_DRIVER_ALLOWANCE: 驾驶员反向手力"免费额度"。手力超过它, apply_driver_steer_torque_limits
+  # 就把 OP 扭矩上限按 (|DrvTq|-allowance)*MULT 压低。
+  # 【20260720 实测门总反推, 68->300】此前 68 是"司机反向对抗型锁死"的总根因:
+  #   司机反向掰(DrvTq)超过68后, OP扭矩被渐进压低; 掰到~150+时 OP 被压塌到 0 -> EPS电机MainTq
+  #   也塌到 0 -> EPS 看到"active却不出力" -> 发 Prepared -> 卡住不落回 -> TorqueFailed 锁死。
+  #   (00000056 实证: DrvTq 120-180 时 OP 塌到~30、Prep占39%; DrvTq>180 时 OP=0、Prep占75%。)
+  # 【门总实测 allowance≈294≈300】反解门总 00000006 Seg16/17 高对抗帧(司机掰到-314~-331, OP仍
+  #   保持182~241且MainTq紧跟), 反解 allowance 高度集中在 292-298 (n多帧一致):
+  #     Seg17 OP=241 DrvTq=-314 MainTq=221 -> allow=314-(300-241)/3≈294
+  #     Seg16 OP=200 DrvTq=-331 MainTq=206 -> allow≈298
+  #   即门总把 allowance 设成 ~STEER_MAX(300), driver限幅几乎禁用: 司机反向掰到300以内 OP 全力顶
+  #   不塌, MainTq 一直跟随, EPS 从不判失效 -> 门总接管中永不发 Prepared -> 永不锁死。
+  # 【效果】allowance=300 从源头切断"OP被压塌->MainTq塌->Prepared->锁死"主链:
+  #   反向对抗时 OP 不塌(00000056锁死峰值DrvTq=235, allow=300时OP正向上限仍+195>0, 不塌到0)。
+  #   手感对齐门总: 时刻全力掌控方向盘, 不因你掰而卸力 = 真正的"人和OP对抗"。
+  # 【离手/接管】steeringPressed(DrvTq>59持续5帧) 独立判定"手在方向盘上"(过离手检查、不退出横向);
+  #   allowance 不影响它。司机想把车带向自己方向 = 用手力持续对抗, 车会缓慢朝受力方向偏(driver
+  #   限幅的让步), 但横向全程不退出 —— 这正是用户要的行为。
+  # 【panda】BYD safety 是 TorqueMotorLimited(byd.h), 只查 |OP-MainTq|<=150, 无 driver_torque
+  #   限幅字段, 故 allowance 纯 Python 层, panda 无需改/刷。allowance=300 后 OP 不塌、MainTq 跟随,
+  #   |OP-MainTq| 偏差反而更小(门总实测<20), 不撞 panda 的 150。
+  STEER_DRIVER_ALLOWANCE = 300    # 68->300, 对齐门总实测(≈294), 反向对抗不压塌OP, 根治对抗型锁死
   STEER_DRIVER_MULTIPLIER = 3
   STEER_DRIVER_FACTOR = 1
   STEER_ERROR_MAX = 50            # match 0.98 reference
