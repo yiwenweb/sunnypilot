@@ -249,6 +249,13 @@ void HudRendererSP::updateState(const UIState &s) {
     // 转向灯呼吸脉冲（时间驱动）
     turnSignalPulse.setTarget(0.5f + 0.5f * std::sin(millis_since_boot() * 0.008f));
     turnSignalPulse.update();
+
+    // P2: 转向弧颜色平滑过渡
+    bool arc_active = latActive && !steerOverride;
+    smoothArcColor.setTarget(arc_active ? SPColor::ArcActive : SPColor::ArcInactive);
+    smoothArcColor.update();
+    smoothArcDiamondColor.setTarget(arc_active ? SPColor::ArcActive : SPColor::withAlpha(SPColor::Neutral, 216));
+    smoothArcDiamondColor.update();
   }
 }
 
@@ -477,6 +484,17 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
       fill_y = center_y;
     }
 
+    // P2: 微光脉冲边缘（高加速度时发光）
+    if (abs_ratio > 0.5f) {
+      float glow_intensity = (abs_ratio - 0.5f) * 2.0f;  // 0~1
+      QColor glow_color = SPColor::withAlpha(color, (int)(40 * glow_intensity));
+      p.setPen(Qt::NoPen);
+      p.setBrush(glow_color);
+      int glow_expand = 4;
+      p.drawRoundedRect(track_x + 4 - glow_expand, fill_y - glow_expand,
+                        bar_width - 8 + glow_expand * 2, fill_height + glow_expand * 2, 8, 8);
+    }
+
     p.setPen(Qt::NoPen);
     p.setBrush(color);
     p.drawRoundedRect(track_x + 4, fill_y, bar_width - 8, fill_height, 6, 6);
@@ -527,7 +545,9 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
     QRectF stem(-dir * arrow_size * 0.6, -arrow_size * 0.15,
                 arrow_size * 0.6, arrow_size * 0.3);
 
-    p.setBrush(SPColor::withAlpha(SPColor::TurnSignal, (int)(220 * alpha)));
+    // P2: 箭头本体也叠加脉冲亮度
+    int arrow_alpha = (int)(220 * alpha * (0.85f + 0.15f * pulse));
+    p.setBrush(SPColor::withAlpha(SPColor::TurnSignal, arrow_alpha));
     p.drawPath(arrow);
     p.drawRoundedRect(stem, 3, 3);
 
@@ -752,18 +772,15 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
 
   // Tick marks removed
 
-  // MICI-style gradient fill: white at center → yellow at 75% → orange at 100%
+  // P2: 平滑颜色过渡 + 角度渐变
   {
     float abs_ratio = std::abs(clamped_angle) / max_angle;
     float yellow_t = std::clamp((abs_ratio - 0.75f) * 4.0f, 0.0f, 1.0f);
 
-    QColor fill_color;
-    if (is_active) {
-      // White → yellow → orange gradient
-      fill_color = SPColor::lerp(SPColor::ArcActive, SPColor::Warning, yellow_t);
-    } else {
-      fill_color = SPColor::ArcInactive;
-    }
+    // 基础色（平滑过渡后的激活/非激活色）
+    QColor base_color = smoothArcColor.color();
+    // 角度渐变（在基础色上叠加黄色/橙色偏移）
+    QColor fill_color = is_active ? SPColor::lerp(base_color, SPColor::Warning, yellow_t) : base_color;
 
     if (std::abs(clamped_angle) > 1.f) {
       // Dynamic line width（厚度-5%：39→37，21→20）
@@ -786,7 +803,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
             << QPoint(mx, my + 14)
             << QPoint(mx - 11, my);
     p.setPen(Qt::NoPen);
-    p.setBrush(is_active ? SPColor::ArcActive : SPColor::withAlpha(SPColor::Neutral, 216));
+    p.setBrush(smoothArcDiamondColor.color());
     p.drawPolygon(diamond);
   }
 

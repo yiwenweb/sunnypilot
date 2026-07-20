@@ -141,4 +141,8 @@ private:
   SmoothValue speedLimitOpacity{0.15f};
   // 转向灯呼吸脉冲
   SmoothValue turnSignalPulse{0.08f};
+
+  // ===== P2: 转向弧颜色平滑过渡 =====
+  SmoothColor smoothArcColor{0.15f};
+  SmoothColor smoothArcDiamondColor{0.15f};
 };
