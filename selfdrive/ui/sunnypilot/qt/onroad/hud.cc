@@ -940,13 +940,31 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   p.setBrush(Qt::NoBrush);
   p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
 
-  // Timer icon (⏱)
-  p.setFont(SPFont::timerIcon());
-  p.setPen(SPColor::TimerIcon);
-  QFontMetrics icon_fm(p.font());
-  QRect icon_rect = icon_fm.boundingRect("⏱");
-  icon_rect.moveCenter(QPoint(cx, cy - 120));
-  p.drawText(icon_rect, Qt::AlignCenter, "⏱");
+  // Timer icon（矢量绘制，替代 emoji 模糊渲染）
+  {
+    const int icon_size = 152;
+    const int icon_cx = cx;
+    const int icon_cy = cy - 120;
+    const int r = icon_size / 2;
+
+    p.setPen(QPen(SPColor::TimerIcon, 8));
+    p.setBrush(Qt::NoBrush);
+
+    // 外圈
+    p.drawEllipse(QPoint(icon_cx, icon_cy), r - 8, r - 8);
+
+    // 顶部按钮
+    p.drawLine(icon_cx, icon_cy - r + 4, icon_cx, icon_cy - r + 20);
+    p.drawLine(icon_cx - 12, icon_cy - r + 4, icon_cx + 12, icon_cy - r + 4);
+
+    // 右侧按钮
+    p.drawLine(icon_cx + r - 16, icon_cy, icon_cx + r - 4, icon_cy);
+
+    // 指针（指向 12 点和 4 点方向）
+    p.setPen(QPen(SPColor::TimerIcon, 6, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(icon_cx, icon_cy, icon_cx, icon_cy - r + 28);           // 分针（上）
+    p.drawLine(icon_cx, icon_cy, icon_cx + r / 2 - 10, icon_cy + r / 3); // 时针（右下）
+  }
 
   // Time text
   p.setFont(SPFont::timerTime());
