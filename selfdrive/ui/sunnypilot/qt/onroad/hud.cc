@@ -8,6 +8,8 @@
 #include "selfdrive/ui/sunnypilot/qt/onroad/hud.h"
 
 #include "selfdrive/ui/qt/util.h"
+#include "selfdrive/ui/sunnypilot/qt/onroad/ui_colors.h"
+#include "selfdrive/ui/sunnypilot/qt/onroad/ui_typography.h"
 
 
 HudRendererSP::HudRendererSP() : debugPlotsEnabled(false) {}
@@ -246,7 +248,7 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     if (devUiInfo == 2) {
       QRect rect_bottom(surface_rect.left(), surface_rect.bottom() - 60, surface_rect.width(), 61);
       p.setPen(Qt::NoPen);
-      p.setBrush(QColor(0, 0, 0, 100));
+      p.setBrush(SPColor::DevUiBg);
       p.drawRect(rect_bottom);
       drawBottomDevUI(p, rect_bottom.left(), rect_bottom.center().y());
     }
@@ -268,16 +270,16 @@ void HudRendererSP::drawText(QPainter &p, int x, int y, const QString &text, QCo
 
 int HudRendererSP::drawRightDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color) {
 
-  p.setFont(InterFont(28, QFont::Bold));
+  p.setFont(SPFont::devUiLabel());
   x += 92;
   y += 80;
   drawText(p, x, y, label);
 
-  p.setFont(InterFont(30 * 2, QFont::Bold));
+  p.setFont(SPFont::devUiValue());
   y += 55;
   drawText(p, x, y, value, color);
 
-  p.setFont(InterFont(28, QFont::Bold));
+  p.setFont(SPFont::devUiLabel());
 
   if (units.length() > 0) {
     p.save();
@@ -321,7 +323,7 @@ void HudRendererSP::drawRightDevUI(QPainter &p, int x, int y) {
 }
 
 int HudRendererSP::drawBottomDevUIElement(QPainter &p, int x, int y, const QString &value, const QString &label, const QString &units, QColor &color) {
-  p.setFont(InterFont(38, QFont::Bold));
+  p.setFont(SPFont::bottomDevUi());
   QFontMetrics fm(p.font());
   QRect init_rect = fm.boundingRect(label + " ");
   QRect real_rect = fm.boundingRect(init_rect, 0, label + " ");
@@ -393,12 +395,12 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
 
   // Background track
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor(0, 0, 0, 100));
+  p.setBrush(SPColor::BgL3);
   p.drawRoundedRect(track_x, track_y, bar_width, bar_height, bar_width / 2, bar_width / 2);
 
   // Center zero line
   int center_y = track_y + bar_height / 2;
-  p.setPen(QPen(QColor(255, 255, 255, 70), 1));
+  p.setPen(QPen(SPColor::withAlpha(SPColor::TextPrimary, 70), 1));
   p.drawLine(track_x + 4, center_y, track_x + bar_width - 4, center_y);
 
   // Filled portion with MICI-style gradient
@@ -411,20 +413,16 @@ void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
     int fill_y;
 
     if (accel_val >= 0) {
-      // Accel: MICI gradient white → green → yellow at high accel
+      // Accel: green → yellow at high accel
       float yellow_t = std::clamp((abs_ratio - 0.75f) * 4.0f, 0.0f, 1.0f);
-      int r = (int)(255.0f * (1.0f - yellow_t * 0.2f));
-      int g = (int)(140.0f + 115.0f * (1.0f - yellow_t * 0.7f));
-      int b = (int)(80.0f * (1.0f - yellow_t));
-      color = QColor(r, g, b, 200);
+      color = SPColor::lerp(SPColor::AccelGreen, SPColor::AccelYellow, yellow_t);
+      color.setAlpha(200);
       fill_y = center_y - fill_height;
     } else {
-      // Decel: MICI gradient red → orange
+      // Decel: red → orange at high decel
       float orange_t = std::clamp((abs_ratio - 0.75f) * 4.0f, 0.0f, 1.0f);
-      int r = 220 + (int)(35.0f * orange_t);
-      int g = (int)(55.0f * (1.0f - orange_t * 0.8f));
-      int b = (int)(55.0f * (1.0f - orange_t));
-      color = QColor(r, g, b, 200);
+      color = SPColor::lerp(SPColor::DecelRed, SPColor::DecelOrange, orange_t);
+      color.setAlpha(200);
       fill_y = center_y;
     }
 
@@ -449,7 +447,7 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
     p.setPen(Qt::NoPen);
 
     // Glow background (fades with alpha)
-    p.setBrush(QColor(0, 220, 80, (int)(60 * alpha)));
+    p.setBrush(SPColor::withAlpha(SPColor::TurnSignalGlow, (int)(60 * alpha)));
     p.drawEllipse(QPoint(cx, cy), arrow_size, arrow_size * 2 / 3);
 
     // MICI-style: slight rotation pop-in (0 → 30° fade in)
@@ -474,7 +472,7 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
     QRectF stem(-dir * arrow_size * 0.6, -arrow_size * 0.15,
                 arrow_size * 0.6, arrow_size * 0.3);
 
-    p.setBrush(QColor(0, 255, 90, (int)(220 * alpha)));
+    p.setBrush(SPColor::withAlpha(SPColor::TurnSignal, (int)(220 * alpha)));
     p.drawPath(arrow);
     p.drawRoundedRect(stem, 3, 3);
 
@@ -508,61 +506,57 @@ void HudRendererSP::drawACCSetSpeedBox(QPainter &p, const QRect &surface_rect) {
   QString setSpeedStr = is_cruise_set ? QString::number(std::nearbyint(set_speed)) : QString::fromUtf8("–");
   
   // 计算 MAX 和设定速度颜色
-  QColor max_color = QColor(0xa6, 0xa6, 0xa6, 0xff);
-  QColor set_speed_color = QColor(0x72, 0x72, 0x72, 0xff);
-  
+  QColor max_color = SPColor::MaxDefault;
+  QColor set_speed_color = SPColor::SetSpeedUnset;
+
   if (is_cruise_set) {
-    set_speed_color = QColor(255, 255, 255);
-    
+    set_speed_color = SPColor::TextPrimary;
+
     // 超速颜色逻辑（speedLimitColorMAX 参数控制）
     if (speedLimitEnabled && speedLimitValid && speedLimitColorMAX) {
       int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
       float speed_over = speed - limit_kmh;
-      
+
       if (speed_over <= 0) {
-        // 未超速：绿色
-        max_color = QColor(0x80, 0xd8, 0xa6);
+        max_color = SPColor::Success;            // 未超速
       } else if (speed_over <= speedLimitWarnThreshold) {
-        // 轻微超速（+0 ~ +10）：白色
-        max_color = QColor(255, 255, 255);
+        max_color = SPColor::TextPrimary;        // 轻微超速
       } else if (speed_over <= speedLimitDangerThreshold) {
-        // 中度超速（+10 ~ +20）：橙色
-        max_color = QColor(255, 165, 0);
+        max_color = SPColor::Warning;            // 中度超速
       } else {
-        // 严重超速（+20 以上）：红色
-        max_color = QColor(255, 60, 60);
+        max_color = SPColor::Danger;             // 严重超速
       }
     } else {
       // 无限速数据：原有逻辑
       if (status == STATUS_DISENGAGED) {
-        max_color = QColor(255, 255, 255);
+        max_color = SPColor::MaxDisengaged;
       } else if (status == STATUS_OVERRIDE) {
-        max_color = QColor(0x91, 0x9b, 0x95, 0xff);
+        max_color = SPColor::MaxOverride;
       } else {
-        max_color = QColor(0x80, 0xd8, 0xa6, 0xff);
+        max_color = SPColor::MaxEngaged;
       }
     }
   }
   
   p.save();
-  
+
   // 方框背景
-  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
-  p.setBrush(QColor(0, 0, 0, 166));
+  p.setPen(QPen(SPColor::HudBgBorder, 6));
+  p.setBrush(SPColor::HudBg);
   p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), box_radius, box_radius);
-  
+
   // "MAX" 标签
-  p.setFont(InterFont(40, QFont::DemiBold));
+  p.setFont(SPFont::hudSetSpeedLabel());
   p.setPen(max_color);
   QRect max_rect(box_x, box_y + 27, box_size.width(), 40);
   p.drawText(max_rect, Qt::AlignTop | Qt::AlignHCenter, tr("MAX"));
-  
+
   // 设定速度数字
-  p.setFont(InterFont(90, QFont::Bold));
+  p.setFont(SPFont::hudSetSpeed());
   p.setPen(set_speed_color);
   QRect speed_rect(box_x, box_y + 77, box_size.width(), 90);
   p.drawText(speed_rect, Qt::AlignTop | Qt::AlignHCenter, setSpeedStr);
-  
+
   p.restore();
 }
 
@@ -600,19 +594,19 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
     int cache_cy = circle_r + 10;
     
     // 外圈（红色边框，维也纳公约标准）
-    cache_p.setPen(QPen(QColor(220, 30, 30), border_width));
+    cache_p.setPen(QPen(SPColor::SpeedLimit, border_width));
     cache_p.setBrush(Qt::NoBrush);
     cache_p.drawEllipse(QPoint(cache_cx, cache_cy), circle_r, circle_r);
-    
+
     // 内圈（白色背景）
     cache_p.setPen(Qt::NoPen);
-    cache_p.setBrush(QColor(255, 255, 255, 250));
+    cache_p.setBrush(SPColor::SpeedLimitBg);
     int inner_r = circle_r - border_width - 2;
     cache_p.drawEllipse(QPoint(cache_cx, cache_cy), inner_r, inner_r);
-    
-    // 限速数字（黑色，60pt）
-    cache_p.setPen(QColor(30, 30, 30));
-    cache_p.setFont(InterFont(60, QFont::Bold));
+
+    // 限速数字（黑色）
+    cache_p.setPen(SPColor::SpeedLimitText);
+    cache_p.setFont(SPFont::speedLimitNumber());
     QString limit_text = QString::number(limit_kmh);
     QRect text_rect(cache_cx - circle_r, cache_cy - 30, circle_d, 60);
     cache_p.drawText(text_rect, Qt::AlignCenter, limit_text);
@@ -622,17 +616,17 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
     if (speedLimitAheadValid) {
       int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
       bool is_decreasing = ahead_kmh < limit_kmh;
-      QColor label_color = is_decreasing ? QColor(255, 180, 60) : QColor(120, 200, 255);
+      QColor label_color = is_decreasing ? SPColor::AheadDecrease : SPColor::AheadIncrease;
       QString arrow = is_decreasing ? "▼" : "▲";
-      
+
       cache_p.setPen(label_color);
-      cache_p.setFont(InterFont(26, QFont::Bold));
+      cache_p.setFont(SPFont::speedLimitAhead());
       QString ahead_text = QString("%1 %2").arg(arrow).arg(ahead_kmh);
       QRect ahead_rect(cache_cx - 60, label_y, 120, 30);
       cache_p.drawText(ahead_rect, Qt::AlignCenter, ahead_text);
     } else {
-      cache_p.setPen(QColor(180, 180, 180, 200));
-      cache_p.setFont(InterFont(20, QFont::Medium));
+      cache_p.setPen(SPColor::withAlpha(SPColor::TextSecondary, 200));
+      cache_p.setFont(SPFont::speedLimitLabel());
       QRect label_rect(cache_cx - 40, label_y, 80, 24);
       cache_p.drawText(label_rect, Qt::AlignCenter, "LIMIT");
     }
@@ -652,11 +646,11 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(255, 200, 60, 200));
+    p.setBrush(SPColor::withAlpha(SPColor::Warning, 200));
     p.drawEllipse(QPoint(icon_x, icon_y), 10, 10);
-    
-    p.setPen(QColor(60, 60, 60));
-    p.setFont(InterFont(14, QFont::Bold));
+
+    p.setPen(SPColor::SpeedLimitText);
+    p.setFont(SPFont::bold(14));
     p.drawText(QRect(icon_x - 10, icon_y - 7, 20, 14), Qt::AlignCenter, "?");
     p.restore();
   }
@@ -667,8 +661,8 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
   int y = surface_rect.top() + 24;
 
   p.save();
-  p.setFont(InterFont(56, QFont::Normal));
-  p.setPen(QColor(255, 255, 255, 180));
+  p.setFont(SPFont::roadName());
+  p.setPen(SPColor::TextGhost);
 
   QString displayName = roadName;
   QFontMetrics fm(p.font());
@@ -708,7 +702,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   p.setRenderHint(QPainter::Antialiasing);
 
   // Background arc（厚度-5%：36→34）
-  p.setPen(QPen(QColor(255, 255, 255, 45), 34));
+  p.setPen(QPen(SPColor::ArcBackground, 34));
   p.setBrush(Qt::NoBrush);
   p.drawArc(arc_rect, (90 - half_span) * 16, (half_span * 2) * 16);
 
@@ -721,11 +715,10 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
 
     QColor fill_color;
     if (is_active) {
-      int g = (int)(255.0f * (1.0f - yellow_t * 0.55f));
-      int b = (int)(255.0f * (1.0f - yellow_t));
-      fill_color = QColor(255, g, b, 255);
+      // White → yellow → orange gradient
+      fill_color = SPColor::lerp(SPColor::ArcActive, SPColor::Warning, yellow_t);
     } else {
-      fill_color = QColor(180, 180, 180, 240);
+      fill_color = SPColor::ArcInactive;
     }
 
     if (std::abs(clamped_angle) > 1.f) {
@@ -749,7 +742,7 @@ void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
             << QPoint(mx, my + 14)
             << QPoint(mx - 11, my);
     p.setPen(Qt::NoPen);
-    p.setBrush(is_active ? QColor(255, 255, 255, 255) : QColor(200, 200, 200, 216));
+    p.setBrush(is_active ? SPColor::ArcActive : SPColor::withAlpha(SPColor::Neutral, 216));
     p.drawPolygon(diamond);
   }
 
@@ -776,23 +769,23 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
                        const DebugPlotHistory* h1 = nullptr, QColor c1 = {}) {
     // Panel background
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0, 0, 0, 150));
+    p.setBrush(SPColor::DebugPlotBg);
     p.drawRoundedRect(panel_x, y, PANEL_W, PANEL_H, 10, 10);
 
     // Title (top-left, larger)
-    p.setFont(InterFont(28, QFont::Normal));
-    p.setPen(QColor(200, 200, 200, 180));
+    p.setFont(SPFont::debugPlotTitle());
+    p.setPen(SPColor::PlotLabel);
     p.drawText(QRect(panel_x + 10, y + 4, PANEL_W - 20, 28), Qt::AlignLeft | Qt::AlignVCenter, title);
 
     // Y-axis labels
-    p.setFont(InterFont(24, QFont::Normal));
-    p.setPen(QColor(180, 180, 180, 150));
+    p.setFont(SPFont::debugPlotAxis());
+    p.setPen(SPColor::PlotAxis);
     p.drawText(QRect(panel_x + 4, y + 32, LABEL_W, 26), Qt::AlignRight, QString::number(y_max, 'f', 1));
     p.drawText(QRect(panel_x + 4, y + PANEL_H - 32, LABEL_W, 26), Qt::AlignRight, QString::number(y_min, 'f', 1));
 
     // Unit
-    p.setFont(InterFont(20, QFont::Normal));
-    p.setPen(QColor(160, 160, 160, 140));
+    p.setFont(SPFont::debugPlotUnit());
+    p.setPen(SPColor::PlotUnit);
     p.drawText(QRect(panel_x + 4, y + PANEL_H / 2 - 12, LABEL_W, 24), Qt::AlignRight, unit);
 
     // Plot area
@@ -809,7 +802,7 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
     double zero_norm = -y_min / (y_max - y_min);
     int zero_y = plot_y + plot_h - (int)(zero_norm * plot_h);
     if (y_min < 0 && y_max > 0) {
-      p.setPen(QPen(QColor(255, 255, 255, 60), 2, Qt::DashLine));
+      p.setPen(QPen(SPColor::PlotGrid, 2, Qt::DashLine));
       p.drawLine(plot_x, zero_y, plot_x + plot_w, zero_y);
     }
 
@@ -839,23 +832,23 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
 
   // Panel 1: 转向角 Steering Angle
   drawPanel(cur_y, "转向角", "°", -100.f, 100.f,
-            steerHistory, QColor(80, 160, 255),
-            &steerDesHistory, QColor(80, 255, 140));
+            steerHistory, SPColor::PlotBlue,
+            &steerDesHistory, SPColor::PlotGreen);
   cur_y += PANEL_H + 12;
 
   // Panel 2: 速度 Speed
   drawPanel(cur_y, "速度", "km/h", 0.f, 160.f,
-            speedHistory, QColor(80, 160, 255));
+            speedHistory, SPColor::PlotBlue);
   cur_y += PANEL_H + 12;
 
   // Panel 3: 加速度 Acceleration
   drawPanel(cur_y, "加速度", "m/s²", -3.f, 3.f,
-            accelHistory, QColor(80, 160, 255));
+            accelHistory, SPColor::PlotBlue);
   cur_y += PANEL_H + 12;
 
   // Panel 4: EPS扭矩
   drawPanel(cur_y, "EPS扭矩", "", -3000.f, 3000.f,
-            torqueHistory, QColor(255, 180, 60));
+            torqueHistory, SPColor::PlotOrange);
 }
 
 
@@ -873,20 +866,20 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   // Circular background
   p.save();
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor(0, 0, 0, 160));
+  p.setBrush(SPColor::BgL2);
   p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
 
   // Timer icon (⏱)
-  p.setFont(InterFont(152, QFont::Normal));
-  p.setPen(QColor(255, 255, 255, 180));
+  p.setFont(SPFont::timerIcon());
+  p.setPen(SPColor::TimerIcon);
   QFontMetrics icon_fm(p.font());
   QRect icon_rect = icon_fm.boundingRect("⏱");
   icon_rect.moveCenter(QPoint(cx, cy - 120));
   p.drawText(icon_rect, Qt::AlignCenter, "⏱");
 
   // Time text
-  p.setFont(InterFont(176, QFont::Bold));
-  p.setPen(QColor(100, 220, 255, 255));
+  p.setFont(SPFont::timerTime());
+  p.setPen(SPColor::TimerText);
   QFontMetrics fm(p.font());
   QRect time_rect = fm.boundingRect(time);
   time_rect.moveCenter(QPoint(cx, cy + 110));
@@ -903,8 +896,8 @@ void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
   const int box_y = 400;  // 紧贴在限速一体化方框下方 (375 + 25 gap)
 
   // Draw box
-  p.setPen(QPen(QColor(255, 255, 255, 75), 6));
-  p.setBrush(QColor(0, 0, 0, 166));
+  p.setPen(QPen(SPColor::HudBgBorder, 6));
+  p.setBrush(SPColor::HudBg);
   p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), 32, 32);
 
   int cx = box_x + box_size.width() / 2;
@@ -912,35 +905,35 @@ void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
 
   // Line 1: 左边 <value>m
   QString left_lbl = tr("左边");
-  p.setFont(InterFont(30, QFont::Normal));
+  p.setFont(SPFont::dataLabel());
   int lbl_w = p.fontMetrics().horizontalAdvance(left_lbl);
   QString left_str = (leftLaneDist != 0.0f) ? QString::number(std::fabs(leftLaneDist), 'f', 2) + "m" : "-";
-  p.setFont(InterFont(42, QFont::Bold));
+  p.setFont(SPFont::dataValue());
   int val_w = p.fontMetrics().horizontalAdvance(left_str);
   int total_w = lbl_w + gap + val_w;
   int start_x = cx - total_w / 2;
   int line1_y = box_y + 72;
-  p.setFont(InterFont(30, QFont::Normal));
-  p.setPen(QColor(160, 200, 255, 230));
+  p.setFont(SPFont::dataLabel());
+  p.setPen(SPColor::LaneLeft);
   p.drawText(start_x, line1_y, left_lbl);
-  p.setFont(InterFont(42, QFont::Bold));
-  p.setPen(Qt::white);
+  p.setFont(SPFont::dataValue());
+  p.setPen(SPColor::TextPrimary);
   p.drawText(start_x + lbl_w + gap, line1_y, left_str);
 
   // Line 2: 右边 <value>m
   QString right_lbl = tr("右边");
-  p.setFont(InterFont(30, QFont::Normal));
+  p.setFont(SPFont::dataLabel());
   int lbl2_w = p.fontMetrics().horizontalAdvance(right_lbl);
   QString right_str = (rightLaneDist != 0.0f) ? QString::number(std::fabs(rightLaneDist), 'f', 2) + "m" : "-";
-  p.setFont(InterFont(42, QFont::Bold));
+  p.setFont(SPFont::dataValue());
   int val2_w = p.fontMetrics().horizontalAdvance(right_str);
   int total2_w = lbl2_w + gap + val2_w;
   int start2_x = cx - total2_w / 2;
   int line2_y = box_y + 152;
-  p.setFont(InterFont(30, QFont::Normal));
-  p.setPen(QColor(160, 255, 180, 230));
+  p.setFont(SPFont::dataLabel());
+  p.setPen(SPColor::LaneRight);
   p.drawText(start2_x, line2_y, right_lbl);
-  p.setFont(InterFont(42, QFont::Bold));
-  p.setPen(Qt::white);
+  p.setFont(SPFont::dataValue());
+  p.setPen(SPColor::TextPrimary);
   p.drawText(start2_x + lbl2_w + gap, line2_y, right_str);
 }

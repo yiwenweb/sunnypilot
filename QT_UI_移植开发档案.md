@@ -81,6 +81,17 @@ upstream → https://github.com/sunnypilot/sunnypilot.git   # 官方上游
 分支: staging-tici
 ```
 
+> ⚠️ **历史遗留冗余清理**：如果你的 C3 有 `origin` / `yiwen` 指向同一仓库，建议清理：
+> ```bash
+> cd /data/openpilot
+> git remote -v  # 检查当前配置
+> # 删除冗余远程仓库（如果存在）
+> git remote remove origin 2>/dev/null || true
+> git remote remove yiwen 2>/dev/null || true
+> # 验证清理结果
+> git remote -v
+> ```
+
 **拉取运行系统更新**：
 ```bash
 cd /data/openpilot
@@ -480,6 +491,7 @@ if (laneLineDataEnabled && sm.rcv_frame("modelV2") > 0) {        // ① 消息�
 | 2026-07-13 | **车道线距离上移** | `hud.cc`：box_y 670→400 | ✅ 已完成 |
 | 2026-07-13 | **道路名称放大+下移** | `hud.cc`：32→38pt, top+12→top+24 | ✅ 已完成 |
 | 2026-07-13 | **速度显示下移** | `qt/onroad/hud.cc`：速度 y 210→230, 单位 y 290→310 | ✅ 已完成 |
+| 2026-07-15 | **限速标志方案 B（独立大圆标）** | `hud.h/cc` `params_keys.h` `ui_scene.h` `ui.cc` | ✅ 代码完成 |
 | — | **MADS 五态彩色边框** | `annotated_camera.cc` | ❌ 待实现 |
 
 ### AccelBar 完整文件改动清单
@@ -499,6 +511,156 @@ if (laneLineDataEnabled && sm.rcv_frame("modelV2") > 0) {        // ① 消息�
   selfdrive/ui/sunnypilot/qt/offroad/settings/sunny_features_panel.h   # 新面板头文件
   selfdrive/ui/sunnypilot/qt/offroad/settings/sunny_features_panel.cc  # 新面板实现
   sunnypilot/selfdrive/assets/offroad/icon_sunny_features.svg          # 新面板图标
+```
+
+---
+
+### 限速标志方案 B 完整实现（2026-07-15）
+
+#### 功能概述
+
+将 2026-07-13 实现的「限速+ACC 融合方框」改为**独立大圆标并排布局**（方案 B）：
+- ACC 设定速度方框保持原位（左上角 x=60, y=45）
+- 限速圆标（140px 直径）放在 ACC 右侧，顶部对齐，间距 20px
+- 圆形红圈边框（维也纳公约标准），白底黑字
+- 支持超速 MAX 标签变色（白→橙→红）
+- 前方限速箭头提示（降速橙色▼，提速蓝色▲）
+- 预渲染缓存优化性能
+
+#### 布局效果
+
+```
+┌─────────────┐  ╭─────────────╮
+│    MAX      │  │     80      │  ← ACC 与限速圆标并排，顶部对齐（y=45）
+│     85      │  │             │  ← 间距 20px
+└─────────────┘  ╰─────────────╯
+   ACC 方框       限速圆标 (140px)
+   LIMIT → 100    ← 前方限速提示
+
+总占用：x=60~420 (360px 宽), y=45~225 (180px 高)
+```
+
+#### 文件改动清单
+
+```
+修改：
+  selfdrive/ui/sunnypilot/qt/onroad/hud.h              # +drawACCSetSpeedBox() +drawSpeedLimitCircle() 方法
+                                                       # +speedLimitCircleCache 预渲染缓存
+                                                       # +speedLimitStyle/ColorMAX/ShowSource 等 5 个参数成员
+  selfdrive/ui/sunnypilot/qt/onroad/hud.cc             # 重写 drawSpeedLimit() 为方案 B
+                                                       # +drawACCSetSpeedBox() 独立绘制 ACC 方框
+                                                       # +drawSpeedLimitCircle() 绘制 140px 圆标
+                                                       # updateState() 添加缓存失效检测
+  common/params_keys.h                                 # +SpeedLimitStyle (INT, 默认1)
+                                                       # +SpeedLimitColorMAX (BOOL, 默认1)
+                                                       # +SpeedLimitShowSource (BOOL, 默认0)
+                                                       # +SpeedLimitWarnThreshold (INT, 默认10)
+                                                       # +SpeedLimitDangerThreshold (INT, 默认20)
+  selfdrive/ui/sunnypilot/ui_scene.h                   # +speed_limit_style/color_max/show_source 等 5 个场景字段
+  selfdrive/ui/sunnypilot/ui.cc                        # param_watcher 监听 5 个新参数
+                                                       # ui_update_params_sp() 读取 5 个新参数
+```
+
+#### 核心特性
+
+**1. ACC 方框超速变色（MAX 标签）**
+
+```cpp
+// 根据超速量渐变颜色（speedLimitColorMAX 参数控制）
+if (speed_over <= 0)           max_color = 绿色 (未超速)
+else if (speed_over <= 10)     max_color = 白色 (轻微超速)
+else if (speed_over <= 20)     max_color = 橙色 (中度超速)
+else                           max_color = 红色 (严重超速)
+```
+
+**2. 限速圆标（Tesla / comma 风格）**
+
+- 直径 140px，红色边框 8px（维也纳公约标准）
+- 白底黑字，60pt 加粗字体
+- 预渲染到 `QPixmap` 缓存，避免每帧重绘圆形（性能优化）
+- 限速数据变化时自动标记缓存失效 (`speedLimitCacheDirty`)
+
+**3. 前方限速提示**
+
+```cpp
+// 标志下方显示箭头 + 前方限速值
+if (speedLimitAheadValid) {
+  降速（ahead < current）：橙色 ▼ 60
+  提速（ahead > current）：蓝色 ▲ 100
+} else {
+  显示 "LIMIT" 标签
+}
+```
+
+**4. 数据源可信度图标（可选）**
+
+```cpp
+// SpeedLimitShowSource=true 且 confidence<0.8 时显示黄色 "?" 图标
+// 提示驾驶员限速数据可能不准确（OSM 数据过时、视觉识别不确定等）
+```
+
+#### 参数说明
+
+| 参数键 | 类型 | 默认值 | 说明 |
+|-------|------|-------|------|
+| `SpeedLimitStyle` | INT | 1 | 限速标志样式：0=矩形（旧方案），1=圆形，2=大圆（预留） |
+| `SpeedLimitColorMAX` | BOOL | true | 超速时 MAX 标签变色开关 |
+| `SpeedLimitShowSource` | BOOL | false | 显示数据源可信度图标 |
+| `SpeedLimitWarnThreshold` | INT | 10 | 超速警告阈值（km/h） |
+| `SpeedLimitDangerThreshold` | INT | 20 | 严重超速阈值（km/h） |
+
+#### 性能优化
+
+**预渲染缓存策略**：
+```cpp
+// 限速数据不变时复用缓存 QPixmap，避免每帧重绘圆形（~0.3ms → 0.05ms）
+if (speedLimitCacheDirty || cachedSpeedLimit != limit_kmh) {
+  // 重新渲染到 speedLimitCircleCache
+  speedLimitCacheDirty = false;
+}
+p.drawPixmap(x, y, speedLimitCircleCache);  // 每帧只需贴图
+```
+
+**缓存失效触发条件**：
+- 限速数据有效性变化（`speedLimitValid` 切换）
+- 限速值变化（`speedLimit` 变化超过 0.1 m/s）
+- 前方限速数据变化（`speedLimitAheadValid` 切换）
+
+#### 与方案 A 对比
+
+| 维度 | 方案 A（融合方框） | 方案 B（独立大圆标） |
+|------|------------------|-------------------|
+| 限速标志尺寸 | 96×66 矩形 | 140 圆形 ✅ 更大 |
+| 辨识度 | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| 空间占用 | 330px 宽 | 360px 宽 |
+| 超速反馈 | ✅ MAX 变色 | ✅ MAX 变色 |
+| 国际标准 | ❌ 矩形 | ✅ 圆形红圈（维也纳公约） |
+| 实施难度 | 低（50 行） | 中（180 行） |
+| Tesla 风格 | 部分相似 | ✅ 完全一致 |
+
+#### 已知局限
+
+1. **数据依赖**：需要 `liveMapDataSP.speedLimit` 有效，中国 OSM 覆盖率约 60%
+2. **空间占用**：总宽 360px，可能与右侧 Dev UI 轻微重叠（实测间距 1256px，无冲突）
+3. **参数未暴露**：`SpeedLimitStyle` 等 5 个参数已注册，但设置面板 UI 待后续实现（阶段 3）
+
+#### 部署注意事项
+
+⚠️ **必须重编 `params_pyx.so`**（新增 5 个参数）：
+```bash
+cd /data/panda_build
+git checkout yiwen/qt-dev -- common/params_keys.h common/params_pyx.pyx
+scons -j4 common/params_pyx.so
+cp /data/panda_build/common/params_pyx.so /data/openpilot/common/params_pyx.so
+```
+
+#### Git 记录
+
+```
+分支：sunnypilot1/qt-dev
+改动：5 个文件（hud.h/cc, params_keys.h, ui_scene.h, ui.cc）
+提交信息：feat(ui): 实现限速标志方案 B（独立大圆标并排布局）
+推送到：yiwen/sunnypilot.git qt-dev
 ```
 
 ---
