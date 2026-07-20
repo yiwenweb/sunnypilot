@@ -7,6 +7,19 @@
 
 #include "selfdrive/ui/sunnypilot/qt/onroad/model.h"
 
+#include "selfdrive/ui/sunnypilot/qt/onroad/ui_colors.h"
+
+ModelRendererSP::ModelRendererSP() {
+  initRainbowLUT();
+}
+
+void ModelRendererSP::initRainbowLUT() {
+  for (int i = 0; i < RAINBOW_LUT_SIZE; i++) {
+    float hue = i * 360.0f / RAINBOW_LUT_SIZE;
+    rainbowLUT[i] = QColor::fromHslF(hue / 360.0f, 0.9f, 0.6f);
+  }
+  rainbowLUTInitialized = true;
+}
 
 void ModelRendererSP::update_model(const cereal::ModelDataV2::Reader &model, const cereal::RadarState::LeadData::Reader &lead) {
   ModelRenderer::update_model(model, lead);
@@ -26,58 +39,65 @@ void ModelRendererSP::drawPath(QPainter &painter, const cereal::ModelDataV2::Rea
   auto &sm = *(s->sm);
   bool blindspot = Params().getBool("BlindSpot");
 
+  // P3: 盲点渐变缓存（几何变化时重建）
+  if (surface_rect != lastSurfaceRect) {
+    blindspotGradientDirty = true;
+    lastSurfaceRect = surface_rect;
+  }
+
   if (blindspot) {
     bool left_blindspot = sm["carState"].getCarState().getLeftBlindspot();
     bool right_blindspot = sm["carState"].getCarState().getRightBlindspot();
 
-    //painter.setBrush(QColor::fromRgbF(1.0, 0.0, 0.0, 0.4));  // Red with alpha for blind spot
+    if (blindspotGradientDirty) {
+      // 左盲点渐变：左橙右黄
+      leftBlindspotGradient = QLinearGradient(0, 0, surface_rect.width(), 0);
+      leftBlindspotGradient.setColorAt(0.0, SPColor::withAlpha(SPColor::Warning, 102));
+      leftBlindspotGradient.setColorAt(1.0, SPColor::withAlpha(SPColor::AccelYellow, 102));
+
+      // 右盲点渐变：右橙左黄
+      rightBlindspotGradient = QLinearGradient(surface_rect.width(), 0, 0, 0);
+      rightBlindspotGradient.setColorAt(0.0, SPColor::withAlpha(SPColor::Warning, 102));
+      rightBlindspotGradient.setColorAt(1.0, SPColor::withAlpha(SPColor::AccelYellow, 102));
+
+      blindspotGradientDirty = false;
+    }
 
     if (left_blindspot && !left_blindspot_vertices.isEmpty()) {
-      QLinearGradient gradient(0, 0, surface_rect.width(), 0); // Horizontal gradient from left to right
-      gradient.setColorAt(0.0, QColor(255, 165, 0, 102)); // Orange with alpha
-      gradient.setColorAt(1.0, QColor(255, 255, 0, 102)); // Yellow with alpha
-      painter.setBrush(gradient);
+      painter.setBrush(leftBlindspotGradient);
       painter.drawPolygon(left_blindspot_vertices);
     }
 
     if (right_blindspot && !right_blindspot_vertices.isEmpty()) {
-      QLinearGradient gradient(surface_rect.width(), 0, 0, 0); // Horizontal gradient from right to left
-      gradient.setColorAt(0.0, QColor(255, 165, 0, 102)); // Orange with alpha
-      gradient.setColorAt(1.0, QColor(255, 255, 0, 102)); // Yellow with alpha
-      painter.setBrush(gradient);
+      painter.setBrush(rightBlindspotGradient);
       painter.drawPolygon(right_blindspot_vertices);
     }
   }
 
   bool rainbow = Params().getBool("RainbowMode");
-  //float v_ego = sm["carState"].getCarState().getVEgo();
 
   if (rainbow) {
-    // Simple time-based animation
+    // P3: 彩虹路径 LUT 优化（预渲染 256 色，消除每帧 HSL 计算）
     float time_offset = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count() / 1000.0f;
 
-    // simple linear gradient from bottom to top
+    float animation_speed = 40.0f;
+    int hue_offset = (int)(time_offset * animation_speed) % RAINBOW_LUT_SIZE;
+
     QLinearGradient bg(0, surface_rect.height(), 0, 0);
 
-    // evenly spaced colors across the spectrum
-    // The animation shifts the entire spectrum smoothly
-    float animation_speed = 40.0f; // speed vroom vroom
-    float hue_offset = fmod(time_offset * animation_speed, 360.0f);
-
-    // 6-8 color stops for smooth transitions more color makes it laggy
     const int num_stops = 7;
     for (int i = 0; i < num_stops; i++) {
       float position = static_cast<float>(i) / (num_stops - 1);
 
-      float hue = fmod(hue_offset + position * 360.0f, 360.0f);
-      float saturation = 0.9f;
-      float lightness = 0.6f;
+      // 从 LUT 取样（消除 fromHslF 计算）
+      int lut_idx = (hue_offset + (int)(position * RAINBOW_LUT_SIZE)) % RAINBOW_LUT_SIZE;
+      QColor color = rainbowLUT[lut_idx];
 
-      // Alpha fades out towards the far end of the path
+      // Alpha fades out towards the far end
       float alpha = 0.8f * (1.0f - position * 0.3f);
+      color.setAlphaF(alpha);
 
-      QColor color = QColor::fromHslF(hue / 360.0f, saturation, lightness, alpha);
       bg.setColorAt(position, color);
     }
 
