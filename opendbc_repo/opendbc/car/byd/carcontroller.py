@@ -39,9 +39,9 @@ class CarController(CarControllerBase):
     self.stall_counter = 0
     self.release_counter = 0
 
-    # LOCK3 v4: EPS 请求重握手/退出 (Prepared 0->1) 软响应 (对齐门总)
-    self.eps_prepared_hold = 0   # Prepared 连续=1 的帧数: 达 PREP_HOLD 收扭矩, 达 FULL_EXIT 完全退出
-    self.eps_exit_wait = False   # 完全退出后等 Prepared 落回0 才允许重新接管
+    # LOCK3 v6: EPS 请求重握手/退出 (Prepared) 软响应 + 持续超时 full-exit (对齐门总)
+    self.eps_prepared_hold = 0     # Prepared 连续=1 的帧数: 达 PREP_HOLD 收扭矩, 达 FULL_EXIT 松手退出
+    self.lock3_exit_cooldown = 0   # full-exit 后的冷却帧数 (纯递减必到0, 不用会死锁的 eps_exit_wait)
 
     # LOCK4: 退出收尾时等 EPS 电机(MainTorque)卸载再松手, 防司机对抗导致 MainTq 滞后锁死
     self.exit_dwell = 0
@@ -284,19 +284,28 @@ class CarController(CarControllerBase):
           else:
             self.eps_prepared_hold = 0
 
-          # LOCK3 v5: 仅SOFT收扭矩 (对齐门总 Seg18 逐帧实证)
-          # 门总遇到0xFB(Prep=1+Cru=1)时: 3帧内收扭矩到0(Act保持1) → EPS自己退 → 280ms恢复。
-          # 我们00000054: 0xFB+OP=-201不收扭矩 → |OP-MTq|>150 → panda safety block → 锁死。
-          # v5修复: Prep≥2帧按速率平滑收扭矩(保持Act=1), 不做full-exit(不设Act=0/不卡握手)。
+          # LOCK3 v6: SOFT收扭矩(短暂对抗自愈) + 持续超时 full-exit(持续override松手防锁死)
+          # 【00000056实证】前4次接管中Prepared(持续12-13帧,DrvTq~100)SOFT收扭矩后司机松手->自愈, 不锁;
+          #   第5次(持续25帧,DrvTq234死掰不松)->Out/MainTq归0但Prepared卡1不落回->0.5s后TorqueFailed。
+          # v6: SOFT保留(前4次自愈, 不断续); 但Prepared持续超FULL_EXIT(16帧, >13<25)时判定司机【持续
+          #   override】-> Act=0完全松手 -> EPS释放不锁死(门总遇持续对抗也是Act=0松手, Prepared max仅6帧)。
+          #   退给司机是override本该做的。full-exit后进cooldown(纯递减必到0, 不用会死锁的eps_exit_wait)。
           if CarControllerParams.LOCK3_ENABLE:
             lock3_soft = self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES
             if lock3_soft:
+              # 先按速率收扭矩到0、保持Act=1 (门总遇0xFB的做法, 短暂对抗靠此自愈)
               apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
                                                               CS.out.steeringTorque, CarControllerParams)
               self.steer_softstart_limit = 0
               self.steerRateLimActive = False
               self.steerRateLim = 1.0
-              # FULL-EXIT 已移除 (LOCK3_FULL_EXIT_FRAMES=999永不触发)。门总不收Act, 只收扭矩。
+              # 持续对抗(Prepared久不落回)时 SOFT 挡不住 -> 超时 full-exit 松手, 让 EPS 释放防锁死
+              if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
+                self.lkas_active = 0
+                self.lkas_req_prepare = 0
+                self.lock3_exit_cooldown = CarControllerParams.LOCK3_EXIT_COOLDOWN
+                print("LOCK3 FULL-EXIT prep_hold=%d drvTq=%d -> Act=0 松手(司机持续override, 防TorqueFailed)" % (
+                  self.eps_prepared_hold, int(CS.out.steeringTorque)))
 
         else:
           # 握手逻辑 (对齐门总, 笔记12/19章验证): 见 EPS Prepared=1 即切 Act=1, 从0软起(每帧+16),
@@ -305,7 +314,15 @@ class CarController(CarControllerBase):
           # 注: 已移除 eps_exit_wait 等待逻辑 —— 它是"取消ACC无效/永久失力"的直接原因(LOCK3
           # full-exit 设 True 后, 司机握盘时 Prepared 不落回, 永远解除不了, 且退出分支漏清它)。
           # 门总握手不依赖此等待, 见 Prepared=1 直接接管。
-          if CS.lkas_prepared:
+          # LOCK3 v6 冷却: full-exit 松手后, 先冷却几帧不重新接管, 给 EPS/司机稳定
+          # (纯递减计数, 必然归0, 不会像 eps_exit_wait 那样永久卡死)。
+          if self.lock3_exit_cooldown > 0:
+            self.lock3_exit_cooldown -= 1
+            self.lkas_active = 0
+            self.lkas_req_prepare = 0
+            self.steer_softstart_limit = 0
+            self.eps_prepared_hold = 0
+          elif CS.lkas_prepared:
             self.lkas_active = 1.0
             self.steerRateLimActive = False
             self.steerRateLim = 1.0

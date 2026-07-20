@@ -93,9 +93,29 @@ class CarControllerParams:
   # 【v5修复】SOFT保留(Prep>=2帧按速率平滑收扭矩到0, 保持Act=1, EPS自己决定退不退出);
   #   FULL-EXIT彻底移除(不设Act=0, 不设eps_exit_wait, 不等Prep落回, 不卡重握手)。
   #   门总做法就是LOCK3 SOFT去掉FULL-EXIT, 分毫不差。
+  # --- LOCK3 v6 (20260720, 基于 00000056 实证): SOFT收扭矩 + 持续超时 full-exit ---
+  # 【00000056 实证(当前代码 e9b948df8 录制)】Config=3 下 EPS 仍会在司机大力反向对抗时抬 Prepared:
+  #   本段888帧(17.7s)稳定接管中共5次接管中Prepared事件, 全部由司机大力掰触发(DrvTq max 97~234),
+  #   无一由OP出力触发(司机不对抗时低速OP出力EPS跟随率99%, 从不抬Prepared)。
+  #   前4次(持续12-13帧, DrvTq~100, 车速7km/h)SOFT收扭矩后司机松手->EPS放回Prepared->恢复, 不锁死。
+  #   第5次(持续25帧, DrvTq234死掰不松, 车速14.6km/h)->Out/MainTq都归0但Prepared卡1不落回->0.5s
+  #   (~25帧)后TorqueFailed锁死。全段仅此1次锁死。
+  # 【根因】LOCK3 v5 SOFT-only 只收扭矩保持Act=1, EPS在等OP松手(Act=0)确认释放; 司机【持续】大力
+  #   对抗时Prepared一直=1、EPS等不到释放 -> 自保TorqueFailed。门总遇持续对抗会Act=0松手(所以门总
+  #   Prepared max仅6帧就落回), EPS立即释放不锁死。SOFT对"短暂对抗"够用(前4次自愈), 对"持续死掰"无效。
+  # 【v6修法】SOFT(短暂对抗自愈, 不断续) + 超时full-exit(持续对抗时Act=0松手, 防锁死):
+  #   Prepared持续>=PREP_HOLD(2帧): 按速率收扭矩到0、保持Act=1 (短暂对抗靠此自然恢复, 前4次场景);
+  #   Prepared持续>=FULL_EXIT(16帧, >前4次自愈的13帧、<锁死点25帧, 两边都有余量): 判定司机【持续
+  #     override】-> Act=0完全松手 -> EPS释放 -> 退出接管(方向交回司机, 这本就是override该做的)。
+  #   full-exit后进cooldown(EXIT_COOLDOWN帧, 纯递减计数必到0, 【不用】第46章那个会死锁的eps_exit_wait):
+  #   cooldown期间不重新握手接管, 给EPS/司机几帧稳定; cooldown归0后正常握手(见Prepared重新接管)。
+  # 【为何不误伤低速正常转弯(用户核心顾虑, 00000056已验证)】: 司机不对抗时低速(10-20km/h)OP出力,
+  #   EPS跟随率99%、|OP-MainTq|均值仅5、从不抬Prepared -> 不进本逻辑。Prepared只在司机大力掰时出现,
+  #   那是override, 退给司机合理。故日常低速转弯(不主动大力抢方向)顺滑不卡, full-exit只兜"持续死掰"。
   LOCK3_ENABLE = True
   LOCK3_PREP_HOLD_FRAMES = 2   # Prep>=2帧触发SOFT收扭矩(去抖, 防单帧误触)
-  LOCK3_FULL_EXIT_FRAMES = 999 # 永不触发(保留参数, 代码里砍掉了full-exit逻辑)
+  LOCK3_FULL_EXIT_FRAMES = 16  # Prep持续>=此帧(>前4次自愈13帧, <锁死25帧) -> Act=0松手退出防锁死
+  LOCK3_EXIT_COOLDOWN = 10     # full-exit后冷却帧数(~0.2s, 纯递减必到0, 不用eps_exit_wait), 期间不重接管
 
   # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
   # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):
