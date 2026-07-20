@@ -12,6 +12,7 @@
 #include <cmath>
 #include "selfdrive/ui/qt/onroad/hud.h"
 #include "selfdrive/ui/sunnypilot/qt/onroad/developer_ui/developer_ui.h"
+#include "selfdrive/ui/sunnypilot/qt/onroad/ui_animation.h"
 
 struct DebugPlotHistory {
   static constexpr int SIZE = 100;
@@ -48,6 +49,14 @@ private:
   void drawStandstillTimer(QPainter &p, const QRect &surface_rect);
   void drawDebugPlots(QPainter &p, const QRect &surface_rect);
   void drawLaneLineData(QPainter &p, const QRect &surface_rect);
+
+  // ===== 三层景深绘制 =====
+  enum class GlassLevel {
+    L1_Primary,    // 前景：关键信息（速度、ACC、限速）
+    L2_Secondary,  // 中景：辅助信息（车道线距离、转向弧）
+    L3_Tertiary,   // 背景：调试/次要信息
+  };
+  void drawGlassBox(QPainter &p, const QRect &rect, int corner_radius, GlassLevel level);
 
   bool lead_status;
   float lead_d_rel;
@@ -122,4 +131,14 @@ private:
   int speedLimitWarnThreshold = 10;
   int speedLimitDangerThreshold = 20;
   float speedLimitConfidence = 1.0f;
+
+  // ===== P1: 平滑动画成员 =====
+  // ACC 方框 MAX 标签颜色平滑过渡
+  SmoothColor smoothMaxColor{0.12f};
+  SmoothColor smoothSetSpeedColor{0.12f};
+  // 限速圆标出现/消失动画
+  SmoothValue speedLimitScale{0.15f};
+  SmoothValue speedLimitOpacity{0.15f};
+  // 转向灯呼吸脉冲
+  SmoothValue turnSignalPulse{0.08f};
 };

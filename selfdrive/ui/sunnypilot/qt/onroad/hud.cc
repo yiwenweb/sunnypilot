@@ -10,6 +10,7 @@
 #include "selfdrive/ui/qt/util.h"
 #include "selfdrive/ui/sunnypilot/qt/onroad/ui_colors.h"
 #include "selfdrive/ui/sunnypilot/qt/onroad/ui_typography.h"
+#include "selfdrive/ui/sunnypilot/qt/onroad/ui_animation.h"
 
 
 HudRendererSP::HudRendererSP() : debugPlotsEnabled(false) {}
@@ -198,6 +199,56 @@ void HudRendererSP::updateState(const UIState &s) {
     standstillSeconds = 0;
     last_standstill_frame = 0;
     isStandstill = false;
+  }
+
+  // ===== P1: 平滑动画驱动 =====
+  {
+    // ACC 方框 MAX 标签颜色平滑过渡
+    QColor target_max_color = SPColor::MaxDefault;
+    QColor target_set_speed_color = SPColor::SetSpeedUnset;
+
+    if (is_cruise_set) {
+      target_set_speed_color = SPColor::TextPrimary;
+
+      if (speedLimitEnabled && speedLimitValid && speedLimitColorMAX) {
+        int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
+        float speed_over = speed - limit_kmh;
+
+        if (speed_over <= 0) {
+          target_max_color = SPColor::Success;
+        } else if (speed_over <= speedLimitWarnThreshold) {
+          target_max_color = SPColor::TextPrimary;
+        } else if (speed_over <= speedLimitDangerThreshold) {
+          target_max_color = SPColor::Warning;
+        } else {
+          target_max_color = SPColor::Danger;
+        }
+      } else {
+        if (status == STATUS_DISENGAGED) {
+          target_max_color = SPColor::MaxDisengaged;
+        } else if (status == STATUS_OVERRIDE) {
+          target_max_color = SPColor::MaxOverride;
+        } else {
+          target_max_color = SPColor::MaxEngaged;
+        }
+      }
+    }
+
+    smoothMaxColor.setTarget(target_max_color);
+    smoothMaxColor.update();
+    smoothSetSpeedColor.setTarget(target_set_speed_color);
+    smoothSetSpeedColor.update();
+
+    // 限速圆标出现/消失动画
+    bool should_show_limit = speedLimitEnabled && speedLimitValid;
+    speedLimitScale.setTarget(should_show_limit ? 1.0f : 0.0f);
+    speedLimitOpacity.setTarget(should_show_limit ? 1.0f : 0.0f);
+    speedLimitScale.update();
+    speedLimitOpacity.update();
+
+    // 转向灯呼吸脉冲（时间驱动）
+    turnSignalPulse.setTarget(0.5f + 0.5f * std::sin(millis_since_boot() * 0.008f));
+    turnSignalPulse.update();
   }
 }
 
@@ -446,9 +497,13 @@ void HudRendererSP::drawTurnSignals(QPainter &p, const QRect &surface_rect) {
     p.save();
     p.setPen(Qt::NoPen);
 
-    // Glow background (fades with alpha)
-    p.setBrush(SPColor::withAlpha(SPColor::TurnSignalGlow, (int)(60 * alpha)));
-    p.drawEllipse(QPoint(cx, cy), arrow_size, arrow_size * 2 / 3);
+    // P1: 呼吸脉冲（完全显示时叠加脉冲发光）
+    float pulse = turnSignalPulse.value();  // 0~1, ~0.8Hz
+    float glow_alpha = alpha * (0.6f + 0.4f * pulse);
+
+    // Glow background (fades with alpha + pulse)
+    p.setBrush(SPColor::withAlpha(SPColor::TurnSignalGlow, (int)(60 * glow_alpha)));
+    p.drawEllipse(QPoint(cx, cy), arrow_size + 8, arrow_size * 2 / 3 + 6);
 
     // MICI-style: slight rotation pop-in (0 → 30° fade in)
     float rotation_offset = (1.0f - alpha) * 30.0f * dir;
@@ -489,61 +544,31 @@ void HudRendererSP::drawSpeedLimit(QPainter &p, const QRect &surface_rect) {
   // 1. 绘制 ACC 设定速度方框（保持原位置）
   drawACCSetSpeedBox(p, surface_rect);
   
-  // 2. 绘制限速圆标（右侧并排，仅当有效时）
-  if (speedLimitEnabled && speedLimitValid) {
+  // 2. 绘制限速圆标（右侧并排，动画驱动：有效时弹入，无效时淡出）
+  if (speedLimitOpacity.value() > 0.01f) {
     drawSpeedLimitCircle(p, surface_rect);
   }
 }
 
 void HudRendererSP::drawACCSetSpeedBox(QPainter &p, const QRect &surface_rect) {
-  // ACC 设定速度方框（独立绘制，支持超速变色）
+  // ACC 设定速度方框（L1 前景景深 + 平滑颜色过渡）
   const QSize default_size = {172, 204};
   QSize box_size = is_metric ? QSize(200, 204) : default_size;
   const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
   const int box_y = 45;
   const int box_radius = 32;
-  
+
   QString setSpeedStr = is_cruise_set ? QString::number(std::nearbyint(set_speed)) : QString::fromUtf8("–");
-  
-  // 计算 MAX 和设定速度颜色
-  QColor max_color = SPColor::MaxDefault;
-  QColor set_speed_color = SPColor::SetSpeedUnset;
 
-  if (is_cruise_set) {
-    set_speed_color = SPColor::TextPrimary;
+  // 使用平滑过渡后的颜色
+  QColor max_color = smoothMaxColor.color();
+  QColor set_speed_color = smoothSetSpeedColor.color();
 
-    // 超速颜色逻辑（speedLimitColorMAX 参数控制）
-    if (speedLimitEnabled && speedLimitValid && speedLimitColorMAX) {
-      int limit_kmh = (int)(speedLimit * (is_metric ? 3.6f : 2.237f));
-      float speed_over = speed - limit_kmh;
-
-      if (speed_over <= 0) {
-        max_color = SPColor::Success;            // 未超速
-      } else if (speed_over <= speedLimitWarnThreshold) {
-        max_color = SPColor::TextPrimary;        // 轻微超速
-      } else if (speed_over <= speedLimitDangerThreshold) {
-        max_color = SPColor::Warning;            // 中度超速
-      } else {
-        max_color = SPColor::Danger;             // 严重超速
-      }
-    } else {
-      // 无限速数据：原有逻辑
-      if (status == STATUS_DISENGAGED) {
-        max_color = SPColor::MaxDisengaged;
-      } else if (status == STATUS_OVERRIDE) {
-        max_color = SPColor::MaxOverride;
-      } else {
-        max_color = SPColor::MaxEngaged;
-      }
-    }
-  }
-  
   p.save();
 
-  // 方框背景
-  p.setPen(QPen(SPColor::HudBgBorder, 6));
-  p.setBrush(SPColor::HudBg);
-  p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), box_radius, box_radius);
+  // L1 前景景深背景（深空黑 + 顶部高光 + 内阴影）
+  QRect acc_rect(box_x, box_y, box_size.width(), box_size.height());
+  drawGlassBox(p, acc_rect, box_radius, GlassLevel::L1_Primary);
 
   // "MAX" 标签
   p.setFont(SPFont::hudSetSpeedLabel());
@@ -635,16 +660,35 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
     speedLimitCacheDirty = false;
   }
   
+  // P1: 出现/消失动画（缩放 + 透明度）
+  float scale = speedLimitScale.value();
+  float opacity = speedLimitOpacity.value();
+  if (opacity < 0.01f) return;  // 完全透明时跳过绘制
+
+  p.save();
+  p.setRenderHint(QPainter::SmoothPixmapTransform);
+
+  // 从中心缩放
+  p.translate(circle_cx, circle_cy);
+  p.scale(scale, scale);
+  p.translate(-circle_cx, -circle_cy);
+
+  // 整体透明度
+  p.setOpacity(opacity);
+
   // 绘制缓存到屏幕
   p.drawPixmap(circle_cx - circle_r - 10, circle_cy - circle_r - 10, speedLimitCircleCache);
-  
+
+  p.restore();
+
   // 可选：数据源可信度图标（如果启用且可信度低）
-  if (speedLimitShowSource && speedLimitConfidence < 0.8f) {
+  if (speedLimitShowSource && speedLimitConfidence < 0.8f && opacity > 0.5f) {
     int icon_x = circle_cx + circle_r - 12;
     int icon_y = circle_cy - circle_r + 12;
-    
+
     p.save();
     p.setRenderHint(QPainter::Antialiasing);
+    p.setOpacity(opacity);
     p.setPen(Qt::NoPen);
     p.setBrush(SPColor::withAlpha(SPColor::Warning, 200));
     p.drawEllipse(QPoint(icon_x, icon_y), 10, 10);
@@ -767,10 +811,9 @@ void HudRendererSP::drawDebugPlots(QPainter &p, const QRect &surface_rect) {
                        double y_min, double y_max,
                        const DebugPlotHistory& h0, QColor c0,
                        const DebugPlotHistory* h1 = nullptr, QColor c1 = {}) {
-    // Panel background
-    p.setPen(Qt::NoPen);
-    p.setBrush(SPColor::DebugPlotBg);
-    p.drawRoundedRect(panel_x, y, PANEL_W, PANEL_H, 10, 10);
+    // L3 背景景深（高度透明，靠后）
+    QRect panel_rect(panel_x, y, PANEL_W, PANEL_H);
+    drawGlassBox(p, panel_rect, 10, GlassLevel::L3_Tertiary);
 
     // Title (top-left, larger)
     p.setFont(SPFont::debugPlotTitle());
@@ -863,10 +906,21 @@ void HudRendererSP::drawStandstillTimer(QPainter &p, const QRect &surface_rect) 
   int cx = surface_rect.center().x() + surface_rect.width() / 4;
   int cy = surface_rect.center().y();
 
-  // Circular background
+  // L2 中景景深背景（圆形）
   p.save();
   p.setPen(Qt::NoPen);
+
+  // 顶部高光
+  p.setBrush(QColor(255, 255, 255, 8));
+  p.drawEllipse(QPoint(cx, cy - badge_size / 6), badge_size / 2 - 4, badge_size / 3);
+
+  // 主背景
   p.setBrush(SPColor::BgL2);
+  p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
+
+  // 微边框
+  p.setPen(QPen(SPColor::BgL2Border, 1));
+  p.setBrush(Qt::NoBrush);
   p.drawEllipse(QPoint(cx, cy), badge_size / 2, badge_size / 2);
 
   // Timer icon (⏱)
@@ -895,10 +949,9 @@ void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
   const int box_x = 60 + (default_size.width() - box_size.width()) / 2;
   const int box_y = 400;  // 紧贴在限速一体化方框下方 (375 + 25 gap)
 
-  // Draw box
-  p.setPen(QPen(SPColor::HudBgBorder, 6));
-  p.setBrush(SPColor::HudBg);
-  p.drawRoundedRect(box_x, box_y, box_size.width(), box_size.height(), 32, 32);
+  // L2 中景景深背景（半透明 + 微边框）
+  QRect lane_rect(box_x, box_y, box_size.width(), box_size.height());
+  drawGlassBox(p, lane_rect, 32, GlassLevel::L2_Secondary);
 
   int cx = box_x + box_size.width() / 2;
   const int gap = 10;
@@ -936,4 +989,60 @@ void HudRendererSP::drawLaneLineData(QPainter &p, const QRect &surface_rect) {
   p.setFont(SPFont::dataValue());
   p.setPen(SPColor::TextPrimary);
   p.drawText(start2_x + lbl2_w + gap, line2_y, right_str);
+}
+
+// ============================================================
+// P1: 三层景深绘制
+// ============================================================
+
+void HudRendererSP::drawGlassBox(QPainter &p, const QRect &rect, int corner_radius, GlassLevel level) {
+  p.save();
+
+  QColor bg_color;
+  QColor border_color;
+  int border_width = 0;
+
+  switch (level) {
+    case GlassLevel::L1_Primary:
+      bg_color = SPColor::BgL1;
+      border_color = SPColor::BgL1Border;
+      border_width = 0;
+      break;
+    case GlassLevel::L2_Secondary:
+      bg_color = SPColor::BgL2;
+      border_color = SPColor::BgL2Border;
+      border_width = 1;
+      break;
+    case GlassLevel::L3_Tertiary:
+      bg_color = SPColor::BgL3;
+      border_color = SPColor::BgL3Border;
+      border_width = 0;
+      break;
+  }
+
+  // 1. 顶部高光（模拟玻璃边缘反光，L1/L2 才有）
+  if (level != GlassLevel::L3_Tertiary) {
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 255, 255, level == GlassLevel::L1_Primary ? 12 : 8));
+    p.drawRoundedRect(rect.adjusted(2, 1, -2, rect.height() / 3), corner_radius, corner_radius);
+  }
+
+  // 2. 主背景
+  p.setPen(Qt::NoPen);
+  p.setBrush(bg_color);
+  p.drawRoundedRect(rect, corner_radius, corner_radius);
+
+  // 3. 边框（L2 才有微边框）
+  if (border_width > 0) {
+    p.setPen(QPen(border_color, border_width));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(rect, corner_radius, corner_radius);
+  }
+
+  // 4. 顶部内阴影（增强立体感）
+  p.setPen(QPen(QColor(0, 0, 0, level == GlassLevel::L1_Primary ? 50 : 30), 1));
+  p.drawLine(rect.left() + corner_radius, rect.top() + 1,
+             rect.right() - corner_radius, rect.top() + 1);
+
+  p.restore();
 }
