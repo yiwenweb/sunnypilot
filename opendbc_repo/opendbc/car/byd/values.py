@@ -155,8 +155,21 @@ class CarControllerParams:
   LOCK3_ENABLE = True          # v7: 开启, 做SOFT收Out(对齐门总), 但下面FULL_EXIT禁用
   LOCK3_PREP_HOLD_FRAMES = 2   # Prepared连续>=此帧才触发SOFT收力(去抖, 滤1帧噪声)。v6->v7改动时曾漏定义
                                # 导致 carcontroller AttributeError 崩溃(controlsd反复崩->safety回落19/一堆报错)
-  LOCK3_FULL_EXIT_FRAMES = 9999 # 彻底禁用full-exit(门总遇P=1保持Active=1不撤, 靠收Out解除P=1)
-  LOCK3_EXIT_COOLDOWN = 10     # (保留参数, full-exit已禁用故不生效)
+  # v7.2(门总18段逐帧实证, 复刻门总"每步极短时间完成"的反射循环):
+  # 【门总真实机制(00000006 seg18逐帧, 用真实时间ms不受丢帧影响)】:
+  #   1. Prep=1 -> 立即收扭矩(54/帧), ~28ms到0 (不等待);
+  #   2. 扭矩到0稳1-2帧 -> 撤Active (Prep出现后~60ms=3帧);
+  #   3. 撤Active -> Prep立即落回0 (~20ms=1帧, 撤Active是解除Prep的直接手段);
+  #   4. 条件满足 -> 立即主动重新举Active握手 (撤后~60-80ms), 不被动等;
+  #   5. 若司机还在掰 -> 回到步骤1再来一轮 (快速循环~8帧/160ms); 司机停手 -> 恢复正常出力。
+  # 【关键】全程"不等待、每步最短时间完成"。之前锁死(00000068/69, Prep持续25帧->EPS超时)是因为
+  #   v7保持Active不撤; 之前一卡一卡(v6)是因为cooldown=10太长, 违背门总"立即重握手"。
+  # 【阈值3】: 门总Prep出现后~3帧(60ms)撤Active。远小于EPS超时25帧, 稳防锁死; 配合下面cooldown=3
+  #   立即重握手, 复刻门总快速循环(不是死等, 不是长cooldown拖慢)。
+  LOCK3_FULL_EXIT_FRAMES = 3    # Prep持续>=3帧(~60ms)撤Active, 门总实测(收0后稳1-2帧即撤)
+  LOCK3_EXIT_COOLDOWN = 3      # v7.2: 撤Active后仅冷却3帧(~60ms)即重新握手, 复刻门总"立即重握手"。
+                               # 旧值10(0.2s)太长->撤后久不接管->一卡一卡(v6卡顿主因)。门总撤后~60-80ms
+                               # 就重新Active, 故用3(纯递减必归0, 不会死锁)。
   # LOCK3_SOFT_COLLAPSE_RATE: SOFT收力(P=1时把Out收到0)的每帧下降速率, 【只用于SOFT收力】,
   # 正常行驶下降仍受 STEER_DELTA_DOWN=18 限制。
   # 【门总23段全量实证】: 门总遇P=1需收力时, 单帧下降能到 54~77(中位54), 2帧从64收到0;

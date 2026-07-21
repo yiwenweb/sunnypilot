@@ -312,7 +312,9 @@ class CarController(CarControllerBase):
               # 不动 softstart_limit, 保证P=1解除后按rate limit快速恢复(不从0慢爬)
               self.steerRateLimActive = False
               self.steerRateLim = 1.0
-              # full-exit: FULL_EXIT_FRAMES=9999 永不触发 (门总遇P=1不撤Active, 靠收Out解除)。保留兜底判断。
+              # full-exit(v7.1): Prepared持续>=FULL_EXIT_FRAMES(12) -> 撤Active松手, 让EPS释放,
+              # 防止 Prepared 持续25帧后 EPS 硬超时 TorqueFailed(00000068/69两次锁死实证)。
+              # 收力(SOFT)扛不住持续对抗(你不停手Prepared不落回), 必须在25帧超时前撤Active。
               if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
                 self.lkas_active = 0
                 self.lkas_req_prepare = 0
