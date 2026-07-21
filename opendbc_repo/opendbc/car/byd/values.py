@@ -153,6 +153,8 @@ class CarControllerParams:
   #   Active全程保持, 靠收Out解除P=1而非撤Active)。allowance=300已让OP不塌, SOFT收Out后EPS会像门总
   #   一样几帧内放回P=1, 不锁死(门总实证tqf=0)。这才是门总真实做法(既非v6撤Active, 也非"完全不理P=1")。
   LOCK3_ENABLE = True          # v7: 开启, 做SOFT收Out(对齐门总), 但下面FULL_EXIT禁用
+  LOCK3_PREP_HOLD_FRAMES = 2   # Prepared连续>=此帧才触发SOFT收力(去抖, 滤1帧噪声)。v6->v7改动时曾漏定义
+                               # 导致 carcontroller AttributeError 崩溃(controlsd反复崩->safety回落19/一堆报错)
   LOCK3_FULL_EXIT_FRAMES = 9999 # 彻底禁用full-exit(门总遇P=1保持Active=1不撤, 靠收Out解除P=1)
   LOCK3_EXIT_COOLDOWN = 10     # (保留参数, full-exit已禁用故不生效)
   # LOCK3_SOFT_COLLAPSE_RATE: SOFT收力(P=1时把Out收到0)的每帧下降速率, 【只用于SOFT收力】,
