@@ -47,7 +47,17 @@ class CarControllerParams:
   # 【panda】BYD safety 是 TorqueMotorLimited(byd.h), 只查 |OP-MainTq|<=150, 无 driver_torque
   #   限幅字段, 故 allowance 纯 Python 层, panda 无需改/刷。allowance=300 后 OP 不塌、MainTq 跟随,
   #   |OP-MainTq| 偏差反而更小(门总实测<20), 不撞 panda 的 150。
-  STEER_DRIVER_ALLOWANCE = 300    # 68->300, 对齐门总实测(≈294), 反向对抗不压塌OP, 根治对抗型锁死
+  # 300->68 (门总23段/54414帧全量实证修正, 20260721):
+  # 【纠正第50章】第50章反推"门总≈294"错误(只挑极端对抗帧算), 改300导致方向盘死硬(反向要掰到~400
+  #   OP才让步)。全量54414帧假设验证: allow=68预测OP误差最小(85), 80=97, 300=222(最差)。门总真实
+  #   allowance 在 68-80 区间, 绝非300。且门总OP大小主要由模型/torque控制器决定(接管中OP中位60-100),
+  #   不是被allowance削出来的; allowance只在反向大力对抗时轻微压低OP。
+  # 【为何现在能安全回68】第50章改300是因当时无LOCK3 v7.2、靠allowance硬顶防锁死。现LOCK3 v7.2
+  #   (P=1时收力->3帧撤Active->3帧重握手循环)已实车验证防锁死(00000068/69不再锁), 不再依赖allowance
+  #   硬顶。故回归68(=openpilot BYD默认、假设验证最优), 恢复门总式"你一使劲OP就让步"的软手感。
+  # 【同向不削弱】公式验证: 同向(你帮OP转)时OP上限被STEER_MAX封顶, 不受allowance影响(全量同向OP能到252)。
+  #   左转你也往左打=同向, OP左转不受限。allowance只削反向对抗力。
+  STEER_DRIVER_ALLOWANCE = 68     # 门总全量实证68-80区间, 68=默认&假设验证最优; 防锁死靠LOCK3 v7.2
   STEER_DRIVER_MULTIPLIER = 3
   STEER_DRIVER_FACTOR = 1
   STEER_ERROR_MAX = 50            # match 0.98 reference
