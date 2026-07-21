@@ -29,13 +29,16 @@ public:
 private:
   QVBoxLayout *main_layout;
   ExperimentalButton *experimental_btn;
-  DriverMonitorRenderer dmon;
-  HudRenderer hud;
-  ModelRenderer model;
   std::unique_ptr<PubMaster> pm;
 
   int skip_frame_count = 0;
   bool wide_cam_requested = false;
+
+protected:
+  // 供 SP 子类访问的渲染器成员
+  DriverMonitorRenderer dmon;
+  HudRenderer hud;
+  ModelRenderer model;
 
 protected:
   void paintGL() override;
