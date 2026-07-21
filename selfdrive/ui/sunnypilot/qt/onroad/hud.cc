@@ -614,10 +614,10 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
   const int acc_box_x = 60 + (default_size.width() - acc_box_size.width()) / 2;
   const int acc_box_y = 45;
   
-  // 圆标参数
-  const int circle_d = 140;
+  // 圆标参数（缩小尺寸 + 放大下方字体）
+  const int circle_d = 112;
   const int circle_r = circle_d / 2;
-  const int border_width = 8;
+  const int border_width = 6;
   const int gap = 20;
   
   // 位置：ACC 右侧，顶部对齐
@@ -649,15 +649,15 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
     int inner_r = circle_r - border_width - 2;
     cache_p.drawEllipse(QPoint(cache_cx, cache_cy), inner_r, inner_r);
 
-    // 限速数字（黑色）
+    // 限速数字（黑色，缩小圆标后调整字号）
     cache_p.setPen(SPColor::SpeedLimitText);
-    cache_p.setFont(SPFont::speedLimitNumber());
+    cache_p.setFont(SPFont::bold(44));  // 49→44 适配 112px 圆标
     QString limit_text = QString::number(limit_kmh);
-    QRect text_rect(cache_cx - circle_r, cache_cy - 30, circle_d, 60);
+    QRect text_rect(cache_cx - circle_r, cache_cy - 22, circle_d, 44);
     cache_p.drawText(text_rect, Qt::AlignCenter, limit_text);
-    
-    // 标签区域（LIMIT 或前方限速）
-    int label_y = cache_cy + circle_r + 12;
+
+    // 标签区域（LIMIT 或前方限速）—— 放大字体确保清晰
+    int label_y = cache_cy + circle_r + 16;
     if (speedLimitAheadValid) {
       int ahead_kmh = (int)(speedLimitAhead * (is_metric ? 3.6f : 2.237f));
       bool is_decreasing = ahead_kmh < limit_kmh;
@@ -665,14 +665,14 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
       QString arrow = is_decreasing ? "▼" : "▲";
 
       cache_p.setPen(label_color);
-      cache_p.setFont(SPFont::speedLimitAhead());
+      cache_p.setFont(SPFont::bold(30));  // 25→30 放大
       QString ahead_text = QString("%1 %2").arg(arrow).arg(ahead_kmh);
-      QRect ahead_rect(cache_cx - 60, label_y, 120, 30);
+      QRect ahead_rect(cache_cx - 70, label_y, 140, 36);
       cache_p.drawText(ahead_rect, Qt::AlignCenter, ahead_text);
     } else {
       cache_p.setPen(SPColor::withAlpha(SPColor::TextSecondary, 200));
-      cache_p.setFont(SPFont::speedLimitLabel());
-      QRect label_rect(cache_cx - 40, label_y, 80, 24);
+      cache_p.setFont(SPFont::medium(24));  // 20→24 放大
+      QRect label_rect(cache_cx - 50, label_y, 100, 30);
       cache_p.drawText(label_rect, Qt::AlignCenter, "LIMIT");
     }
     
@@ -721,8 +721,8 @@ void HudRendererSP::drawSpeedLimitCircle(QPainter &p, const QRect &surface_rect)
 }
 
 void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
-  // Road name at top center
-  int y = surface_rect.top() + 24;
+  // Road name at top center (上移避免与速度重叠)
+  int y = surface_rect.top() + 8;
 
   p.save();
   p.setFont(SPFont::roadName());
@@ -746,19 +746,22 @@ void HudRendererSP::drawRoadName(QPainter &p, const QRect &surface_rect) {
 void HudRendererSP::drawSteeringArc(QPainter &p, const QRect &surface_rect) {
   // MICI-style steering arc: gradient color (white→yellow→orange) + smooth filter + dynamic sizing
   // Tuned: arc_height -10%, arc_width +20%(+5% from 1087), line thickness -5%, center dot hidden
+  // 车辆适配：中心点偏移 +6°（方向盘 0° 时车辆实际向左偏约 6°）
   const int arc_width = 1087;       // +20% (原900), 再+5%
   const int arc_height = 210;       // -10% (原234)，弧度更扁平
   const int margin_bottom = -102;  // 弧两端距底部信息栏50px
   const float max_angle = 55.f;
   const int half_span = 54;         // 弧半跨度（°）
+  const float center_offset = 6.0f; // 车辆中心偏移（度）
 
   int cx = surface_rect.center().x();
   int cy = surface_rect.bottom() - margin_bottom - arc_height / 2;
 
   QRect arc_rect(cx - arc_width / 2, cy - arc_height, arc_width, arc_height * 2);
 
-  float clamped_angle = std::clamp(smoothSteerDisplay, -max_angle, max_angle);
-  float clamped_desired = std::clamp(smoothSteerDesiredDisplay, -max_angle, max_angle);
+  // 应用中心偏移：显示值 = 原始值 + 偏移量
+  float clamped_angle = std::clamp(smoothSteerDisplay + center_offset, -max_angle, max_angle);
+  float clamped_desired = std::clamp(smoothSteerDesiredDisplay + center_offset, -max_angle, max_angle);
 
   bool is_active = latActive && !steerOverride;
 

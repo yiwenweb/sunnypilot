@@ -17,5 +17,6 @@ public:
   void updateState(const UIState &s) override;
 
 protected:
+  void paintGL() override;
   void showEvent(QShowEvent *event) override;
 };
