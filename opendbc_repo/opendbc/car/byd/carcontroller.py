@@ -290,21 +290,34 @@ class CarController(CarControllerBase):
           # v6: SOFT保留(前4次自愈, 不断续); 但Prepared持续超FULL_EXIT(16帧, >13<25)时判定司机【持续
           #   override】-> Act=0完全松手 -> EPS释放不锁死(门总遇持续对抗也是Act=0松手, Prepared max仅6帧)。
           #   退给司机是override本该做的。full-exit后进cooldown(纯递减必到0, 不用会死锁的eps_exit_wait)。
+          # LOCK3 v7: SOFT-only (对齐门总 seg16/18/19 原始数据)。
+          # 门总遇P=1: 按速率收Out到0(让EPS满意) + 保持Active=1(不撤) -> P=1约9帧内落回 -> 直接恢复出力。
+          # 关键: 【不清零 softstart_limit】。v6曾每帧 softstart=0, 导致P=1解除后Out从0慢爬(18帧才到顶),
+          #   而门总是Out直接跳回46-69(不softstart)。保留softstart_limit不动, 让恢复靠rate limit快速回,
+          #   不额外拖慢。full-exit已在values禁用(FULL_EXIT=9999), 此处保留判断但永不触发。
           if CarControllerParams.LOCK3_ENABLE:
             lock3_soft = self.eps_prepared_hold >= CarControllerParams.LOCK3_PREP_HOLD_FRAMES
             if lock3_soft:
-              # 先按速率收扭矩到0、保持Act=1 (门总遇0xFB的做法, 短暂对抗靠此自愈)
-              apply_torque = apply_driver_steer_torque_limits(0, self.apply_torque_last,
-                                                              CS.out.steeringTorque, CarControllerParams)
-              self.steer_softstart_limit = 0
+              # 收力: 用 SOFT_COLLAPSE_RATE(54, 对齐门总收力速率) 快速把Out往0收, 保持Act=1。
+              # 不走 apply_driver_steer_torque_limits(受DELTA_DOWN=18限, 收力慢); 收力快=更快让步=更安全。
+              # 保持符号朝0收: last>0则-rate但不越过0, last<0则+rate但不越过0。
+              rate = CarControllerParams.LOCK3_SOFT_COLLAPSE_RATE
+              last = self.apply_torque_last
+              if last > 0:
+                apply_torque = max(0, last - rate)
+              elif last < 0:
+                apply_torque = min(0, last + rate)
+              else:
+                apply_torque = 0
+              # 不动 softstart_limit, 保证P=1解除后按rate limit快速恢复(不从0慢爬)
               self.steerRateLimActive = False
               self.steerRateLim = 1.0
-              # 持续对抗(Prepared久不落回)时 SOFT 挡不住 -> 超时 full-exit 松手, 让 EPS 释放防锁死
+              # full-exit: FULL_EXIT_FRAMES=9999 永不触发 (门总遇P=1不撤Active, 靠收Out解除)。保留兜底判断。
               if self.eps_prepared_hold >= CarControllerParams.LOCK3_FULL_EXIT_FRAMES:
                 self.lkas_active = 0
                 self.lkas_req_prepare = 0
                 self.lock3_exit_cooldown = CarControllerParams.LOCK3_EXIT_COOLDOWN
-                print("LOCK3 FULL-EXIT prep_hold=%d drvTq=%d -> Act=0 松手(司机持续override, 防TorqueFailed)" % (
+                print("LOCK3 FULL-EXIT prep_hold=%d drvTq=%d -> Act=0 松手" % (
                   self.eps_prepared_hold, int(CS.out.steeringTorque)))
 
         else:

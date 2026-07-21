@@ -10,8 +10,13 @@ Ecu = CarParams.Ecu
 
 class CarControllerParams:
   STEER_MAX = 300                 # 门总 0.98 confirmed working max; 897 is rejected by EPS (TorqueFailed)
-  STEER_DELTA_UP = 16             # 门总 0.98 measured per-frame torque rate (+16); 7 made engagement sluggish
-  STEER_DELTA_DOWN = 16           # 门总 0.98 measured per-frame torque rate (-16)
+  # 16->18: 门总23接管段全量实测上升/下降rate=18(p99=max=18, analyze_men_rate.py)。
+  # 【必须与panda匹配】panda byd.h max_rate_up/down 已同步改为18; Python发18 <= panda18, 不被拦。
+  #   (若panda仍16而Python18 -> panda dist_to_meas_check拦截丢帧, 故两层必须一致改。已同改panda。)
+  STEER_DELTA_UP = 18             # =panda max_rate_up(18), 门总实测
+  STEER_DELTA_DOWN = 18           # =panda max_rate_down(18), 门总实测
+  # 注: LOCK3 SOFT收力用 SOFT_COLLAPSE_RATE=54(>18), 但收力是"向0靠拢"(不越过0), panda收力方向
+  #   下限 lowest_allowed=-max_rate_up=-18, 收到0(>=-18)在允许内 -> panda放行, 不受18/帧限制。
 
   # --- 低速扭矩上限 (默认关闭) ---
   # 历史: 曾以为低速大扭矩持续导致 EPS 锁死, 加了低速封顶。但取证(byd_field_diff)证明
@@ -133,10 +138,30 @@ class CarControllerParams:
   # 【为何不误伤低速正常转弯(用户核心顾虑, 00000056已验证)】: 司机不对抗时低速(10-20km/h)OP出力,
   #   EPS跟随率99%、|OP-MainTq|均值仅5、从不抬Prepared -> 不进本逻辑。Prepared只在司机大力掰时出现,
   #   那是override, 退给司机合理。故日常低速转弯(不主动大力抢方向)顺滑不卡, full-exit只兜"持续死掰"。
-  LOCK3_ENABLE = True
-  LOCK3_PREP_HOLD_FRAMES = 2   # Prep>=2帧触发SOFT收扭矩(去抖, 防单帧误触)
-  LOCK3_FULL_EXIT_FRAMES = 16  # Prep持续>=此帧(>前4次自愈13帧, <锁死25帧) -> Act=0松手退出防锁死
-  LOCK3_EXIT_COOLDOWN = 10     # full-exit后冷却帧数(~0.2s, 纯递减必到0, 不用eps_exit_wait), 期间不重接管
+  # --- LOCK3 v7 (20260720, 门总seg16/18/19原始数据实证): SOFT-only, 彻底禁用full-exit ---
+  # 【门总原始数据铁证(seg16/18/19, 分析脚本analyze_men_seg.py)】:
+  #   1) 门总接管中【一样频繁发P=1】(seg16=11次/seg18=11次/seg19=15次), 司机掰得越狠发越多。
+  #      => P=1是EPS对"大力对抗"的固有反应, 门总我们都会触发, 无法从316避免(316字段+Out跳变已对比,
+  #         静态字段全同, Out门总平滑≤18/帧, 我们P=1前也平滑 -> P=1纯由司机持续对抗触发)。
+  #   2) 门总遇P=1的反应 = 【立刻收Out到0(84~100%) + 保持Active=1不撤(74~80%)】:
+  #      seg18逐帧: P=1出现下1帧门总Out 54->0, 但A保持1; P=1仅持续~9帧(180ms)门总就恢复Out=46。
+  #      门总【收Out让EPS满意 -> P=1很快落回 -> 立刻恢复出力】, 全程Active基本不撤, 不锁死
+  #      (seg16/18/19 tqfailed_frames全=0)。
+  # 【我们的错误(v6 full-exit)】: v6在P=1持续16帧后 full-exit撤Active -> cooldown不接管 -> 重接管
+  #   -> 又被对抗 -> 又P=1 -> 循环, Active段中位仅12帧 = "动一下归零/一卡一卡"。门总根本不撤Active。
+  # 【v7修正】: 保留SOFT(收Out到0, 对齐门总, 让EPS满意), 【彻底禁用full-exit】(FULL_EXIT=9999永不触发,
+  #   Active全程保持, 靠收Out解除P=1而非撤Active)。allowance=300已让OP不塌, SOFT收Out后EPS会像门总
+  #   一样几帧内放回P=1, 不锁死(门总实证tqf=0)。这才是门总真实做法(既非v6撤Active, 也非"完全不理P=1")。
+  LOCK3_ENABLE = True          # v7: 开启, 做SOFT收Out(对齐门总), 但下面FULL_EXIT禁用
+  LOCK3_FULL_EXIT_FRAMES = 9999 # 彻底禁用full-exit(门总遇P=1保持Active=1不撤, 靠收Out解除P=1)
+  LOCK3_EXIT_COOLDOWN = 10     # (保留参数, full-exit已禁用故不生效)
+  # LOCK3_SOFT_COLLAPSE_RATE: SOFT收力(P=1时把Out收到0)的每帧下降速率, 【只用于SOFT收力】,
+  # 正常行驶下降仍受 STEER_DELTA_DOWN=18 限制。
+  # 【门总23段全量实证】: 门总遇P=1需收力时, 单帧下降能到 54~77(中位54), 2帧从64收到0;
+  #   而正常行驶下降门总也≤18(收力放宽是特例)。收力快=OP更快停止和司机/EPS对抗=更安全方向。
+  # 【安全依据】: 下降(收力/让步)方向快 = OP需要让步时更快松手, 是偏安全的; 上升(出力)保持18不放宽。
+  #   门总实测能降63且驾驶平顺 -> EPS/车身受得住此下降速率。取54(门总收力中位)。
+  LOCK3_SOFT_COLLAPSE_RATE = 54  # SOFT收力每帧下降上限(对齐门总收力中位54), 仅SOFT收力用, 快速让步
 
   # --- LOCK4: 退出时等 EPS 电机实际出力(MainTorque)归零再松手 (默认开启) ---
   # 20260702_013051 实证新型锁死 (既非 LOCK1 Cru=0发扭矩, 亦非 LOCK3 Prepared0->1):
@@ -164,10 +189,15 @@ class CarControllerParams:
   LOCK5_ENABLE = True
   LOCK5_REENGAGE_DELAY_FRAMES = 3   # 重接管后强制 0 出力的帧数 (门总帧+0~+2 恒0)
   # 顶不动收回: 司机大力对抗 & 我们出力已达一定值但 EPS 电机(MainTorque)顶不上去 且方向盘几乎不动
-  LOCK5_FIGHT_DRV_TQ = 100          # 司机扭矩 |drvTq| 超此值视为"大力对抗"
-  LOCK5_STUCK_FRAMES = 25           # 对抗且顶不动持续超此帧数(~0.5s) -> 收回放弃硬顶
-  LOCK5_STUCK_OUT = 40              # 我们命令 |out| 超此值却顶不动, 才算真硬顶(门总大对抗也压~40)
-  LOCK5_STUCK_MAINTQ = 30           # EPS 电机 |MainTorque| 长期低于此值 = 顶不动(电机没能跟上命令)
+  # 20260720: allowance=300 后 LOCK5(d) 顶不动收回已多余且有害:
+  # - 旧(allow=68): OP被压塌,MainTq也小,MainTq<30说明真被压住 -> 收回有意义
+  # - 新(allow=300): OP全力顶,MainTq跟随大,但EPS正常1-3帧滞后时MainTq瞬间<30
+  #   + stuck_counter累积 -> 误判"顶不动" -> giveup扭矩归零 -> 一卡一卡的真凶
+  # 用 FIGHT_DRV_TQ=9999 把(d)实质关闭(drv_big永远False); LOCK5(a)重接管延迟不受影响,保留。
+  LOCK5_FIGHT_DRV_TQ = 9999         # 实质关闭(d)顶不动收回 (allowance=300后此逻辑有害)
+  LOCK5_STUCK_FRAMES = 50
+  LOCK5_STUCK_OUT = 40
+  LOCK5_STUCK_MAINTQ = 30
 
   # --- LOCK7: 满扭矩顶不动收回 (20260718 新增, 独立于LOCK5的drv对抗判据) ---
   # 【根因(0000004c段7锁死实证)】: 低速5-7km/h路口极限转弯, 方向盘打到454°(接近机械限位),
