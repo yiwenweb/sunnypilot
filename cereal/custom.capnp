@@ -90,6 +90,9 @@ struct ModelManagerSP @0xaedffd8f31e7b55d {
       navigation @1;
       vision @2;
       policy @3;
+      offPolicy @4;
+      onPolicy @5;
+      chunked @6;
     }
   }
 
@@ -122,6 +125,13 @@ struct ModelManagerSP @0xaedffd8f31e7b55d {
 
 struct LongitudinalPlanSP @0xf35cc4560bbf6ec2 {
   dec @0 :DynamicExperimentalControl;
+  longitudinalPlanSource @1 :LongitudinalPlanSource;
+  smartCruiseControl @2 :SmartCruiseControl;
+  speedLimit @3 :SpeedLimit;
+  vTarget @4 :Float32;
+  aTarget @5 :Float32;
+  events @6 :List(OnroadEventSP.Event);
+  e2eAlerts @7 :E2eAlerts;
 
   struct DynamicExperimentalControl {
     state @0 :DynamicExperimentalControlState;
@@ -132,6 +142,97 @@ struct LongitudinalPlanSP @0xf35cc4560bbf6ec2 {
       acc @0;
       blended @1;
     }
+  }
+
+  enum LongitudinalPlanSource {
+    cruise @0;
+    sccVision @1;
+    sccMap @2;
+    speedLimitAssist @3;
+  }
+
+  struct SmartCruiseControl {
+    vision @0 :Vision;
+    map @1 :Map;
+
+    struct Vision {
+      state @0 :VisionState;
+      vTarget @1 :Float32;
+      aTarget @2 :Float32;
+      currentLateralAccel @3 :Float32;
+      maxPredictedLateralAccel @4 :Float32;
+      enabled @5 :Bool;
+      active @6 :Bool;
+    }
+
+    struct Map {
+      state @0 :MapState;
+      vTarget @1 :Float32;
+      aTarget @2 :Float32;
+      enabled @3 :Bool;
+      active @4 :Bool;
+    }
+
+    enum VisionState {
+      disabled @0;
+      enabled @1;
+      entering @2;
+      turning @3;
+      leaving @4;
+      overriding @5;
+    }
+
+    enum MapState {
+      disabled @0;
+      enabled @1;
+      turning @2;
+      overriding @3;
+    }
+  }
+
+  struct SpeedLimit {
+    resolver @0 :Resolver;
+    assist @1 :Assist;
+
+    struct Resolver {
+      speedLimit @0 :Float32;
+      distToSpeedLimit @1 :Float32;
+      source @2 :Source;
+      speedLimitOffset @3 :Float32;
+      speedLimitLast @4 :Float32;
+      speedLimitFinal @5 :Float32;
+      speedLimitFinalLast @6 :Float32;
+      speedLimitValid @7 :Bool;
+      speedLimitLastValid @8 :Bool;
+    }
+
+    struct Assist {
+      state @0 :AssistState;
+      enabled @1 :Bool;
+      active @2 :Bool;
+      vTarget @3 :Float32;
+      aTarget @4 :Float32;
+    }
+
+    enum Source {
+      none @0;
+      car @1;
+      map @2;
+    }
+
+    enum AssistState {
+      disabled @0;
+      inactive @1;
+      preActive @2;
+      pending @3;
+      adapting @4;
+      active @5;
+    }
+  }
+
+  struct E2eAlerts {
+    greenLightAlert @0 :Bool;
+    leadDepartAlert @1 :Bool;
   }
 }
 
@@ -174,6 +275,11 @@ struct OnroadEventSP @0xda96579883444c35 {
     pedalPressedAlertOnly @16;
     laneTurnLeft @17;
     laneTurnRight @18;
+    speedLimitPreActive @19;
+    speedLimitActive @20;
+    speedLimitChanged @21;
+    speedLimitPending @22;
+    e2eChime @23;
   }
 }
 
@@ -262,6 +368,7 @@ struct BackupManagerSP @0xf98d843bfd7004a3 {
 }
 
 struct CarStateSP @0xb86e6369214c01c8 {
+  speedLimit @0 :Float32;
 }
 
 struct LiveMapDataSP @0xf416ec09499d9d19 {
@@ -275,13 +382,13 @@ struct LiveMapDataSP @0xf416ec09499d9d19 {
 
 struct ModelDataV2SP @0xa1680744031fdb2d {
   laneTurnDirection @0 :TurnDirection;
-}
 
   enum TurnDirection {
     none @0;
     turnLeft @1;
     turnRight @2;
   }
+}
 
 struct CustomReserved10 @0xcb9fd56c7057593a {
 }
