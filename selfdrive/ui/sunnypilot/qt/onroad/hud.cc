@@ -450,8 +450,8 @@ void HudRendererSP::drawBottomDevUI(QPainter &p, int x, int y) {
   UiElement aEgoElement = DeveloperUi::getAEgo(aEgo);
   rw += drawBottomDevUIElement(p, rw, y, aEgoElement.value, aEgoElement.label, aEgoElement.units, aEgoElement.color);
 
-  UiElement lkasPreparedElement = DeveloperUi::getLkasPrepared(lkasPrepared);
-  rw += drawBottomDevUIElement(p, rw, y, lkasPreparedElement.value, lkasPreparedElement.label, lkasPreparedElement.units, lkasPreparedElement.color);
+  // UiElement lkasPreparedElement = DeveloperUi::getLkasPrepared(lkasPrepared);
+  // rw += drawBottomDevUIElement(p, rw, y, lkasPreparedElement.value, lkasPreparedElement.label, lkasPreparedElement.units, lkasPreparedElement.color);
 }
 
 void HudRendererSP::drawAccelBar(QPainter &p, const QRect &surface_rect) {
@@ -1099,4 +1099,49 @@ void HudRendererSP::drawGlassBox(QPainter &p, const QRect &rect, int corner_radi
              rect.right() - corner_radius, rect.top() + 1);
 
   p.restore();
+}
+
+void HudRendererSP::drawSCC(QPainter &p) {
+  const int box_w = 160;
+  const int box_h = 60;
+  const int corner_r = 16;
+  const int font_size = 34;
+  const int margin_x = 20;
+  const int base_y = 80;
+  const int spacing = 10;
+
+  QFont font("Inter", font_size, QFont::Bold);
+  p.setFont(font);
+
+  auto drawOne = [&](int y_offset, const QString &label, bool active, bool enabled) {
+    QColor bg = longOverride ? QColor(255, 180, 60) :
+                active ? QColor(0, 200, 80) :
+                QColor(100, 100, 100, 120);
+    QColor text_c = (longOverride || active) ? QColor(0, 0, 0) : Qt::white;
+
+    int box_x = margin_x;
+    int box_y = y_offset;
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(bg);
+    p.drawRoundedRect(box_x, box_y, box_w, box_h, corner_r, corner_r);
+
+    p.setPen(text_c);
+    QRect text_rect(box_x, box_y, box_w, box_h);
+    p.drawText(text_rect, Qt::AlignCenter, label);
+  };
+
+  int idx = 0;
+
+  if (sccVisionEnabled) {
+    QString label = sccVisionActive ? "SCC-V" : "SCC-V";
+    drawOne(base_y + idx * (box_h + spacing), label, sccVisionActive, sccVisionEnabled);
+    idx++;
+  }
+
+  if (sccMapEnabled) {
+    QString label = sccMapActive ? "SCC-M" : "SCC-M";
+    drawOne(base_y + idx * (box_h + spacing), label, sccMapActive, sccMapEnabled);
+    idx++;
+  }
 }
