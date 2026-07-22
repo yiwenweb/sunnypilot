@@ -22,4 +22,6 @@ typedef struct UISceneSP : UIScene {
   bool standstill_timer = false;
   bool debug_plots = false;
   bool lane_line_data = false;
+  bool scc_vision_enabled = false;
+  bool scc_map_enabled = false;
 } UISceneSP;

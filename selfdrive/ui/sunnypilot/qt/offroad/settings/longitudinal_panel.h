@@ -29,4 +29,9 @@ private:
   ScrollViewSP *cruisePanelScroller = nullptr;
   QWidget *cruisePanelScreen = nullptr;
   CustomAccIncrement *customAccIncrement = nullptr;
+  ParamControlSP *sccVisionToggle = nullptr;
+  ParamControlSP *sccMapToggle = nullptr;
+  ParamControlSP *greenLightAlertToggle = nullptr;
+  ParamControlSP *leadDepartAlertToggle = nullptr;
+  ParamControlSP *speedLimitPolicyToggle = nullptr;
 };

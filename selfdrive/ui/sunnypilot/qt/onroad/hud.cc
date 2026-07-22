@@ -142,6 +142,17 @@ void HudRendererSP::updateState(const UIState &s) {
   debugPlotsEnabled = s.scene.debug_plots;
   laneLineDataEnabled = s.scene.lane_line_data;
 
+  sccVisionEnabled = s.scene.scc_vision_enabled;
+  sccMapEnabled = s.scene.scc_map_enabled;
+  longOverride = car_control.getCruiseControl().getOverride();
+
+  if (sm.rcv_frame("longitudinalPlanSP") > 0) {
+    auto lp_sp = sm["longitudinalPlanSP"].getLongitudinalPlanSP();
+    auto scc = lp_sp.getSmartCruiseControl();
+    sccVisionActive = scc.getVision().getActive();
+    sccMapActive = scc.getMap().getActive();
+  }
+
   // MICI-style smoothing filters
   {
     float raw_display = -angleSteers;
@@ -295,6 +306,11 @@ void HudRendererSP::draw(QPainter &p, const QRect &surface_rect) {
     // Lane line distance box (top-left)
     if (laneLineDataEnabled) {
       drawLaneLineData(p, surface_rect);
+    }
+
+    // SCC status indicators
+    if (sccVisionEnabled || sccMapEnabled) {
+      drawSCC(p);
     }
 
     // Debug plots overlay (left side, semi-transparent)

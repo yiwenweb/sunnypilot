@@ -78,6 +78,8 @@ void ui_update_params_sp(UIStateSP *s) {
   s->scene.standstill_timer = params.getBool("StandstillTimer");
   s->scene.debug_plots = params.getBool("DebugPlots");
   s->scene.lane_line_data = params.getBool("LaneLineData");
+  s->scene.scc_vision_enabled = params.getBool("SmartCruiseControlVision");
+  s->scene.scc_map_enabled = params.getBool("SmartCruiseControlMap");
 }
 
 DeviceSP::DeviceSP(QObject *parent) : Device(parent) {

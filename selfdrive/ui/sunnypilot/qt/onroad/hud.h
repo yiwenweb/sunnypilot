@@ -49,6 +49,7 @@ private:
   void drawStandstillTimer(QPainter &p, const QRect &surface_rect);
   void drawDebugPlots(QPainter &p, const QRect &surface_rect);
   void drawLaneLineData(QPainter &p, const QRect &surface_rect);
+  void drawSCC(QPainter &p);
 
   // ===== 三层景深绘制 =====
   enum class GlassLevel {
@@ -105,6 +106,11 @@ private:
   cereal::CarControl::Actuators::Reader actuators;
   bool debugPlotsEnabled;
   bool laneLineDataEnabled;
+  bool sccVisionEnabled;
+  bool sccVisionActive;
+  bool sccMapEnabled;
+  bool sccMapActive;
+  bool longOverride;
   DebugPlotHistory steerHistory;
   DebugPlotHistory steerDesHistory;
   DebugPlotHistory speedHistory;
