@@ -1079,9 +1079,214 @@ kill $MM_PID 2>/dev/null; wait $MM_PID 2>/dev/null
 
 ---
 
+## 十二、CircularAlerts 圆环提醒移植记录（2026-07-22）
+
+### 概述
+
+将 sunnypilot 2016 版的 CircularAlerts（圆环提醒）功能移植到 staging-tici + qt-dev 环境。功能：停车等红灯时检测到绿灯亮 → 车速数字外围出现绿色圆环 + 图标 + 文字提醒；前车起步 → 蓝色圆环 + 图标 + 文字提醒。显示 3 秒后自动消失。
+
+### 数据管道
+
+```
+[车辆状态] → longitudinal_planner.py → e2e_alerts_helper.py → cereal
+                                                                   │
+        ┌──────────────────────────────────────────────────────────┘
+        ▼
+    longitudinalPlanSP.e2eAlerts
+    ├── greenLightAlert :Bool   ← 绿灯检测
+    └── leadDepartAlert :Bool   ← 前车起步
+```
+
+两端数据管道均已就绪：
+- staging-tici：`e2e_alerts_helper.py` + `longitudinal_planner.py` 生产 e2eAlerts 数据
+- cereal：`LongitudinalPlanSP.e2eAlerts`（field @7）已定义
+
+### 涉及仓库
+
+| 仓库 | 分支 | 角色 |
+|------|------|------|
+| `sunnypilot1` | qt-dev | C++ UI 源码 + 编译工厂 |
+| `sunnypilot` | staging-tici | Python 后端 + params_keys.h |
+
+### 文件改动清单
+
+**sunnypilot1/qt-dev（6 文件）**：
+
+| 文件 | 改动 | 状态 |
+|------|------|------|
+| `common/params_keys.h` | 新增 `CircularAlerts`、`GreenLightAlert`、`LeadDepartAlert` 参数键 | 已有（SCC 批次） |
+| `selfdrive/ui/sunnypilot/ui_scene.h` | 新增 `circular_alerts` bool | 已有 |
+| `selfdrive/ui/sunnypilot/ui.cc` | param_watcher 注册 + 读取 | 已有 |
+| `selfdrive/ui/sunnypilot/qt/onroad/hud.h` | 新增 `drawCircularAlerts()` 声明 + 7 个成员变量 | 已有 |
+| `selfdrive/ui/sunnypilot/qt/onroad/hud.cc` | `updateState()` 读 e2eAlerts + `draw()` 调用 + `drawCircularAlerts()` 完整实现 | 已有 |
+| `sunnypilot/selfdrive/assets/images/green_light.png` | 新增图标资源 | 本次新增 |
+| `sunnypilot/selfdrive/assets/images/lead_depart.png` | 新增图标资源 | 本次新增 |
+| `selfdrive/ui/sunnypilot/SConscript` | 新增 `env.Install()` 打包规则 | 本次新增 |
+
+**sunnypilot/staging-tici（1 文件）**：
+
+| 文件 | 改动 |
+|------|------|
+| `common/params_keys.h` | `CircularAlerts`、`GreenLightAlert`、`LeadDepartAlert` 参数键（之前未同步） |
+
+### LFS 故障与修复
+
+`.gitattributes` 中 `*.png` 被 LFS 跟踪，LFS blob 端点指向 GitLab，本地无 GitLab SSH key → push 被阻断。
+
+修复：
+1. `.gitattributes` 注释掉 `*.png` LFS 规则
+2. `git lfs untrack "*.png"`
+3. PNG 走普通 Git 存储（两个图标合计 15KB，无影响）
+
+### 绘制参数
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 圆盘半径 | 250px | 半透明黑底 |
+| 圆环宽度 | 15px | 内外各 7.5 |
+| 中心位置 | (960, 540) | 屏幕中心硬编码 |
+| 显示时长 | 3 秒（180 帧 @60fps） | alertDisplayTimer 倒计时 |
+| 脉动动画 | frame % 60 < 24 | 每 60 帧中前 24 帧缩小半径 |
+| 图标 | 250×250 QPixmap | 懒加载 + 缩放缓存 |
+| 字体 | 48pt | 提醒文字 |
+| 绿灯颜色 | 绿 `#00C850` | 圆环 + 脉动外环 |
+| 前车起步颜色 | 蓝 `#0080FF` | 圆环 + 脉动外环 |
+| 背景 | `rgba(0,0,0,190)` | 半透明黑盘 |
+
+### 性能
+
+| 状态 | 每帧开销 | 占帧预算(16.7ms) |
+|------|---------|-----------------|
+| 告警活跃期 | ~0.20ms | <1.2% |
+| 非告警期 | ~0.005ms | <0.03% |
+
+### C3 部署
+
+```bash
+# 1. 切分支（跳过 LFS）
+cd /data/panda_build
+git reset --hard HEAD && git clean -fdx
+GIT_LFS_SKIP_SMUDGE=1 git fetch yiwen qt-dev
+GIT_LFS_SKIP_SMUDGE=1 git checkout yiwen/qt-dev
+
+# 2. 编译
+scons -j4 selfdrive/ui/ui
+scons -j4 common/params_pyx.so
+
+# 3. 部署
+pkill -f ui && pkill -f manager
+cp selfdrive/ui/ui /data/openpilot/selfdrive/ui/
+cp selfdrive/common/params_pyx.so /data/openpilot/selfdrive/common/
+cd /data/openpilot && git pull myrepo staging-tici
+reboot
+```
+
+### Git 提交记录
+
+| commit | 内容 |
+|--------|------|
+| `1676a74` | staging-tici: 新增 CircularAlerts/GreenLightAlert/LeadDepartAlert 参数键 |
+| `043cce9` | qt-dev: 补全 CircularAlerts 图标资源 + SConscript 打包规则 |
+| `c3f0f2146d` | qt-dev: 修复 LFS，图片走普通 Git 存储 |
+
+---
+
 ## 十、相关文档
 
 - BYD 唐 DM 2018 适配技术笔记：`BYD_唐DM_2018_sunnypilot适配技术笔记.md`
 - sunnypilot 官方文档：https://docs.sunnypilot.com
 - openpilot 开发者文档：https://docs.comma.ai
 - 本档案所在仓库：https://github.com/yiwenweb/sunnypilot (分支: staging-tici)
+
+---
+
+## 十一、SCC UI 移植记录（2026-07-22）
+
+### 概述
+
+将 sunnypilot master 的 Smart Cruise Control（SCC）UI 功能移植到 staging-tici C3 运行环境。
+
+### 涉及仓库
+
+| 仓库 | 分支 | 角色 |
+|------|------|------|
+| `sunnypilot1` | qt-dev | C++ UI 源码 + 编译工厂 |
+| `sunnypilot` | staging-tici | Python 后端运行系统 |
+
+### 文件改动清单
+
+**sunnypilot1/qt-dev（7 文件）**：
+
+| 文件 | 改动 |
+|------|------|
+| `common/params_keys.h` | 新增 5 个参数：SmartCruiseControlVision、SmartCruiseControlMap、GreenLightAlert、LeadDepartAlert、SpeedLimitPolicy |
+| `selfdrive/ui/sunnypilot/ui_scene.h` | 新增 `scc_vision_enabled`、`scc_map_enabled` bool |
+| `selfdrive/ui/sunnypilot/ui.cc` | param_watcher 注册 + `ui_update_params_sp()` 读取 |
+| `selfdrive/ui/sunnypilot/qt/onroad/hud.h` | 新增 `drawSCC()` 声明 + 6 个 SCC 成员变量 |
+| `selfdrive/ui/sunnypilot/qt/onroad/hud.cc` | `updateState()` 读 cereal SCC 状态 + `draw()` 调用 + `drawSCC()` 完整实现（注释 lkasPrepared 相关代码） |
+| `selfdrive/ui/sunnypilot/qt/offroad/settings/longitudinal_panel.h` | 新增 5 个 `ParamControlSP*` 指针 |
+| `selfdrive/ui/sunnypilot/qt/offroad/settings/longitudinal_panel.cc` | 构造函数新增 5 个 toggle 控件 + `refresh()` 逻辑 |
+
+**sunnypilot/staging-tici（1 文件）**：
+
+| 文件 | 改动 |
+|------|------|
+| `sunnypilot/selfdrive/selfdrived/events.py` | 注册 `e2eChime` 事件，复用 `AudibleAlert.prompt`（即 `prompt.wav`） |
+
+### cereal schema 同步
+
+为编译通过，将 staging-tici 的 cereal `custom.capnp` 改动同步到 qt-dev：
+- `ModelDataV2SP`：TurnDirection 枚举移入 struct
+- `OnroadEventSP`：新增 5 个事件
+- `CarStateSP`：新增 speedLimit 字段
+- `CarParamsSP`：新增 3 个字段
+- `LongitudinalPlanSP`：新增 SmartCruiseControl 结构体（vision/map 子结构，各含 enabled/active）
+- `ModelManagerSP.Model.Type`：新增 offPolicy/onPolicy/chunked 枚举值
+
+### 编译修复
+
+| 错误 | 文件 | 修复 |
+|------|------|------|
+| `getLkasPrepared` 不存在 | hud.cc/hud.h/developer_ui.h/developer_ui.cc | 注释 lkasPrepared 所有引用（两边 cereal 均无此字段） |
+| `getSmartCruiseControl` 不存在 | hud.cc | cereal schema 同步到 qt-dev |
+| `OFF_POLICY/ON_POLICY/CHUNKED` 未处理 | models_panel.cc | switch 新增 fall-through case |
+
+### SCC 指示器布局
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| 盒子尺寸 | 160×60, 圆角 16 | 每盒 |
+| 字体 | Inter 34pt Bold | — |
+| 水平位置 | `margin_x=690` | 紧贴速度数字左侧（间距 5px） |
+| 垂直位置 | `base_y=165` | 与速度数字（y=230）垂直居中 |
+| SCC-M 在上 | — | 先判断 sccMapEnabled，画在 base_y |
+| SCC-V 在下 | — | 画在 base_y + 70 |
+
+### 颜色方案
+
+| 状态 | 背景色 | 文字色 |
+|------|--------|--------|
+| 激活 | 绿 `(0, 200, 80)` | 白 |
+| 非激活 | 灰 `(100, 100, 100, 120)` | 白 |
+| 长控超驰 | 橙 `(255, 180, 60)` | 黑 |
+
+### 设置面板布局（Cruise 面板）
+
+在 `CustomAccIncrement` 控件后依次排列：
+1. Smart Cruise Control - Vision（SCC 视觉弯道预测）
+2. Smart Cruise Control - 地图（SCC 地图弯道预测）
+3. 绿灯提醒
+4. 前车起步提醒
+5. 限速策略
+
+### Git 提交记录
+
+| commit | 内容 |
+|--------|------|
+| `e2add59ba9` | 添加 SCC UI: onroad 状态指示器 + 设置面板 5 个开关 |
+| `1224a1ed0b` | 同步 cereal schema |
+| `ca549bd964` | 修复 models_panel.cc switch case |
+| `614d964f2b` | 注释 lkasPrepared 编译错误 |
+| `008cdf3a7a` | 同步 C3 编译通过版 |
+| `5076a17181` | 同步 C3 SCC 指示器参数 |
+| `7696ab4982` | margin_x 680→690，间距 5px |
