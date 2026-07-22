@@ -203,11 +203,12 @@ UiElement DeveloperUi::getAltitude(float gps_accuracy, float altitude) {
 
 // Add LKAS Prepared Status
 // 0=NOT READY (gray), 1=READY (green)
-UiElement DeveloperUi::getLkasPrepared(bool lkas_prepared) {
-  QString value = lkas_prepared ? "READY" : "WAIT";
-  QColor color = lkas_prepared ? QColor(0, 255, 0, 230) : QColor(160, 160, 160, 200);
-  return UiElement(value, "Rp", "", color);
-}
+// TODO: cereal CarState lacks lkasPrepared in qt-dev — commented out
+// UiElement DeveloperUi::getLkasPrepared(bool lkas_prepared) {
+//   QString value = lkas_prepared ? "READY" : "WAIT";
+//   QColor color = lkas_prepared ? QColor(0, 255, 0, 230) : QColor(160, 160, 160, 200);
+//   return UiElement(value, "Rp", "", color);
+// }
 
 // Add Actuators Output
 // Unit: Degree (angle) or m/s² (torque)

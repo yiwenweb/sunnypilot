@@ -52,7 +52,7 @@ void HudRendererSP::updateState(const UIState &s) {
 
   latActive = car_control.getLatActive();
   steerOverride = car_state.getSteeringPressed();
-  lkasPrepared = car_state.getLkasPrepared();
+  // lkasPrepared = car_state.getLkasPrepared();  // TODO: cereal CarState lacks lkasPrepared in qt-dev
 
   devUiInfo = s.scene.dev_ui_info;
 

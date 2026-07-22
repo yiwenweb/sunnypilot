@@ -76,7 +76,7 @@ private:
   float aEgo;
   float smoothAEgo;
   float steeringTorqueEps;
-  bool lkasPrepared;
+  // bool lkasPrepared;  // TODO: cereal CarState lacks lkasPrepared in qt-dev
   float bearingAccuracyDeg;
   float bearingDeg;
   bool torquedUseParams;

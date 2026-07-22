@@ -25,7 +25,7 @@ public:
   static UiElement getSteeringTorqueEps(float steering_torque_eps);
   static UiElement getBearingDeg(float bearing_accuracy_deg, float bearing_deg);
   static UiElement getAltitude(float gps_accuracy, float altitude);
-  static UiElement getLkasPrepared(bool lkas_prepared);
+  // static UiElement getLkasPrepared(bool lkas_prepared);  // TODO: cereal CarState lacks lkasPrepared in qt-dev
   static UiElement getActuatorsOutputLateral(cereal::CarParams::SteerControlType steerControlType,
                                              cereal::CarControl::Actuators::Reader &actuators,
                                              float desiredCurvature, float v_ego, float roll, bool lat_active, bool steer_override);
