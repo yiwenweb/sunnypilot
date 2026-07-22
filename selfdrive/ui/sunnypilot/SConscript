@@ -95,3 +95,7 @@ sp_qt_src = qt_src + lateral_panel_qt_src + vehicle_panel_qt_src + brand_setting
 sp_qt_util = qt_util
 
 Export('sp_widgets_src', 'sp_qt_src', "sp_qt_util")
+
+Import('env')
+env.Install('#sunnypilot/selfdrive/assets/images', '#sunnypilot/selfdrive/assets/images/green_light.png')
+env.Install('#sunnypilot/selfdrive/assets/images', '#sunnypilot/selfdrive/assets/images/lead_depart.png')
