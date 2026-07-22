@@ -1106,8 +1106,8 @@ void HudRendererSP::drawSCC(QPainter &p) {
   const int box_h = 60;
   const int corner_r = 16;
   const int font_size = 34;
-  const int margin_x = 180;
-  const int base_y = 500;
+  const int margin_x = 680;
+  const int base_y = 165;
   const int spacing = 10;
 
   QFont font("Inter", font_size, QFont::Bold);
