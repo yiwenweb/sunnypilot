@@ -226,6 +226,10 @@ void ModelsPanel::handleBundleDownloadProgress() {
         progressBar = policyProgressBar;
         modelFrame = policyFrame;
         break;
+      case cereal::ModelManagerSP::Model::Type::OFF_POLICY:
+      case cereal::ModelManagerSP::Model::Type::ON_POLICY:
+      case cereal::ModelManagerSP::Model::Type::CHUNKED:
+        break;
     }
 
     const auto &progress = model.getArtifact().getDownloadProgress();
