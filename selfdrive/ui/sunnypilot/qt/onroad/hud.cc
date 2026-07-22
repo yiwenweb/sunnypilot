@@ -1106,8 +1106,8 @@ void HudRendererSP::drawSCC(QPainter &p) {
   const int box_h = 60;
   const int corner_r = 16;
   const int font_size = 34;
-  const int margin_x = 20;
-  const int base_y = 80;
+  const int margin_x = 180;
+  const int base_y = 500;
   const int spacing = 10;
 
   QFont font("Inter", font_size, QFont::Bold);
@@ -1117,7 +1117,7 @@ void HudRendererSP::drawSCC(QPainter &p) {
     QColor bg = longOverride ? QColor(255, 180, 60) :
                 active ? QColor(0, 200, 80) :
                 QColor(100, 100, 100, 120);
-    QColor text_c = (longOverride || active) ? QColor(0, 0, 0) : Qt::white;
+    QColor text_c = longOverride ? QColor(0, 0, 0) : Qt::white;
 
     int box_x = margin_x;
     int box_y = y_offset;
