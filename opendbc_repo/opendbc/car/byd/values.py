@@ -67,8 +67,8 @@ class CarControllerParams:
   # 历史误判: 曾设 300(1帧到顶,等于禁用软起), 以为门总"立即满扭矩接管"。
   # 但 byd_men_reengage_ramp.py 实测门总重接管后是【慢软起】: 每帧步进≈16, 前几帧甚至为0,
   # 大对抗时 6-8 帧才爬到 ~36。300 的瞬间到顶正是 20260703 大对抗重接管锁死的根因之一。
-  # 改回 16 (门总实测步进, = STEER_DELTA_UP), 让重接管扭矩每帧+16 渐进。
-  STEER_SOFTSTART_STEP = 16
+  # 改用 18 (= STEER_DELTA_UP), 与正常行驶上升速率统一。
+  STEER_SOFTSTART_STEP = 18
 
   ACC_STEP = 2  # 50hz
 
